@@ -1,0 +1,23 @@
+# ── Build settings ───────────────────────────────────────────────
+[build]
+  publish = "."                         # folder root (index.html ada di sini)
+  functions = "netlify/functions"       # folder functions
+
+# ── Scheduled Function: cek reminder tiap menit ──────────────────
+# Sintaks cron: "* * * * *" = setiap menit
+# Butuh Netlify plan yang support scheduled functions (Free tier: OK)
+[functions."send-reminders"]
+  schedule = "* * * * *"
+
+# ── Headers: izinkan SW scope di root ────────────────────────────
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Service-Worker-Allowed = "/"
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
