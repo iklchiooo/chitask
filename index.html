@@ -1003,9 +1003,15 @@ function _initFirebase(baseUrl, onDone) {
       if (e2 instanceof Error) { onDone(e2); return; }
       _loadScript(baseUrl + 'firebase-firestore-compat.js', function(e3) {
         if (e3 instanceof Error) { onDone(e3); return; }
-        // FCM messaging SDK
+        // FCM messaging SDK — tunggu sampai firebase.messaging benar-benar attach
         _loadScript(baseUrl + 'firebase-messaging-compat.js', function(e4) {
-          // messaging gagal tidak fatal (fallback ke setTimeout notif)
+          if (e4 instanceof Error) {
+            console.warn('[FCM] Messaging SDK gagal load:', e4);
+          } else if (!firebase.messaging) {
+            console.warn('[FCM] firebase.messaging masih undefined setelah load — kemungkinan SDK error');
+          } else {
+            console.log('[FCM] Messaging SDK berhasil load ✓');
+          }
           onDone(null);
         });
       });
@@ -8137,14 +8143,23 @@ function _fcmSubscribe(userId) {
     } catch(e) { console.warn('[FCM] messaging init error:', e); }
   }
 
+  function _runWithSW() {
+    // Pakai SW yang sudah teregister kalau ada, fallback ke navigator.serviceWorker.ready
+    if (window._reminderSWReg) {
+      _doGetToken(window._reminderSWReg);
+    } else {
+      navigator.serviceWorker.ready.then(_doGetToken);
+    }
+  }
+
   // Minta permission dulu, baru getToken
   if (Notification.permission === 'granted') {
-    navigator.serviceWorker.ready.then(_doGetToken);
+    _runWithSW();
   } else {
     // permission masih 'default' — minta dulu sebelum getToken
     _requestNotifPermission(function(granted) {
       if (!granted) { console.warn('[FCM] User menolak izin notifikasi'); return; }
-      navigator.serviceWorker.ready.then(_doGetToken);
+      _runWithSW();
     });
   }
 }
@@ -8186,6 +8201,11 @@ function _fcmDeleteReminder(userId, taskId) {
     .then(function(reg){
       window._reminderSWReg = reg;
       console.log('[ChiTask] SW registered:', reg.scope);
+      // Kalau user sudah login sebelum SW siap, subscribe FCM sekarang
+      if (typeof fbUser !== 'undefined' && fbUser && fbUser.uid) {
+        console.log('[FCM] SW baru siap, re-subscribe FCM untuk user:', fbUser.uid);
+        _fcmSubscribe(fbUser.uid);
+      }
     })
     .catch(function(err){
       console.warn('[ChiTask] SW register gagal, fallback ke Notification API:', err);
