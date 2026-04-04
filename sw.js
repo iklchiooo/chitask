@@ -229,13 +229,19 @@ self.addEventListener('push', e => {
   if (!e.data) return;
   try {
     const d = e.data.json();
+    const title = (d.notification && d.notification.title) || (d.data && d.data.title) || d.title || 'ChiTask ⏰ Pengingat';
+    const body  = (d.notification && d.notification.body)  || (d.data && d.data.body)  || d.body  || '';
+    const tag   = (d.data && d.data.tag) || d.tag || 'chitask-push';
     e.waitUntil(
-      self.registration.showNotification(d.title || 'ChiTask', {
-        body:    d.body  || '',
+      self.registration.showNotification(title, {
+        body,
         icon:    '/icons/icon-192x192.png',
         badge:   '/icons/icon-96x96.png',
-        tag:     d.tag   || 'chitask-push',
-        data:    { url: d.url || '/' }
+        tag,
+        renotify: true,
+        vibrate: [200, 100, 200],
+        requireInteraction: false,
+        data:    { taskId: (d.data && d.data.taskId) || '', url: '/' }
       })
     );
   } catch(err) {}
