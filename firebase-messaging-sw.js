@@ -17,7 +17,6 @@ messaging.onBackgroundMessage(function(payload) {
   const title = data.title || 'ChiTask ⏰ Pengingat';
   const body  = data.body  || '';
   const tag   = data.tag   || 'chitask-fcm-' + Date.now();
-
   return self.registration.showNotification(title, {
     body,
     icon:    '/icons/icon-192x192.png',
