@@ -5,12 +5,10 @@
 // ╚══════════════════════════════════════════════════════╝
 
 // ── FCM: Import harus di baris paling atas SW ────────────────────
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
 // ── Inisialisasi Firebase di SW ──────────────────────────────────
-// ⚠️ GANTI semua nilai "GANTI_..." dengan config Firebase project kamu
-// (Project Settings → General → Your apps → Web app)
 firebase.initializeApp({
   apiKey:            "AIzaSyA_erlGbohRGlL0ei8l2RqJLR0sy-kVtvU",
   authDomain:        "chitask.firebaseapp.com",
@@ -24,6 +22,7 @@ const messaging = firebase.messaging();
 
 // ── FCM: Tangani push saat app background / ditutup ─────────────
 messaging.onBackgroundMessage(function(payload) {
+  console.log('[sw.js] FCM background message:', payload);
   const data   = payload.data || payload.notification || {};
   const title  = data.title  || 'ChiTask ⏰ Pengingat';
   const body   = data.body   || '';
@@ -43,13 +42,13 @@ messaging.onBackgroundMessage(function(payload) {
 });
 
 // ────────────────────────────────────────────────────────────────
-const CACHE_NAME = 'chitask-v6';
+const CACHE_NAME   = 'chitask-v6';
 const CACHE_STATIC = 'chitask-static-v6';
 const CACHE_CDN    = 'chitask-cdn-v6';
 
 // Firebase & Google Auth — JANGAN di-cache
+// ⚠️ www.gstatic.com DIHAPUS dari sini karena dipakai importScripts FCM
 const FIREBASE_HOSTS = [
-  'www.gstatic.com',
   'firestore.googleapis.com',
   'identitytoolkit.googleapis.com',
   'securetoken.googleapis.com',
@@ -65,10 +64,12 @@ const WORKER_HOSTS = [
 ];
 
 // CDN assets — cache aggressively
+// ✅ www.gstatic.com masuk CDN supaya Firebase SDK di-cache dengan benar
 const CDN_HOSTS = [
   'cdnjs.cloudflare.com',
   'fonts.googleapis.com',
-  'fonts.gstatic.com'
+  'fonts.gstatic.com',
+  'www.gstatic.com'
 ];
 
 // App shell files to pre-cache on install
@@ -97,7 +98,8 @@ self.addEventListener('install', e => {
 
 // ── ACTIVATE: Bersihkan cache lama ───────────────────────────────
 self.addEventListener('activate', e => {
-  const validCaches = [CACHE_NAME, CACHE_STATIC, CACHE_CDN];  e.waitUntil(
+  const validCaches = [CACHE_NAME, CACHE_STATIC, CACHE_CDN];
+  e.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
@@ -124,7 +126,7 @@ self.addEventListener('fetch', e => {
   // 2. GCal Worker → network only
   if (WORKER_HOSTS.some(h => url.hostname.includes(h))) return;
 
-  // 3. CDN (fonts, libraries) → cache first, fallback network
+  // 3. CDN (fonts, libraries, gstatic) → cache first, fallback network
   if (CDN_HOSTS.some(h => url.hostname.includes(h))) {
     e.respondWith(
       caches.open(CACHE_CDN).then(cache =>
@@ -185,13 +187,10 @@ self.addEventListener('message', e => {
       data:    { taskId: d.taskId, url: '/' }
     });
   }
-  // Jadwalkan notifikasi di masa depan dari SW (agar tetap muncul meski tab tutup)
   if (e.data.type === 'SCHEDULE_NOTIFICATION') {
     const d = e.data;
     const delay = d.fireAt - Date.now();
     if (delay <= 0) return;
-    // SW tidak bisa setTimeout lama, simpan ke IndexedDB untuk dicek via sync
-    // Fallback: kalau delay < 5 menit, langsung setTimeout di SW
     if (delay < 5 * 60 * 1000) {
       setTimeout(() => {
         self.registration.showNotification(d.title, {
@@ -215,19 +214,17 @@ self.addEventListener('notificationclick', e => {
   const targetUrl = (e.notification.data && e.notification.data.url) || '/';
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-      // Kalau sudah ada tab ChiTask, focus saja
       for (const client of list) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           return client.focus();
         }
       }
-      // Kalau tidak ada, buka tab baru
       if (clients.openWindow) return clients.openWindow(targetUrl);
     })
   );
 });
 
-// ── PUSH: Terima push dari server (opsional, untuk masa depan) ───
+// ── PUSH: Tangani raw push event (fallback jika FCM tidak handle) ─
 self.addEventListener('push', e => {
   if (!e.data) return;
   try {
