@@ -2441,6 +2441,8 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 
 /* Habit side panel */
 .habit-panel{width:268px;min-width:255px;background:var(--card);border-left:1px solid var(--border);padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;flex-shrink:0}
+.ai-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--muted);animation:ai-blink 1.2s infinite}
+@keyframes ai-blink{0%,80%,100%{opacity:0.2}40%{opacity:1}}
 .panel-title{font-size:11px;font-weight:700;color:var(--text);padding-bottom:8px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:0.6px}
 .habit-row{border:1px solid var(--border);border-radius:var(--radius);padding:10px;cursor:pointer;transition:box-shadow 0.1s}
 .habit-row:hover{box-shadow:0 2px 8px rgba(0,0,0,0.07)}
@@ -6299,6 +6301,9 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
       <span class="sdi-ic">✅</span><span class="sdi-lbl">Selesai</span>
       <span class="sdi-cnt" id="sdi-cnt-completed">0</span>
     </div>
+    <div class="subdrawer-item" id="sdi-task-groups" onclick="switchView('task-groups');closeSubDrawer()">
+      <span class="sdi-ic">🗂️</span><span class="sdi-lbl">Kelola Grup</span>
+    </div>
 
     <div class="subdrawer-item" id="sdi-shop" onclick="openShop();closeSubDrawer()">
       <span class="sdi-ic">🏪</span><span class="sdi-lbl">Toko 🪙<span id="sdi-gold-cnt">0</span></span>
@@ -6680,6 +6685,9 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
       </div>
       <div class="nav-item" onclick="switchView('achievements')" id="nav-achievements">
         <div class="ic">🏆</div><div class="lbl" id="lbl-nav-achievements">Pencapaian</div>
+      </div>
+      <div class="nav-item" onclick="switchView('task-groups')" id="nav-task-groups">
+        <div class="ic">🗂️</div><div class="lbl">Kelola Grup</div>
       </div>
     </div>
 
@@ -7600,6 +7608,7 @@ var xp=0, achievements=[], totalDone=0, perfectDays=0, totalSubtasks=0;
 
 // ══ CHARACTER STATS SYSTEM ══
 var charStatProgress={intelligence:0,strength:0,wisdom:0,vitality:0,charisma:0,discipline:0};
+var charStatLastActivity={intelligence:'',strength:'',wisdom:'',vitality:'',charisma:'',discipline:''};
 var CHAR_STAT_DEF=[
   {key:'intelligence',icon:'🧠',name:'Intelligence',color:'#3b82f6',groups:['produktivitas','coding','belajar','work','pekerjaan','study','kerja','tugas']},
   {key:'strength',icon:'💪',name:'Strength',color:'#ef4444',groups:['olahraga','gym','fitness','latihan','sport','push','lari','run']},
@@ -7648,7 +7657,7 @@ function matchTaskToStat(t){
   // Fallback: Habit with no matching group → Discipline, Task → Intelligence
   return t.type==='Habit'?'discipline':'intelligence';
 }
-function awardStatProgress(t){var key=matchTaskToStat(t),prevLv=getStatLevel(key);charStatProgress[key]=(charStatProgress[key]||0)+1;var newLv=getStatLevel(key);if(newLv>prevLv){var def=CHAR_STAT_DEF.filter(function(d){return d.key===key;})[0];setTimeout(function(){showToast('⬆️ '+def.icon+' '+def.name+' naik ke Lv '+newLv+'!');},400);}}
+function awardStatProgress(t){var key=matchTaskToStat(t),prevLv=getStatLevel(key);charStatProgress[key]=(charStatProgress[key]||0)+1;charStatLastActivity[key]=todayStr;var newLv=getStatLevel(key);if(newLv>prevLv){var def=CHAR_STAT_DEF.filter(function(d){return d.key===key;})[0];setTimeout(function(){showToast('⬆️ '+def.icon+' '+def.name+' naik ke Lv '+newLv+'!');},400);}}
 function revokeStatProgress(t){var key=matchTaskToStat(t);charStatProgress[key]=Math.max(0,(charStatProgress[key]||0)-1);}
 function getCharClass(){var top=CHAR_STAT_DEF.slice().sort(function(a,b){return getStatLevel(b.key)-getStatLevel(a.key);})[0];var cls={intelligence:'Scholar',strength:'Warrior',wisdom:'Sage',vitality:'Guardian',charisma:'Leader',discipline:'Monk'};return cls[top.key]||'Adventurer';}
 var calendarMonth=today.getMonth(), calendarYear=today.getFullYear();
@@ -7901,6 +7910,7 @@ function saveData(userAction){
     tempThemeExpiry:tempThemeExpiry,tempThemePrev:tempThemePrev,
     weeklyReviewLastSeen:weeklyReviewLastSeen,
     charStatProgress:charStatProgress,
+    charStatLastActivity:charStatLastActivity,
     lastSaved:_lastSavedTs||null
   });
   // Simpan ke localStorage sebagai cache offline
@@ -8017,11 +8027,7 @@ function isHabitDueToday(t){
 function processRepeatReset(){
   tasks.forEach(function(t){
     if(!t.repeat||!t.done)return;
-    // Don't reset if today is the excluded day (e.g. "Harian kecuali Jumat")
     if(isRepeatSkipToday(t.repeat))return;
-    // FIX: Jangan gunakan t.due sebagai fallback doneDate — karena t.due bisa sudah
-    // di-set ke todayStr dari reset sebelumnya, sehingga diff selalu 0 dan repeat tidak jalan.
-    // Gunakan offset(-1) sebagai fallback terakhir (kemarin), bukan t.due.
     var doneDate=t.doneDate||offset(-1);
     if(doneDate>=todayStr)return;
     var days=getRepeatDays(t.repeat);
@@ -8029,13 +8035,52 @@ function processRepeatReset(){
     var diff=Math.round((today-new Date(doneDate+'T00:00:00'))/86400000);
     if(diff>=days){
       t.done=false;
-      // FIX: Set due ke todayStr agar task muncul hari ini
       t.due=todayStr;
       t.doneDate=null;
       if(t.subtasks&&t.subtasks.length){t.subtasks.forEach(function(s){s.done=false;});}
       if(t.steps&&t.steps>=2)t.stepsDone=0;
     }
   });
+  processStatDecay();
+}
+
+// ── Stat Decay: perlahan turun kalau tidak ada aktivitas ──
+// Grace period: 7 hari. Setelah itu decay proporsional:
+// tiap 3 hari kehilangan ~1% dari progress saat ini (min 1).
+// Terasa nyata di semua level — tidak terlalu cepat di awal, tidak stagnan di level tinggi.
+function processStatDecay(){
+  var GRACE_DAYS = 7;      // hari pertama tidak terasa sama sekali
+  var DECAY_INTERVAL = 3;  // setiap N hari, 1 tick decay
+  var DECAY_PCT = 0.01;    // tiap tick: kurangi 1% dari progress saat ini (min 1)
+  var changed = false;
+  CHAR_STAT_DEF.forEach(function(def){
+    var key = def.key;
+    var prog = charStatProgress[key] || 0;
+    if(prog <= 0) return;
+    var last = charStatLastActivity[key] || '';
+    if(!last) return;
+    var lastDt = new Date(last + 'T00:00:00');
+    var inactiveDays = Math.round((today - lastDt) / 86400000);
+    if(inactiveDays <= GRACE_DAYS) return;
+    var decayableDays = inactiveDays - GRACE_DAYS;
+    var ticks = Math.floor(decayableDays / DECAY_INTERVAL);
+    if(ticks <= 0) return;
+    // Tiap tick: kurangi 1% dari progress (min 1 per tick)
+    var newProg = prog;
+    for(var i = 0; i < ticks; i++){
+      newProg = newProg - Math.max(1, Math.floor(newProg * DECAY_PCT));
+      if(newProg <= 0){ newProg = 0; break; }
+    }
+    if(newProg < prog){
+      charStatProgress[key] = newProg;
+      // Geser lastActivity maju supaya ticks ini tidak dihitung lagi
+      var newLast = new Date(lastDt);
+      newLast.setDate(newLast.getDate() + ticks * DECAY_INTERVAL);
+      charStatLastActivity[key] = localDateStr(newLast);
+      changed = true;
+    }
+  });
+  if(changed){ saveData(true); }
 }
 
 // ══════════════════════════════════════════════
@@ -8463,6 +8508,7 @@ function init(){
     finSavingTarget=saved.finSavingTarget||0;
     weeklyReviewLastSeen=saved.weeklyReviewLastSeen||'';
     if(saved.charStatProgress)charStatProgress=saved.charStatProgress;
+    if(saved.charStatLastActivity)charStatLastActivity=saved.charStatLastActivity;
     // ── Cek tema sementara dari boss reward ──
     if(tempThemeExpiry > 0){
       var now = Date.now();
@@ -8752,6 +8798,7 @@ function renderMain(){
     dashboard:t('title_dashboard'),myday:t('title_myday'),important:t('title_important'),
     planned:t('title_planned'),habits:t('title_habits'),'habit-analisa':'🧠 Analisa Habit',all:t('title_all'),
     completed:t('title_completed'),achievements:t('title_achievements'),calendar:t('title_calendar'),'unified-calendar':t('title_calendar'),
+    'task-groups':'🗂️ Kelola Grup',
     'fin-overview':t('title_fin_overview'),'fin-cashflow':t('title_fin_cashflow'),
     'fin-transactions':t('title_fin_transactions'),'fin-wallets':t('title_fin_wallets'),
     'fin-wishlist':t('title_fin_wishlist'),'fin-tagihan':t('title_fin_tagihan'),
@@ -8768,6 +8815,7 @@ function renderMain(){
     important:t('sub_important'),planned:t('sub_planned'),habits:t('sub_habits'),'habit-analisa':'Laporan & saran cerdas untuk habitual kamu',
     all:t('sub_all'),completed:t('sub_completed'),achievements:t('sub_achievements'),
     calendar:t('sub_calendar'),'unified-calendar':'Task · Jurnal · Google Calendar',
+    'task-groups':'Buat dan atur grup kustom untuk task kamu',
     'fin-overview':t('sub_fin_overview'),'fin-cashflow':t('sub_fin_cashflow'),
     'fin-transactions':t('sub_fin_transactions'),'fin-wallets':t('sub_fin_wallets'),
     'fin-wishlist':t('sub_fin_wishlist'),'fin-tagihan':t('sub_fin_tagihan'),
@@ -8800,7 +8848,7 @@ function renderMain(){
   var isFin=isFinView(currentView);
   var isMaint=isMaintView(currentView);
   var isJournal=isJournalView(currentView);
-  var hideAdd=['completed','habits','habit-analisa','stats','achievements','calendar','unified-calendar','dashboard'].concat(FIN_VIEWS).concat(MAINT_VIEWS).concat(JOURNAL_VIEWS);
+  var hideAdd=['completed','habits','habit-analisa','stats','achievements','calendar','unified-calendar','dashboard','task-groups'].concat(FIN_VIEWS).concat(MAINT_VIEWS).concat(JOURNAL_VIEWS);
   if(currentView.startsWith('maint-cat-'))hideAdd.push(currentView);
   var shouldShowAdd=hideAdd.indexOf(currentView)<0;
   document.getElementById('addBar').style.display=shouldShowAdd?'flex':'none';
@@ -8907,6 +8955,7 @@ function renderMain(){
   if(currentView==='achievements'){renderAchievements(el);return;}
   if(currentView==='calendar'){renderCalendar(el);return;}
   if(currentView==='unified-calendar'){renderUnifiedCalendar(el);return;}
+  if(currentView==='task-groups'){renderGroupManager(el);return;}
 
   var list=getFiltered();
 
@@ -10504,9 +10553,11 @@ function renderHabitAnalisa(el){
   }
 
   // ── Hitung data statistik per habit ──
-  var days7=[],days30=[],days90=[];
+  var days7=[],days28=[],days30=[],days60=[],days90=[];
   for(var i=6;i>=0;i--)days7.push(offset(-i));
+  for(var i=27;i>=0;i--)days28.push(offset(-i));
   for(var i=29;i>=0;i--)days30.push(offset(-i));
+  for(var i=59;i>=0;i--)days60.push(offset(-i));
   for(var i=89;i>=0;i--)days90.push(offset(-i));
 
   var dayNames=['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
@@ -10611,7 +10662,7 @@ function renderHabitAnalisa(el){
     +'<div style="text-align:center"><div style="font-size:20px;font-weight:800;color:var(--text)">'+topStreak.streak+'\uD83D\uDD25</div><div style="font-size:11px;color:var(--muted)">Streak Terbaik</div></div>'
     +'</div></div>';
 
-  // Heatmap 90 hari
+  // Heatmap 90 hari (gabungan semua habit)
   html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
     +'<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">\uD83D\uDCCA Aktivitas 90 Hari Terakhir</div>'
     +'<div style="display:flex;gap:3px;flex-wrap:wrap">'+heatHtml+'</div>'
@@ -10633,107 +10684,704 @@ function renderHabitAnalisa(el){
     +'<span style="font-size:11px;color:#ef4444;font-weight:700">\u26A0\uFE0F Terlemah: '+dayNames[worstDowGlobal]+'</span>'
     +'</div></div>';
 
-  // Report card per habit
+  // ── Prediksi Kegagalan Besok (NEW) ──
+  html += renderFailurePredictionCard(habitStats, days30);
+
+  // ── Habit Correlation (NEW) ──
+  html += renderCorrelationCard(habits, days60);
+
+  // ── Rapor Per Habit (Extended dengan heatmap & weekly chart) (ENHANCED) ──
   html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
-    +'<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">\uD83C\uDFC5 Rapor Per Habit</div>'
-    +'<div style="display:flex;flex-direction:column;gap:10px">';
+    +'<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">\uD83C\uDFC5 Rapor Per Habit</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Heatmap 28 hari + tren mingguan per habit</div>'
+    +'<div style="display:flex;flex-direction:column">';
   habitStats.sort(function(a,b){return b.consistScore-a.consistScore;}).forEach(function(h){
-    var trendIcon=h.trend>2?'\uD83D\uDCC8':h.trend<-2?'\uD83D\uDCC9':'\u27A1\uFE0F';
-    var trendColor=h.trend>2?'#10b981':h.trend<-2?'#ef4444':'var(--muted)';
-    html+='<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer" onclick="openDetail('+h.t.id+')">'
-      +'<div style="width:32px;height:32px;border-radius:8px;background:'+h.gradeColor+'22;border:1.5px solid '+h.gradeColor+';display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:'+h.gradeColor+';flex-shrink:0">'+h.grade+'</div>'
-      +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+h.t.name+'</div>'
-      +'<div style="display:flex;gap:8px;align-items:center;margin-top:3px;flex-wrap:wrap">'
-      +'<div style="flex:1;min-width:80px;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div style="height:100%;width:'+h.pct30+'%;background:'+h.gradeColor+';border-radius:2px"></div></div>'
-      +'<span style="font-size:10px;color:var(--muted);white-space:nowrap">'+h.pct30+'% \u00B7 '+h.streak+'\uD83D\uDD25</span>'
-      +'<span style="font-size:10px;color:'+trendColor+';white-space:nowrap">'+trendIcon+(h.trend>0?'+':'')+h.trend+'</span>'
-      +'</div></div></div>';
+    html += renderExtendedHabitCard(h, days28);
   });
   html+='</div></div>';
 
   // ── Insight Cerdas (Rule-based) ──
   html += renderHabitInsightBox(insight);
 
+  // ── AI Insight (Groq) ──
+  html += '<div id="habitAnalisaAIBox" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+    +'<div style="font-size:13px;font-weight:700;color:var(--text)">🤖 Analisa AI Personal</div>'
+    +'<button onclick="refreshHabitAI()" style="font-size:11px;padding:4px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-family:\'DM Sans\',sans-serif">↻ Refresh</button>'
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Saran personal berbasis pola habit kamu — powered by Llama 70B</div>'
+    +'<div id="habitAILoading" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:8px 0">'
+    +'<span style="display:inline-flex;gap:3px"><span class="ai-dot"></span><span class="ai-dot" style="animation-delay:0.2s"></span><span class="ai-dot" style="animation-delay:0.4s"></span></span>'
+    +'Sedang menganalisa pola habit kamu...</div>'
+    +'<div id="habitAIText" style="display:none;font-size:13px;color:var(--text);line-height:1.7"></div>'
+    +'<div id="habitAIError" style="display:none;font-size:12px;color:#ef4444;padding:8px 0"></div>'
+    +'</div>';
+
+  // ── Tabs: Laporan Mingguan & Bulanan ──
+  html += renderHabitReportTabs(habitStats, habits, days7, days30, days60, avgPct30, topStreak, doneToday, totalHabits);
+
   el.innerHTML=html;
+
+  // Trigger AI call setelah render
+  _callHabitAI(habitStats, avgPct30, topStreak, needsWork, improving, declining, bestDowGlobal, worstDowGlobal, dayNames, totalHabits, doneToday, habits);
 }
 
-// ══════════════════════════════════════════════
-// HABIT INSIGHT ENGINE (Rule-based, offline)
-// ══════════════════════════════════════════════
+// ── Render tab Laporan Mingguan + Bulanan ──
+function renderHabitReportTabs(habitStats, habits, days7, days30, days60, avgPct30, topStreak, doneToday, totalHabits) {
+  var dayNames=['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+  var todayStr=offset(0);
+
+  // Weekly stats
+  var weekStats=habitStats.map(function(h){
+    var done=days7.filter(function(d){return h.t.history&&h.t.history.indexOf(d)>=0;}).length;
+    return{name:h.t.name,done:done,pct:Math.round(done/7*100)};
+  });
+  var weekTotal=weekStats.reduce(function(s,h){return s+h.done;},0);
+  var weekPct=Math.round(weekTotal/((habits.length*7)||1)*100);
+
+  // Weekly heatmap cells
+  var cellsHtml=days7.map(function(d){
+    var cnt=habits.filter(function(h){return h.history&&h.history.indexOf(d)>=0;}).length;
+    var pct=habits.length?cnt/habits.length:0;
+    var bg=pct>=0.8?'#10b981':pct>=0.5?'#34d399':pct>0?'#6ee7b7':'var(--border)';
+    var dow=new Date(d+'T00:00:00').getDay();
+    var isToday=d===todayStr;
+    return '<div title="'+fmtShort(d)+': '+cnt+'/'+habits.length+'" style="flex:1;text-align:center;padding:6px 2px;border-radius:6px;background:'+bg+';font-size:9px;font-weight:700;color:'+(pct>=0.5?'#fff':'var(--muted)')+';outline:'+(isToday?'2px solid var(--accent)':'none')+';outline-offset:1px">'+dayNames[dow]+'</div>';
+  }).join('');
+
+  // Per-habit weekly list
+  var weekListHtml=weekStats.sort(function(a,b){return b.pct-a.pct;}).map(function(s){
+    var c=s.pct>=70?'#10b981':s.pct>=40?'#f59e0b':'#ef4444';
+    var bg=s.pct>=70?'#d1fae5':s.pct>=40?'#fef3c7':'#fee2e2';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="flex:1;font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+s.name+'</div>'
+      +'<div style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:'+bg+';color:'+c+'">'+s.pct+'%</div>'
+      +'<div style="font-size:11px;color:var(--muted);width:30px;text-align:right">'+s.done+'/7</div>'
+      +'</div>';
+  }).join('');
+
+  // Monthly per-habit
+  var monthListHtml=habitStats.sort(function(a,b){return b.pct30-a.pct30;}).map(function(h,i){
+    var medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1);
+    var c=h.pct30>=70?'#10b981':h.pct30>=40?'#f59e0b':'#ef4444';
+    var bg=h.pct30>=70?'#d1fae5':h.pct30>=40?'#fef3c7':'#fee2e2';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="font-size:12px;width:22px;flex-shrink:0">'+medal+'</div>'
+      +'<div style="flex:1;font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+h.t.name+'</div>'
+      +'<div style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:'+bg+';color:'+c+'">'+h.pct30+'%</div>'
+      +'</div>';
+  }).join('');
+
+  // Monthly weekly trend bars
+  var weekCount=4;
+  var weekBarsHtml='';
+  for(var w=weekCount-1;w>=0;w--){
+    var wDone=0,wTotal=0;
+    for(var d=0;d<7;d++){
+      var dt=offset(-(w*7+d));
+      habits.forEach(function(h){if(h.history&&h.history.indexOf(dt)>=0)wDone++;wTotal++;});
+    }
+    var wPct=wTotal?Math.round(wDone/wTotal*100):0;
+    var barH=Math.max(4,Math.round(wPct*0.5));
+    var bc=wPct>=70?'#10b981':wPct>=50?'#3b82f6':wPct>=30?'#f59e0b':'#ef4444';
+    weekBarsHtml+='<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">'
+      +'<div style="font-size:10px;color:var(--muted);font-weight:600">'+wPct+'%</div>'
+      +'<div style="width:100%;background:var(--border);border-radius:3px;height:48px;display:flex;align-items:flex-end;overflow:hidden">'
+      +'<div style="width:100%;height:'+barH+'px;background:'+bc+';border-radius:3px;min-height:4px"></div></div>'
+      +'<div style="font-size:9px;color:var(--muted)">W'+(weekCount-w)+'</div>'
+      +'</div>';
+  }
+
+  var html='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
+    +'<div style="display:flex;gap:6px;margin-bottom:14px;background:var(--bg);border-radius:20px;padding:3px">'
+    +'<button id="tabWeekBtn" onclick="switchReportTab(\'week\')" style="flex:1;padding:6px;border-radius:16px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">📅 Mingguan</button>'
+    +'<button id="tabMonthBtn" onclick="switchReportTab(\'month\')" style="flex:1;padding:6px;border-radius:16px;border:none;background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">📆 Bulanan</button>'
+    +'</div>'
+
+    // Weekly tab
+    +'<div id="tabWeekContent">'
+    +'<div style="text-align:center;margin-bottom:14px">'
+    +'<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Completion Rate Minggu Ini</div>'
+    +'<div style="font-size:48px;font-weight:900;line-height:1;color:'+(weekPct>=70?'#10b981':weekPct>=40?'#f59e0b':'#ef4444')+';font-family:DM Mono,monospace">'+weekPct+'%</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:4px;margin-bottom:12px">'+cellsHtml+'</div>'
+    +'<div>'+weekListHtml+'</div>'
+    +'<button onclick="_shareWeekReport()" style="width:100%;margin-top:12px;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">📤 Salin Ringkasan untuk Di-share</button>'
+    +'</div>'
+
+    // Monthly tab
+    +'<div id="tabMonthContent" style="display:none">'
+    +'<div style="text-align:center;margin-bottom:14px">'
+    +'<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Rata-rata 30 Hari</div>'
+    +'<div style="font-size:48px;font-weight:900;line-height:1;color:'+(avgPct30>=70?'#10b981':avgPct30>=40?'#f59e0b':'#ef4444')+';font-family:DM Mono,monospace">'+avgPct30+'%</div>'
+    +'</div>'
+    +'<div style="margin-bottom:12px">'
+    +'<div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Tren 4 Minggu Terakhir</div>'
+    +'<div style="display:flex;gap:6px;align-items:flex-end;height:72px">'+weekBarsHtml+'</div>'
+    +'</div>'
+    +'<div>'+monthListHtml+'</div>'
+    +'<button onclick="_shareMonthReport()" style="width:100%;margin-top:12px;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">📤 Salin Laporan Bulanan</button>'
+    +'</div>'
+    +'</div>';
+
+  return html;
+}
+
+function switchReportTab(tab){
+  var isWeek=tab==='week';
+  document.getElementById('tabWeekContent').style.display=isWeek?'block':'none';
+  document.getElementById('tabMonthContent').style.display=isWeek?'none':'block';
+  document.getElementById('tabWeekBtn').style.background=isWeek?'var(--accent)':'transparent';
+  document.getElementById('tabWeekBtn').style.color=isWeek?'#fff':'var(--muted)';
+  document.getElementById('tabMonthBtn').style.background=isWeek?'transparent':'var(--accent)';
+  document.getElementById('tabMonthBtn').style.color=isWeek?'var(--muted)':'#fff';
+}
+
+// ── Groq AI Call ──
+var _habitAIData=null;
+function _callHabitAI(habitStats,avgPct30,topStreak,needsWork,improving,declining,bestDow,worstDow,dayNames,totalHabits,doneToday,habits){
+  _habitAIData={habitStats:habitStats,avgPct30:avgPct30,topStreak:topStreak,needsWork:needsWork,improving:improving,declining:declining,bestDow:bestDow,worstDow:worstDow,dayNames:dayNames,totalHabits:totalHabits,doneToday:doneToday,habits:habits};
+  var loading=document.getElementById('habitAILoading');
+  var textEl=document.getElementById('habitAIText');
+  var errEl=document.getElementById('habitAIError');
+  if(!loading||!textEl) return;
+  loading.style.display='flex'; textEl.style.display='none'; errEl.style.display='none';
+
+  var prompt='Kamu adalah coach produktivitas personal. Analisa pola habit berikut dan berikan saran DALAM BAHASA INDONESIA.\n\n';
+  prompt+='Jumlah habit: '+totalHabits+'\n';
+  prompt+='Selesai hari ini: '+doneToday+'/'+totalHabits+'\n';
+  prompt+='Rata-rata 30 hari: '+avgPct30+'%\n';
+  prompt+='Streak terbaik: '+topStreak.streak+' hari ('+topStreak.t.name+')\n';
+  prompt+='Hari terkuat: '+dayNames[bestDow]+', hari terlemah: '+dayNames[worstDow]+'\n';
+  if(needsWork.length) prompt+='Habit butuh perhatian: '+needsWork.slice(0,3).map(function(h){return h.t.name+' ('+h.pct30+'%)';}).join(', ')+'\n';
+  if(improving.length) prompt+='Habit membaik: '+improving.slice(0,2).map(function(h){return h.t.name;}).join(', ')+'\n';
+  if(declining.length) prompt+='Habit menurun: '+declining.slice(0,2).map(function(h){return h.t.name;}).join(', ')+'\n';
+  prompt+='\nSemua habit: '+habits.map(function(h){return h.name;}).join(', ')+'\n\n';
+  prompt+='Tulis 3 paragraf pendek: 1) diagnosis karakter habit secara keseluruhan, 2) kekuatan terbesar yang perlu dijaga, 3) satu prioritas perbaikan paling penting dengan langkah konkret. Maksimal 160 kata. Tone: hangat, personal, jujur seperti teman dekat. Jangan pakai bullet points.';
+
+  fetch('/.netlify/functions/groq-proxy',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({messages:[{role:'user',content:prompt}]})
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    if(data.error||!data.choices){
+      errEl.textContent='Gagal mendapat analisa AI: '+(data.error||'Response tidak valid');
+      loading.style.display='none'; errEl.style.display='block'; return;
+    }
+    var resp=data.choices[0].message.content;
+    textEl.innerHTML=resp.split(/\n\n+/).map(function(p){return '<p style="margin-bottom:10px;last-child:margin-bottom:0">'+p+'</p>';}).join('');
+    loading.style.display='none'; textEl.style.display='block';
+  })
+  .catch(function(e){
+    errEl.textContent='Koneksi ke AI gagal. Pastikan sudah deploy dan GROQ_API_KEY sudah diset di Netlify.';
+    loading.style.display='none'; errEl.style.display='block';
+  });
+}
+
+function refreshHabitAI(){
+  if(!_habitAIData) return;
+  var d=_habitAIData;
+  _callHabitAI(d.habitStats,d.avgPct30,d.topStreak,d.needsWork,d.improving,d.declining,d.bestDow,d.worstDow,d.dayNames,d.totalHabits,d.doneToday,d.habits);
+}
+
+function _shareWeekReport(){
+  var habits=tasks.filter(function(t){return t.type==='Habit';});
+  var days7=[];for(var i=6;i>=0;i--)days7.push(offset(-i));
+  var weekPct=0,lines='';
+  habits.forEach(function(h){
+    var done=days7.filter(function(d){return h.history&&h.history.indexOf(d)>=0;}).length;
+    var pct=Math.round(done/7*100);
+    weekPct+=pct;
+    lines+='• '+h.name+': '+pct+'% ('+done+'/7)\n';
+  });
+  weekPct=habits.length?Math.round(weekPct/habits.length):0;
+  var txt='📊 Laporan Habit Mingguan\n\nCompletion Rate: '+weekPct+'%\n\n'+lines+'\nDibuat dengan ChiTask';
+  navigator.clipboard&&navigator.clipboard.writeText(txt).then(function(){alert('Laporan disalin! Siap di-paste ke WhatsApp/Notes.');}).catch(function(){alert(txt);});
+}
+
+function _shareMonthReport(){
+  var habits=tasks.filter(function(t){return t.type==='Habit';});
+  var days30=[];for(var i=29;i>=0;i--)days30.push(offset(-i));
+  var lines='';
+  habits.forEach(function(h){
+    var done=days30.filter(function(d){return h.history&&h.history.indexOf(d)>=0;}).length;
+    lines+='• '+h.name+': '+Math.round(done/30*100)+'%\n';
+  });
+  var txt='📆 Laporan Habit Bulanan (30 Hari)\n\n'+lines+'\nDibuat dengan ChiTask';
+  navigator.clipboard&&navigator.clipboard.writeText(txt).then(function(){alert('Laporan disalin!');}).catch(function(){alert(txt);});
+}
+
+// ══════════════════════════════════════════════════════════════
+// HABIT INSIGHT ENGINE v2 — Smart Analytics (Rule-based, offline)
+// ══════════════════════════════════════════════════════════════
+
+// ── Hitung prediksi gagal besok berdasarkan pola historis ──
+function calcFailurePrediction(habitStat, days30) {
+  var t = habitStat.t;
+  if(!t.history || t.history.length < 7) return null;
+  // Ambil hari besok
+  var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  var tomorrowDow = tomorrow.getDay();
+  var dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+
+  // Hitung rate completion untuk hari besok (hari yang sama dalam 4 minggu terakhir)
+  var sameDoWDays = [];
+  for(var i=1;i<=28;i++){
+    var d=new Date(); d.setDate(d.getDate()-i);
+    if(d.getDay()===tomorrowDow){
+      var ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      sameDoWDays.push(ds);
+    }
+  }
+  var doneOnDoW = sameDoWDays.filter(function(d){return t.history.indexOf(d)>=0;}).length;
+  var dowRate = sameDoWDays.length ? Math.round(doneOnDoW/sameDoWDays.length*100) : 50;
+
+  // Apakah streak sedang aktif atau baru putus?
+  var streakBonus = habitStat.streak > 0 ? 15 : -15;
+  // Trend faktor
+  var trendBonus = habitStat.trend > 2 ? 10 : habitStat.trend < -2 ? -10 : 0;
+
+  var successProb = Math.min(100, Math.max(0, dowRate + streakBonus + trendBonus));
+  var failProb = 100 - successProb;
+
+  var riskLevel = failProb >= 60 ? 'tinggi' : failProb >= 40 ? 'sedang' : 'rendah';
+  var riskColor = failProb >= 60 ? '#ef4444' : failProb >= 40 ? '#f59e0b' : '#10b981';
+  var riskEmoji = failProb >= 60 ? '🚨' : failProb >= 40 ? '⚠️' : '✅';
+
+  return {
+    failProb: failProb,
+    successProb: successProb,
+    dowRate: dowRate,
+    tomorrowDay: dayNames[tomorrowDow],
+    riskLevel: riskLevel,
+    riskColor: riskColor,
+    riskEmoji: riskEmoji,
+    habitName: t.name
+  };
+}
+
+// ── Hitung habit correlation matrix ──
+function calcHabitCorrelation(habits, days60) {
+  if(habits.length < 2) return [];
+  var correlations = [];
+  for(var i=0;i<habits.length;i++){
+    for(var j=i+1;j<habits.length;j++){
+      var h1=habits[i], h2=habits[j];
+      var bothDone=0, onlyH1=0, onlyH2=0, neitherDone=0;
+      days60.forEach(function(d){
+        var d1=h1.history&&h1.history.indexOf(d)>=0;
+        var d2=h2.history&&h2.history.indexOf(d)>=0;
+        if(d1&&d2) bothDone++;
+        else if(d1) onlyH1++;
+        else if(d2) onlyH2++;
+        else neitherDone++;
+      });
+      var total=days60.length;
+      // Phi coefficient (correlation -1 to 1)
+      var p1=(bothDone+onlyH1)/total, p2=(bothDone+onlyH2)/total;
+      var num=(bothDone/total) - p1*p2;
+      var den=Math.sqrt(p1*(1-p1)*p2*(1-p2));
+      var phi = den>0 ? Math.round(num/den*100)/100 : 0;
+      var pct = Math.round(total>0?bothDone/total*100:0);
+      correlations.push({
+        h1:h1, h2:h2,
+        bothDone:bothDone, total:total, pct:pct,
+        phi:phi,
+        type: phi>=0.4?'strong_pos':phi>=0.2?'weak_pos':phi<=-0.2?'negative':'neutral'
+      });
+    }
+  }
+  return correlations.sort(function(a,b){return Math.abs(b.phi)-Math.abs(a.phi);});
+}
+
+// ── Hitung weekly trend per habit (4 minggu terakhir) ──
+function calcWeeklyTrend(habitStat) {
+  var t = habitStat.t;
+  var weeks = [];
+  for(var w=3;w>=0;w--){
+    var cnt=0;
+    for(var d=0;d<7;d++){
+      var offset_days = w*7+d;
+      var date=new Date(); date.setDate(date.getDate()-offset_days);
+      var ds=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+      if(t.history&&t.history.indexOf(ds)>=0) cnt++;
+    }
+    weeks.push(cnt);
+  }
+  return weeks; // [oldest, ..., newest]
+}
+
+// ══════════════════════════════════════════════════════════════
+// HABIT CONTEXT ENGINE — Deteksi kategori & keyword per habit
+// ══════════════════════════════════════════════════════════════
+var HABIT_CONTEXT_MAP = {
+  ibadah: {
+    groups: ['ibadah'],
+    keywords: ['sholat','shalat','solat','subuh','zhuhur','zuhur','ashar','maghrib','isya','tahajud','dhuha','dhuha','tarawih','witir','quran','qur\'an','al-quran','ngaji','mengaji','dzikir','zikir','doa','berdoa','puasa','sedekah','infaq','zakat','istighfar','sunnah','fardhu','wajib','ibadah','spiritual','sholawat'],
+    emoji: '🕌',
+    label: 'Ibadah',
+    tips: {
+      low:    'Sholat/ibadah adalah tiang agama — jangan sampai terlewat. Coba pasang alarm untuk setiap waktu sholat dan langsung bergerak begitu adzan berkumandang.',
+      mid:    'Konsistensimu dalam ibadah sudah lumayan, tapi masih ada yang terlewat. Ingat: satu waktu sholat yang tertinggal lebih baik diqadha daripada ditinggal. Buat rutinitas wudhu lebih mudah (siapkan air di tempat yang mudah dijangkau).',
+      high:   'Mashaa Allah, konsistensi ibadahmu luar biasa! Jaga niat agar tetap ikhlas. Pertimbangkan menambah amalan sunnah seperti sholat dhuha atau membaca Al-Quran setiap hari.',
+      streak_break: 'Jangan putus asa jika terlewat — segera qadha dan mulai kembali. Ingat, Allah Maha Pengampun. Satu langkah kembali lebih baik dari terus menunda.',
+      best_time: 'Waktu terbaik ibadah sudah terjadwal oleh syariat — manfaatkan momen setelah sholat fardhu untuk amalan tambahan seperti dzikir pagi/petang atau tilawah.',
+      challenge: 'Tantangan minggu ini: jaga 5 waktu sholat tepat di awal waktu, tanpa terlambat. Tambahkan minimal 5 menit dzikir setelah sholat subuh.'
+    }
+  },
+  olahraga: {
+    groups: ['olahraga'],
+    keywords: ['olahraga','lari','jogging','gym','angkat beban','push up','sit up','squat','plank','renang','bersepeda','sepeda','yoga','pilates','zumba','hiit','kardio','cardio','stretching','pemanasan','pull up','chin up','deadlift','bench press','workout','latihan','fitness','senam','badminton','tenis','futsal','basket','voli','berenang','jalan kaki','mountain biking','hiking','trail'],
+    emoji: '💪',
+    label: 'Olahraga',
+    tips: {
+      low:    'Olahraga butuh momentum awal yang kuat. Mulai dari yang paling mudah — 10 menit jalan kaki sudah cukup untuk memulai kebiasaan bergerak. Letakkan sepatu olahraga di pintu kamar agar jadi pengingat visual.',
+      mid:    'Jadwal olahragamu mulai terbentuk. Kunci konsistensi: tentukan waktu tetap (pagi/sore) dan anggap itu seperti meeting yang tidak bisa dibatalkan. Siapkan baju olahraga malam sebelumnya.',
+      high:   'Program latihanmu sudah sangat konsisten! Waktunya naik level — coba tambah intensitas, durasi, atau variasi gerakan agar tubuh terus berkembang dan tidak plateau.',
+      streak_break: 'Istirahat 1-2 hari itu normal dan bahkan dianjurkan untuk recovery otot. Yang penting jangan biarkan jeda menjadi lebih dari 3 hari — efek detraining mulai terasa di hari ke-4.',
+      best_time: 'Data menunjukkan kamu paling konsisten berolahraga di hari-hari tertentu. Manfaatkan pola ini: jadwalkan sesi paling berat di hari-hari tersebut dan sesi ringan (stretching/jalan kaki) di hari lainnya.',
+      challenge: 'Tantangan minggu ini: lakukan olahraga setiap hari meski cuma 15 menit. Variasikan: 2 hari cardio, 2 hari strength, 1 hari yoga/stretching, 2 hari aktifitas ringan.'
+    }
+  },
+  kesehatan: {
+    groups: ['kesehatan'],
+    keywords: ['minum air','minum vitamin','vitamin','suplemen','obat','tidur','bangun','istirahat','detox','check up','timbang','berat badan','tekanan darah','gula darah','kesehatan','sehat','sakit','flu','vaksin','dokter','terapi','meditasi','napas','pernapasan','mata','berjemur','kulit','dental','gigi','cuci tangan'],
+    emoji: '❤️',
+    label: 'Kesehatan',
+    tips: {
+      low:    'Kesehatan adalah investasi jangka panjang. Mulai dari hal terkecil: minum 8 gelas air sehari, tidur 7-8 jam, dan jalan kaki 30 menit. Tiga hal ini sudah berdampak besar pada kesehatan secara keseluruhan.',
+      mid:    'Rutinitas kesehatanmu sudah mulai terbentuk. Evaluasi: apakah kamu cukup tidur? Kualitas tidur sama pentingnya dengan durasi. Coba buat jadwal tidur dan bangun yang konsisten termasuk weekend.',
+      high:   'Gaya hidup sehatmu luar biasa konsisten! Pertimbangkan untuk tracking lebih dalam: catat energi harian, kualitas tidur, atau lakukan medical check-up rutin untuk memastikan semua dalam kondisi optimal.',
+      streak_break: 'Satu hari melewatkan rutinitas kesehatan tidak merusak segalanya. Tubuh punya mekanisme pemulihan — yang penting kamu kembali ke rutinitas besok. Jangan kompensasi berlebihan.',
+      best_time: 'Tubuh punya jam biologis (circadian rhythm). Manfaatkan: minum air segera setelah bangun, olahraga di pagi hari, dan hindari layar 1 jam sebelum tidur untuk kualitas tidur yang lebih baik.',
+      challenge: 'Tantangan minggu ini: tidur sebelum jam 23.00 setiap malam dan bangun di waktu yang sama. Tambahkan minum segelas air putih pertama sebelum apapun di pagi hari.'
+    }
+  },
+  produktivitas: {
+    groups: ['produktivitas'],
+    keywords: ['baca','membaca','belajar','nulis','menulis','coding','code','kerja','deep work','fokus','pomodoro','jurnal','journaling','review','planning','riset','research','skill','kursus','podcast','audiobook','notula','catatan','meeting','presentasi','review harian','weekly review','inbox zero','todo','project','deadline','target','goal'],
+    emoji: '🧠',
+    label: 'Produktivitas',
+    tips: {
+      low:    'Produktivitas dimulai dari satu sesi fokus sehari. Coba teknik Pomodoro: 25 menit kerja tanpa distraksi, lalu 5 menit istirahat. Matikan notifikasi HP selama sesi tersebut.',
+      mid:    'Rutinitas produktifmu mulai terbentuk, tapi belum konsisten. Coba "anchor habit": tautkan kebiasaan belajar/kerja dengan kegiatan yang sudah rutin — misalnya baca 10 halaman setelah sarapan, sebelum buka medsos.',
+      high:   'Kebiasaan produktifmu sangat kuat! Pastikan kamu juga menjaga keseimbangan — produktivitas tinggi tanpa recovery akan menyebabkan burnout. Jadwalkan waktu untuk istirahat dan aktivitas yang kamu nikmati.',
+      streak_break: 'Skip satu hari belajar/bekerja itu manusiawi. Yang berbahaya adalah "skip 2 hari berturut-turut" — itu yang membunuh momentum. Hari ini, lakukan versi mini-nya minimal 10 menit.',
+      best_time: 'Setiap orang punya "peak hours" produktivitas. Berdasarkan pola habitual kamu, jadwalkan tugas paling berat dan kreatif di jam tersebut, dan tugas rutin/admin di jam energi rendah.',
+      challenge: 'Tantangan minggu ini: lakukan "deep work" minimal 1 jam tanpa HP dan notifikasi setiap hari. Catat apa yang kamu capai setiap sesi — ini akan memotivasi kamu untuk mempertahankannya.'
+    }
+  },
+  mindfulness: {
+    groups: ['mindfulness'],
+    keywords: ['meditasi','meditasi','mindfulness','napas','pernapasan','breathing','relaksasi','yoga','journaling','syukur','gratitude','afirmasi','visualisasi','tenang','stress','cemas','anxiety','self care','me time','refleksi','kontemplasi','mindful'],
+    emoji: '🧘',
+    label: 'Mindfulness',
+    tips: {
+      low:    'Mindfulness tidak butuh waktu lama — mulai dari 5 menit meditasi pernapasan setiap pagi. Duduk, tutup mata, fokus pada napas masuk dan keluar. Ini sudah terbukti mengurangi stres secara signifikan.',
+      mid:    'Praktik mindfulness-mu sudah mulai terasa. Coba tingkatkan: tambahkan sesi journaling 5 menit sebelum tidur untuk mencatat 3 hal yang kamu syukuri hari ini. Ini memprogram otak untuk fokus ke hal positif.',
+      high:   'Komitmenmu pada mindfulness sangat inspiring! Pertimbangkan mendalami teknik yang lebih advanced — meditasi body scan, loving kindness meditation, atau retreat mindfulness untuk memperdalam praktikmu.',
+      streak_break: 'Kehilangan ketenangan sesekali adalah bagian dari perjalanan — ini bukan kegagalan mindfulness, ini adalah kesempatan untuk mempraktikkan self-compassion. Mulai kembali dengan satu napas dalam.',
+      best_time: 'Mindfulness paling efektif di pagi hari sebelum pikiran dipenuhi aktivitas, atau malam hari sebagai ritual wind-down sebelum tidur. Coba konsisten di salah satu waktu tersebut.',
+      challenge: 'Tantangan minggu ini: lakukan 10 menit meditasi setiap pagi sebelum buka HP. Catat perasaanmu sebelum dan sesudah — kamu akan terkejut betapa berbedanya kondisi mental sepanjang hari.'
+    }
+  },
+  nutrisi: {
+    groups: ['nutrisi'],
+    keywords: ['makan','sarapan','makan siang','makan malam','diet','nutrisi','sayur','buah','protein','kalori','intermittent fasting','puasa makan','meal prep','masak','memasak','snack','jus','smoothie','suplemen','vitamin','omega','probiotik','serat','gula','garam','kolesterol','hidrat','karbohidrat'],
+    emoji: '🥗',
+    label: 'Nutrisi',
+    tips: {
+      low:    'Pola makan yang baik dimulai dari satu keputusan konsisten. Mulai dari yang sederhana: sarapan setiap hari sebelum jam 9 pagi, atau tambahkan satu porsi sayur/buah di setiap makan. Jangan langsung mengubah semua.',
+      mid:    'Kebiasaan makan sehatmu sudah mulai terbentuk. Tips kunci: meal prep di akhir pekan untuk persiapkan makanan sehat selama seminggu. Ini mengurangi "keputusan" makan di saat lapar yang biasanya berakhir dengan pilihan yang kurang sehat.',
+      high:   'Pola nutrisimu sangat disiplin! Pastikan kamu tidak terlalu ketat sampai menimbulkan stres — "80/20 rule" dalam nutrisi: 80% makanan bergizi, 20% boleh menikmati makanan favorit. Keseimbangan adalah kuncinya.',
+      streak_break: 'Satu hari makan tidak sesuai rencana tidak merusak program nutrisimu. Tubuh tidak berubah dalam sehari — yang penting konsistensi jangka panjang, bukan perfeksionisme.',
+      best_time: 'Waktu makan berpengaruh pada metabolisme. Usahakan makan dalam window 8-10 jam (misalnya 7 pagi – 7 malam) dan hindari makan berat 3 jam sebelum tidur untuk kualitas tidur dan pencernaan yang lebih baik.',
+      challenge: 'Tantangan minggu ini: tambahkan satu porsi sayuran hijau di setiap makan siang dan malam. Tujuh hari berturut-turut. Mulai dari yang mudah — bayam, kangkung, atau brokoli bisa jadi pilihan.'
+    }
+  },
+  sosial: {
+    groups: ['sosial'],
+    keywords: ['hubungi','telpon','phone','video call','kunjungi','silaturahmi','keluarga','teman','sahabat','networking','komunitas','organisasi','sosial','berbagi','volunteer','sukarela','mentor','bimbingan','chat','pesan','surat','ucapan'],
+    emoji: '👥',
+    label: 'Sosial',
+    tips: {
+      low:    'Koneksi sosial adalah kebutuhan dasar manusia. Mulai dari yang kecil: kirim pesan kepada satu orang yang sudah lama tidak kamu hubungi. Konsistensi dalam menjaga hubungan lebih penting daripada intensitasnya.',
+      mid:    'Kebiasaan sosialmu mulai terbentuk. Jadwalkan "social block" di kalender — misalnya setiap Sabtu pagi untuk menghubungi keluarga atau teman lama. Jadikan itu appointment yang tidak bisa dibatalkan.',
+      high:   'Kamu sangat konsisten menjaga koneksi sosial! Pertimbangkan untuk memperdalam — dari sekadar chat menjadi video call atau pertemuan langsung. Kualitas interaksi lebih bermakna dari kuantitasnya.',
+      streak_break: 'Kehidupan sosial bisa surut-pasang — itu normal. Yang penting jangan sampai isolasi menjadi kebiasaan. Satu pesan singkat ke orang tersayang sudah cukup untuk menjaga koneksi tetap hidup.',
+      best_time: 'Waktu terbaik untuk kontak sosial adalah di akhir pekan saat orang lain juga lebih santai, atau di malam hari setelah jam kerja. Hindari hubungi di jam sibuk agar percakapan lebih berkualitas.',
+      challenge: 'Tantangan minggu ini: hubungi satu orang berbeda setiap hari selama 7 hari — bisa keluarga, teman lama, atau rekan kerja. Tanyakan kabar mereka dengan tulus.'
+    }
+  },
+  hygiene: {
+    groups: ['hygiene'],
+    keywords: ['mandi','cuci','gosok gigi','sikat gigi','facial','skincare','moisturizer','sunscreen','flossing','cuci muka','kebersihan','bersih','rapi','rapikan','beresin','bersih-bersih','laundry','cuci baju','potong kuku','cukur','shampoo','kondisioner'],
+    emoji: '🧼',
+    label: 'Kebersihan & Hygiene',
+    tips: {
+      low:    'Kebersihan diri adalah fondasi kesehatan dan kepercayaan diri. Jadikan rutinitas pagi sebagai ritual — urutkan: bangun, cuci muka, sikat gigi, mandi. Lakukan dalam urutan yang sama setiap hari agar otomatis.',
+      mid:    'Rutinitas kebersihanmu sudah cukup baik. Tingkatkan dengan menambahkan "evening routine": cuci muka sebelum tidur, moisturizer, dan siapkan pakaian untuk besok. Ini investasi 10 menit yang berdampak besar.',
+      high:   'Self-care rutinemu sangat konsisten! Pertimbangkan untuk meng-upgrade produk yang kamu gunakan sesuai kebutuhan kulitmu, atau tambahkan weekly treatment seperti masker wajah atau deep conditioning rambut.',
+      streak_break: 'Satu hari melewatkan rutinitas kebersihan tidak apa-apa — tubuh punya sistem perlindungan sendiri. Yang penting besok kembali normal. Jangan skip lebih dari 2 hari berturut-turut.',
+      best_time: 'Rutinitas pagi (setelah bangun) dan malam (sebelum tidur) adalah waktu terbaik untuk hygiene. Pagi untuk bersiap menghadapi hari, malam untuk membersihkan diri dari semua kotoran dan polusi.',
+      challenge: 'Tantangan minggu ini: tambahkan satu langkah baru dalam rutinitas pagi — bisa sunscreen sebelum keluar, atau flossing setelah sikat gigi. Lakukan 7 hari berturut-turut sampai jadi otomatis.'
+    }
+  }
+};
+
+// Deteksi konteks habit berdasarkan grup dan nama habit
+function detectHabitContext(habit) {
+  var name = (habit.name || '').toLowerCase();
+  var group = (habit.group || '').toLowerCase();
+
+  // Cek group match dulu (lebih akurat)
+  for(var ctx in HABIT_CONTEXT_MAP) {
+    var def = HABIT_CONTEXT_MAP[ctx];
+    if(def.groups && def.groups.indexOf(group) >= 0) return ctx;
+  }
+  // Cek keyword match di nama habit
+  for(var ctx in HABIT_CONTEXT_MAP) {
+    var def = HABIT_CONTEXT_MAP[ctx];
+    if(def.keywords) {
+      for(var i=0;i<def.keywords.length;i++) {
+        if(name.indexOf(def.keywords[i]) >= 0) return ctx;
+      }
+    }
+  }
+  return 'general';
+}
+
+// Ambil tip kontekstual berdasarkan tipe dan level
+function getContextTip(habit, tipKey) {
+  var ctx = detectHabitContext(habit);
+  if(ctx !== 'general' && HABIT_CONTEXT_MAP[ctx] && HABIT_CONTEXT_MAP[ctx].tips && HABIT_CONTEXT_MAP[ctx].tips[tipKey]) {
+    return HABIT_CONTEXT_MAP[ctx].tips[tipKey];
+  }
+  return null;
+}
+
+// Ambil emoji dan label konteks
+function getContextMeta(habit) {
+  var ctx = detectHabitContext(habit);
+  if(ctx !== 'general' && HABIT_CONTEXT_MAP[ctx]) {
+    return { emoji: HABIT_CONTEXT_MAP[ctx].emoji, label: HABIT_CONTEXT_MAP[ctx].label, ctx: ctx };
+  }
+  return { emoji: '📌', label: 'Umum', ctx: 'general' };
+}
+
+// ── Hitung dominan konteks dari semua habit ──
+function getDominantContext(habitStats) {
+  var ctxCount = {};
+  habitStats.forEach(function(h) {
+    var ctx = detectHabitContext(h.t);
+    ctxCount[ctx] = (ctxCount[ctx]||0) + 1;
+  });
+  var maxCtx = 'general', maxCount = 0;
+  for(var c in ctxCount) { if(ctxCount[c] > maxCount) { maxCount = ctxCount[c]; maxCtx = c; } }
+  return maxCtx;
+}
+
 function buildHabitInsight(stats, avgPct, topStreak, needsWork, improving, declining, bestDow, worstDow, dayNames, total, doneToday) {
   var ins = { sections: [] };
 
-  // ── 1. Diagnosis Overall ──
+  // Deteksi konteks dominan
+  var dominantCtx = getDominantContext(stats);
+  var domDef = HABIT_CONTEXT_MAP[dominantCtx];
+
+  // ── 1. Diagnosis Overall (context-aware) ──
   var overallMsg, overallEmoji;
-  if(avgPct >= 85){ overallEmoji='🏆'; overallMsg='Konsistensimu luar biasa! Kamu sudah membangun sistem habit yang solid. Pertahankan momentum ini.'; }
-  else if(avgPct >= 70){ overallEmoji='💪'; overallMsg='Progresmu bagus dan terlihat usaha nyata. Beberapa habit masih bisa diperkuat untuk mencapai level berikutnya.'; }
-  else if(avgPct >= 50){ overallEmoji='⚡'; overallMsg='Kamu sudah di jalur yang benar, tapi konsistensi masih belum stabil. Fokus ke 1-2 habit kunci dulu sebelum menambah yang baru.'; }
-  else if(avgPct >= 30){ overallEmoji='🌱'; overallMsg='Jujur ya — habitmu belum konsisten. Tapi ini bukan kegagalan, ini data berharga. Mulai kecil: pilih 1 habit paling mudah dan jadikan itu tidak bisa dilewati.'; }
-  else { overallEmoji='🔥'; overallMsg='Kamu baru memulai atau sempat vakum. Tidak apa-apa — yang penting kamu kembali hari ini. Reset ekspektasi, mulai dari 1 habit saja.'; }
+  if(dominantCtx === 'ibadah') {
+    overallEmoji = avgPct>=85?'🕌':avgPct>=70?'🌙':avgPct>=50?'🤲':avgPct>=30?'📿':'🌱';
+    overallMsg = avgPct>=85 ? 'Mashaa Allah! Konsistensi ibadahmu luar biasa. Semoga setiap amalan diterima dan menjadi kebiasaan yang mengakar kuat.'
+      : avgPct>=70 ? 'Progres ibadahmu bagus dan ada usaha yang nyata. Beberapa waktu sholat atau amalan masih bisa diperkuat — fokus ke konsistensi, bukan kesempurnaan.'
+      : avgPct>=50 ? 'Kamu sudah berusaha menjaga ibadah, tapi belum konsisten. Ingat: sholat adalah tiang agama — mulai dari memastikan 5 waktu fardhu tidak ada yang terlewat.'
+      : avgPct>=30 ? 'Ibadahmu belum konsisten. Ini bukan tentang menyalahkan diri — ini waktu untuk muhasabah dan kembali. Mulai dari satu waktu sholat yang paling sering terlewat dan fokus ke sana dulu.'
+      : 'Saatnya kembali ke rutinitas ibadah. Tidak perlu menunggu sempurna — mulai dari sholat fardhu 5 waktu hari ini. Allah selalu membuka pintu bagi yang kembali.';
+  } else if(dominantCtx === 'olahraga') {
+    overallEmoji = avgPct>=85?'🏆':avgPct>=70?'💪':avgPct>=50?'⚡':avgPct>=30?'🌱':'🎯';
+    overallMsg = avgPct>=85 ? 'Luar biasa! Program latihanmu sangat konsisten. Tubuhmu pasti sudah merasakan perubahan signifikan. Waktunya naik level atau tantang diri ke target baru.'
+      : avgPct>=70 ? 'Latihan fisikmu sudah membangun fondasi yang baik. Tingkatkan konsistensi di hari-hari yang sering kamu skip — biasanya itu hari di mana hasil terbaik bisa dicapai.'
+      : avgPct>=50 ? 'Kamu sudah bergerak, tapi konsistensi masih naik turun. Ingat: 3x seminggu yang konsisten jauh lebih efektif dari 7x seminggu yang tidak beraturan.'
+      : avgPct>=30 ? 'Aktivitas fisikmu perlu ditingkatkan. Mulai dari target yang sangat kecil: 15 menit jalan kaki setiap hari. Gerakan apapun lebih baik dari tidak bergerak sama sekali.'
+      : 'Saatnya mulai bergerak! Pilih satu aktivitas fisik yang paling kamu sukai dan lakukan selama 10 menit saja setiap hari minggu ini. Bangun habit dulu, baru tingkatkan.';
+  } else if(dominantCtx === 'kesehatan') {
+    overallEmoji = avgPct>=85?'❤️':avgPct>=70?'💊':avgPct>=50?'🌿':avgPct>=30?'⚕️':'🏥';
+    overallMsg = avgPct>=85 ? 'Kesehatanmu terjaga dengan sangat baik! Rutinitas kesehatan yang konsisten adalah investasi terbaik untuk jangka panjang. Pertahankan dan pertimbangkan medical check-up rutin.'
+      : avgPct>=70 ? 'Perawatan kesehatanmu cukup baik. Ada beberapa area yang masih bisa ditingkatkan — perhatikan kualitas tidur dan hidrasi, keduanya berdampak besar pada kesehatan keseluruhan.'
+      : avgPct>=50 ? 'Setengah jalan! Tapi konsistensi kesehatan perlu lebih dari 50% — tubuh butuh rutinitas yang stabil agar bisa berfungsi optimal. Prioritaskan tidur dan minum air dulu.'
+      : avgPct>=30 ? 'Kesehatanmu butuh lebih banyak perhatian. Coba audit: apa yang paling sering kamu skip? Fokus ke satu hal itu dulu sampai jadi otomatis, baru tambah yang lain.'
+      : 'Mulai jaga kesehatan dari hal paling dasar: tidur 7-8 jam, minum 8 gelas air, dan jalan kaki 30 menit. Tiga hal sederhana ini bisa mengubah kualitas hidup secara dramatis.';
+  } else if(dominantCtx === 'produktivitas') {
+    overallEmoji = avgPct>=85?'🚀':avgPct>=70?'🧠':avgPct>=50?'📚':avgPct>=30?'⚡':'🎯';
+    overallMsg = avgPct>=85 ? 'Produktivitasmu on fire! Kamu sudah membangun sistem belajar dan kerja yang solid. Attention: pastikan kamu juga menjaga keseimbangan agar tidak burnout.'
+      : avgPct>=70 ? 'Kebiasaan produktifmu sudah terbentuk dengan baik. Fokus sekarang adalah menjaga kualitas, bukan hanya kuantitas — deep work 1 jam lebih berharga dari scattered work 3 jam.'
+      : avgPct>=50 ? 'Setengah konsisten itu artinya kamu bisa, tapi ada yang menghalangi. Identifikasi: kapan kamu paling sering skip belajar/bekerja? Apa yang terjadi di hari itu? Selesaikan hambatan itu dulu.'
+      : avgPct>=30 ? 'Produktivitasmu masih fluktuatif. Coba buat "non-negotiable": satu sesi belajar/fokus setiap hari, minimal 20 menit, tidak peduli seberapa sibuk. Konsistensi kecil mengalahkan marathon sesekali.'
+      : 'Mulai dari sangat kecil: baca 10 halaman atau belajar satu topik baru selama 15 menit setiap hari. Tidak perlu langsung heroik — bangun kebiasaan dulu, kapasitas akan mengikuti.';
+  } else if(dominantCtx === 'mindfulness') {
+    overallEmoji = avgPct>=85?'🧘':avgPct>=70?'☯️':avgPct>=50?'🌸':avgPct>=30?'🌬️':'🕯️';
+    overallMsg = avgPct>=85 ? 'Praktik mindfulness-mu sangat konsisten dan inspiratif! Kamu telah membangun fondasi mental yang kuat. Pertimbangkan untuk mendalami teknik yang lebih advanced.'
+      : avgPct>=70 ? 'Praktik mindfulness-mu sudah baik. Kualitas lebih penting dari kuantitas di sini — 10 menit meditasi yang fokus lebih bermakna dari 30 menit yang terdistraksi.'
+      : avgPct>=50 ? 'Kamu setengah jalan dalam membangun ketenangan batin. Ingat: mindfulness bukan tentang menjadi "super tenang" — tapi tentang menyadari dan menerima apapun yang terjadi.'
+      : avgPct>=30 ? 'Praktik mindfulness-mu butuh lebih banyak konsistensi. Coba "tempatkan" meditasi di anchor yang kuat: langsung setelah bangun tidur, sebelum menyentuh HP apapun.'
+      : 'Mulai dengan 5 menit saja. Duduk, tutup mata, fokus pada napas. Ketika pikiran melayang, kembalikan dengan lembut. Lakukan ini setiap pagi — dampaknya akan terasa dalam 2 minggu.';
+  } else if(dominantCtx === 'nutrisi') {
+    overallEmoji = avgPct>=85?'🥗':avgPct>=70?'🥦':avgPct>=50?'🍽️':avgPct>=30?'🌿':'🍎';
+    overallMsg = avgPct>=85 ? 'Pola makanmu sangat disiplin dan konsisten! Nutrisi yang baik adalah bahan bakar untuk semua hal lain yang kamu lakukan. Ingat untuk tetap menikmati makanan, bukan hanya "memprogram" tubuh.'
+      : avgPct>=70 ? 'Kebiasaan makan sehatmu sudah terbentuk dengan baik. Perhatikan kualitas pilihan makanan di hari-hari sibuk — biasanya di hari itu pilihan nutrisi kita paling buruk karena keputusan terburu-buru.'
+      : avgPct>=50 ? 'Pola nutrisimu masih perlu diperkuat. Kunci: meal prep di akhir pekan. Saat lapar, kita selalu memilih yang mudah dan cepat — buat "yang sehat" menjadi yang termudah.'
+      : avgPct>=30 ? 'Kebiasaan makan sehatmu belum stabil. Mulai dari satu perubahan kecil: ganti satu camilan tidak sehat dengan buah setiap hari. Satu perubahan, konsisten, lebih powerful dari banyak perubahan sekaligus.'
+      : 'Mulai perjalanan nutrisimu dengan sangat simpel: tambahkan satu porsi sayur atau buah di setiap makan. Tidak perlu diet ekstrem — perubahan kecil yang konsisten menghasilkan transformasi besar.';
+  } else {
+    overallEmoji = avgPct>=85?'🏆':avgPct>=70?'💪':avgPct>=50?'⚡':avgPct>=30?'🌱':'🔥';
+    overallMsg = avgPct>=85 ? 'Konsistensimu luar biasa! Kamu sudah membangun sistem habit yang solid. Pertahankan momentum ini.'
+      : avgPct>=70 ? 'Progresmu bagus dan terlihat usaha nyata. Beberapa habit masih bisa diperkuat untuk mencapai level berikutnya.'
+      : avgPct>=50 ? 'Kamu sudah di jalur yang benar, tapi konsistensi masih belum stabil. Fokus ke 1-2 habit kunci dulu sebelum menambah yang baru.'
+      : avgPct>=30 ? 'Jujur ya — habitmu belum konsisten. Tapi ini bukan kegagalan, ini data berharga. Mulai kecil: pilih 1 habit paling mudah dan jadikan itu tidak bisa dilewati.'
+      : 'Kamu baru memulai atau sempat vakum. Tidak apa-apa — yang penting kamu kembali hari ini. Reset ekspektasi, mulai dari 1 habit saja.';
+  }
   ins.sections.push({ type:'overall', emoji:overallEmoji, title:'Diagnosis', body:overallMsg });
 
-  // ── 2. Kekuatan Terbesar ──
+  // ── 2. Kekuatan Terbesar (context-aware) ──
   if(topStreak.streak > 0) {
+    var topCtx = detectHabitContext(topStreak.t);
+    var topCtxDef = HABIT_CONTEXT_MAP[topCtx];
     var strengthMsg = '"' + topStreak.t.name + '" adalah pilar terkuatmu dengan streak ' + topStreak.streak + ' hari.';
-    if(topStreak.streak >= 21) strengthMsg += ' Habits yang bertahan lebih dari 21 hari mulai menjadi otomatis — ini aset besar. Jadikan habit ini sebagai anchor untuk membangun habit baru di sekitarnya.';
-    else if(topStreak.streak >= 7) strengthMsg += ' Kamu sudah melewati 7 hari, titik kritis pertama habit. Sekarang fokus ke 21 hari untuk membuatnya semakin mengakar.';
-    else strengthMsg += ' Baru dimulai — jaga jangan sampai putus di hari ke-3 hingga ke-5, ini periode paling rentan.';
-    ins.sections.push({ type:'strength', emoji:'🌟', title:'Kekuatan Terbesar', body:strengthMsg });
+
+    if(topCtx === 'ibadah') {
+      if(topStreak.streak >= 21) strengthMsg += ' Subhanallah! Lebih dari 21 hari konsisten dalam ibadah ini. Amalan yang sedikit tapi kontinu lebih dicintai Allah. Jadikan ini anchor untuk memperkuat amalan lain.';
+      else if(topStreak.streak >= 7) strengthMsg += ' Satu minggu penuh konsisten — ini momentum yang kuat. Pertahankan hingga 40 hari, angka yang secara spiritual dan psikologis sangat bermakna.';
+      else strengthMsg += ' Baru dimulai, tapi niat sudah ada. Jaga jangan sampai terputus — kalau terlewat, segera qadha dan jangan putus semangat.';
+    } else if(topCtx === 'olahraga') {
+      if(topStreak.streak >= 21) strengthMsg += ' 21 hari berturut-turut latihan — tubuhmu sudah mulai beradaptasi dan ini bukan lagi sekedar kebiasaan, ini gaya hidupmu. Jaga dan tingkatkan!';
+      else if(topStreak.streak >= 7) strengthMsg += ' Satu minggu konsisten berolahraga! Tubuh sudah mulai menyesuaikan diri. Fokus ke 30 hari untuk membuat ini benar-benar menjadi bagian dari identitasmu.';
+      else strengthMsg += ' Awal yang baik! Hari-hari paling kritis dalam kebiasaan olahraga adalah hari ke 3-5 saat motivasi awal mulai memudar. Kamu sudah melewatinya — teruskan!';
+    } else if(topCtx === 'kesehatan') {
+      if(topStreak.streak >= 21) strengthMsg += ' Lebih dari 3 minggu konsisten menjaga kesehatan — perubahan nyata sudah terjadi di dalam tubuhmu meski belum semua terlihat. Ini investasi jangka panjang terbaik.';
+      else if(topStreak.streak >= 7) strengthMsg += ' Seminggu konsisten! Tubuh mulai membangun ritme baru. Pertahankan dan perhatikan bagaimana energi dan mood-mu mulai membaik.';
+      else strengthMsg += ' Langkah pertama selalu yang terberat. Kamu sudah melewatinya — momentum kecil ini adalah fondasi kesehatan jangka panjang.';
+    } else {
+      if(topStreak.streak >= 21) strengthMsg += ' Lebih dari 21 hari — ini sudah menjadi bagian dari identitasmu. Jadikan habit ini sebagai anchor untuk membangun kebiasaan baru di sekitarnya.';
+      else if(topStreak.streak >= 7) strengthMsg += ' Satu minggu penuh! Fokus ke 21 hari untuk membuatnya semakin mengakar dan otomatis.';
+      else strengthMsg += ' Baru dimulai — jaga jangan sampai putus di hari ke-3 hingga ke-5, ini periode paling rentan.';
+    }
+    ins.sections.push({ type:'strength', emoji: topCtxDef?topCtxDef.emoji:'🌟', title:'Kekuatan Terbesar', body:strengthMsg });
   }
 
-  // ── 3. Analisa Habit Bermasalah ──
+  // ── 3. Prioritas Perbaikan (context-aware per habit) ──
   if(needsWork.length) {
     var fixes = [];
     needsWork.slice(0,3).forEach(function(h) {
+      var hCtx = detectHabitContext(h.t);
+      var hDef = HABIT_CONTEXT_MAP[hCtx];
+      var levelKey = h.pct30 < 30 ? 'low' : 'mid';
+      var contextTip = hDef && hDef.tips ? hDef.tips[levelKey] : null;
       var tip;
+
       if(h.pct30 < 20) {
-        tip = '"' + h.t.name + '" ('+h.pct30+'%) hampir tidak pernah dilakukan. Pertimbangkan: apakah habit ini terlalu susah, waktunya salah, atau motivasinya kurang? Coba sederhanakan jadi versi mini yang hanya butuh 2 menit.';
+        if(hCtx === 'ibadah') {
+          tip = '"' + h.t.name + '" ('+h.pct30+'%) hampir tidak pernah dilakukan. ' + (contextTip || 'Set alarm untuk waktu ibadah ini dan jadikan sebagai prioritas utama sebelum aktivitas lain.');
+        } else if(hCtx === 'olahraga') {
+          tip = '"' + h.t.name + '" ('+h.pct30+'%) hampir tidak pernah dilakukan. Coba buat versi mini: ganti sesi penuh dengan 5 menit gerakan apapun. Siapkan pakaian olahraga malam sebelumnya agar hambatan berkurang.';
+        } else {
+          tip = '"' + h.t.name + '" ('+h.pct30+'%) hampir tidak pernah dilakukan. ' + (contextTip || 'Pertimbangkan: apakah habit ini terlalu susah atau waktunya kurang tepat? Sederhanakan jadi versi 2 menit.');
+        }
       } else if(h.trend < -3) {
-        tip = '"' + h.t.name + '" ('+h.pct30+'%) menunjukkan tren menurun. Biasanya ini tanda habit di-skip saat sibuk — coba pasangkan dengan habit lain yang sudah kuat (habit stacking).';
+        if(hCtx === 'ibadah') {
+          tip = '"' + h.t.name + '" ('+h.pct30+'%) menunjukkan tren menurun. ' + (hDef && hDef.tips ? hDef.tips.streak_break : 'Jangan biarkan satu hari skip menjadi kebiasaan baru. Kembali segera.');
+        } else if(hCtx === 'olahraga') {
+          tip = '"' + h.t.name + '" ('+h.pct30+'%) mulai menurun — ini sering terjadi setelah motivasi awal memudar. Coba "tempatkan" latihan di jadwal harian seperti rapat — tidak bisa dibatalkan.';
+        } else {
+          tip = '"' + h.t.name + '" ('+h.pct30+'%) menunjukkan tren menurun. ' + (contextTip || 'Pasangkan dengan habit yang sudah kuat (habit stacking) agar tidak mudah di-skip.');
+        }
       } else if(h.pct30 < 50) {
-        tip = '"' + h.t.name + '" ('+h.pct30+'%) butuh perhatian. Coba set pengingat di waktu spesifik dan buat lingkungan yang mendukung agar habit ini lebih mudah dilakukan.';
+        tip = '"' + h.t.name + '" ('+h.pct30+'%) butuh perhatian. ' + (contextTip || 'Set pengingat di waktu spesifik dan buat lingkungan yang mendukung agar habit ini lebih mudah dilakukan.');
       }
       if(tip) fixes.push(tip);
     });
     if(fixes.length) ins.sections.push({ type:'fixes', emoji:'🎯', title:'Prioritas Perbaikan', body: fixes.join('<br><br>') });
   }
 
-  // ── 4. Pattern Hari Lemah ──
+  // ── 4. Pattern Hari Lemah (context-aware) ──
   var worstDayName = dayNames[worstDow];
   var bestDayName = dayNames[bestDow];
-  var dayTips = {
+
+  // Day tips generik
+  var dayTipsGeneral = {
     0: 'Hari Minggu sering jadi titik reset — tidak ada rutinitas kerja yang mengikat. Buat ritual khusus Minggu pagi agar habit tetap berjalan.',
     1: 'Senin bisa jadi hari terberat karena transisi dari weekend. Jadikan habit Senin sebagai ritual "kickstart minggu" — lakukan yang paling mudah dulu.',
     2: 'Selasa adalah hari produktif bagi kebanyakan orang, tapi jika ini hari terlemahmu, kemungkinan ada overload kerja. Geser habit ke slot waktu yang berbeda.',
     3: 'Rabu adalah titik tengah minggu — kelelahan mulai terasa. Coba buat habit Rabu lebih singkat dari biasanya agar tetap mudah dilakukan.',
-    4: 'Kamis sering jadi hari dengan beban kerja tertinggi menjelang deadline Jumat. Siapkan habit kamu sehari sebelumnya (misalnya laying out peralatan).',
+    4: 'Kamis sering jadi hari dengan beban kerja tertinggi menjelang deadline Jumat. Siapkan habit kamu sehari sebelumnya.',
     5: 'Jumat sering ada godaan untuk "istirahat awal". Buat deal dengan diri sendiri: selesaikan habit dulu baru boleh bersantai.',
     6: 'Sabtu penuh aktivitas sosial yang tidak terprediksi. Lakukan habit di pagi hari sebelum jadwal lain mengisi waktumu.'
   };
-  var worstDayTip = dayTips[worstDow] || ('Hari ' + worstDayName + ' adalah titik lemahmu. Coba identifikasi apa yang berbeda di hari itu dan sesuaikan jadwal habitmu.');
+  // Day tips kontekstual
+  var dayTipsCtx = {
+    ibadah: {
+      0: 'Hari Minggu sering penuh aktivitas keluarga — tapi justru ini waktu terbaik untuk sholat berjamaah dan mengaji bersama. Manfaatkan hari ini untuk memperkuat ibadah yang biasanya terburu-buru.',
+      1: 'Senin awal minggu sering sibuk — tapi ingat, sholat tidak butuh waktu lama. Wudhu dan sholat bisa memakan 10 menit saja. Jadikan sholat sebagai cara "membuka" hari yang produktif.',
+      5: 'Jumat adalah hari istimewa! Jangan lewatkan sholat Jumat, perbanyak sholawat, dan baca Surat Al-Kahfi. Jadikan Jumat sebagai puncak ibadah minggu ini.'
+    },
+    olahraga: {
+      0: 'Minggu harusnya hari long run atau sesi latihan yang lebih santai. Manfaatkan tidak ada kewajiban kerja untuk olahraga lebih lama atau coba aktivitas outdoor.',
+      1: 'Senin pagi adalah waktu terbaik untuk menetapkan tone aktif sepanjang minggu. Workout Senin pagi terbukti meningkatkan produktivitas dan energi sepanjang minggu.',
+      5: 'Jumat sore perfect untuk olahraga — minggu kerja hampir selesai, adrenalin "approaching weekend" bisa jadi energi ekstra untuk latihan yang lebih intens.'
+    },
+    kesehatan: {
+      0: 'Minggu adalah hari terbaik untuk meal prep mingguan dan istirahat berkualitas. Manfaatkan untuk memastikan tidur dan nutrisi minggu depan terencana dengan baik.',
+      1: 'Senin adalah momen reset — mulai minggu baru dengan mengecek: apakah kamu sudah minum cukup air hari ini? Tidur berapa jam semalam? Tindakan kecil di Senin pagi menentukan ritme seminggu.'
+    }
+  };
+
+  var ctxDayTips = (dayTipsCtx[dominantCtx] && dayTipsCtx[dominantCtx][worstDow]) ? dayTipsCtx[dominantCtx][worstDow] : null;
+  var worstDayTip = ctxDayTips || dayTipsGeneral[worstDow] || ('Hari ' + worstDayName + ' adalah titik lemahmu.');
   ins.sections.push({ type:'daytip', emoji:'📅', title:'Strategi Hari ' + worstDayName, body: worstDayTip + ' Sebaliknya, replikasi apa yang membuat hari ' + bestDayName + ' begitu produktif.' });
 
-  // ── 5. Pola Konsistensi (streak gap analysis) ──
+  // ── 5. Streak Terputus (context-aware) ──
   var gapHabits = stats.filter(function(h){ return h.streak === 0 && h.pct30 > 20; });
   if(gapHabits.length) {
+    var gapH = gapHabits[0];
+    var gapCtx = detectHabitContext(gapH.t);
+    var gapCtxDef = HABIT_CONTEXT_MAP[gapCtx];
     var gapNames = gapHabits.slice(0,2).map(function(h){ return '"'+h.t.name+'"'; }).join(' dan ');
-    ins.sections.push({ type:'gap', emoji:'🔗', title:'Streak Terputus', body: gapNames + ' punya rekam jejak bagus tapi streak-nya baru reset. Ini bukan kegagalan — ini kesempatan untuk membuktikan bahwa satu hari skip tidak merusak segalanya. Mulai kembali hari ini.' });
+    var gapMsg;
+    if(gapCtxDef && gapCtxDef.tips && gapCtxDef.tips.streak_break) {
+      gapMsg = gapNames + ' punya rekam jejak bagus tapi streak-nya baru reset. ' + gapCtxDef.tips.streak_break;
+    } else {
+      gapMsg = gapNames + ' punya rekam jejak bagus tapi streak-nya baru reset. Ini bukan kegagalan — ini kesempatan untuk membuktikan bahwa satu hari skip tidak merusak segalanya. Mulai kembali hari ini.';
+    }
+    ins.sections.push({ type:'gap', emoji: gapCtxDef?gapCtxDef.emoji:'🔗', title:'Streak Terputus', body: gapMsg });
   }
 
-  // ── 6. Momentum positif ──
+  // ── 6. Momentum Positif ──
   if(improving.length >= 2) {
     var impNames = improving.slice(0,2).map(function(h){ return '"'+h.t.name+'"'; }).join(' dan ');
-    ins.sections.push({ type:'momentum', emoji:'🚀', title:'Momentum Positif', body: impNames + ' sedang dalam tren naik! Ini menunjukkan sesuatu yang kamu lakukan 2 minggu terakhir berhasil. Identifikasi apa yang berbeda dan aplikasikan ke habit lain.' });
+    var impCtx = detectHabitContext(improving[0].t);
+    var impCtxDef = HABIT_CONTEXT_MAP[impCtx];
+    var impEmoji = impCtxDef ? impCtxDef.emoji : '🚀';
+    ins.sections.push({ type:'momentum', emoji:impEmoji, title:'Momentum Positif', body: impNames + ' sedang dalam tren naik! Ini menunjukkan sesuatu yang kamu lakukan 2 minggu terakhir berhasil. Identifikasi apa yang berbeda dan aplikasikan ke habit lain.' });
   }
 
-  // ── 7. Tantangan 7 Hari ──
+  // ── 7. Tantangan 7 Hari (context-aware) ──
   var challenge7;
   if(needsWork.length) {
-    var targetHabit = needsWork[0].t.name;
-    challenge7 = 'Fokus 1 minggu penuh pada "' + targetHabit + '". Lakukan setiap hari meski hanya versi mini-nya. Catat di catatan HP setiap kali berhasil — visual progress adalah motivasi terbaik.';
+    var ch = needsWork[0];
+    var chCtx = detectHabitContext(ch.t);
+    var chDef = HABIT_CONTEXT_MAP[chCtx];
+    if(chDef && chDef.tips && chDef.tips.challenge) {
+      challenge7 = chDef.tips.challenge;
+    } else {
+      challenge7 = 'Fokus 1 minggu penuh pada "' + ch.t.name + '". Lakukan setiap hari meski hanya versi mini-nya. Catat setiap keberhasilan — visual progress adalah motivasi terbaik.';
+    }
   } else if(avgPct >= 80) {
-    challenge7 = 'Semua habitmu sudah kuat! Tantanganmu minggu ini: tambah 1 habit baru yang sudah lama ingin kamu coba, tapi buat versi 2 menit dulu.';
+    var ch7Ctx = dominantCtx;
+    var ch7Def = HABIT_CONTEXT_MAP[ch7Ctx];
+    challenge7 = ch7Def && ch7Def.tips && ch7Def.tips.challenge
+      ? ch7Def.tips.challenge
+      : 'Semua habitmu sudah kuat! Tantanganmu minggu ini: tambah 1 habit baru yang sudah lama ingin kamu coba, tapi buat versi 2 menit dulu.';
   } else {
     challenge7 = 'Minggu ini, fokus lakukan semua habit di hari ' + worstDayName + ' tanpa pengecualian. Buktikan bahwa kamu bisa membalik hari terlemahmu.';
   }
@@ -10760,6 +11408,180 @@ function renderHabitInsightBox(insight) {
   });
   html += '</div></div>';
   return html;
+}
+
+// ── Render Prediksi Kegagalan Besok ──
+function renderFailurePredictionCard(habitStats, days30) {
+  var predictions = habitStats.map(function(h){ return calcFailurePrediction(h, days30); }).filter(Boolean);
+  if(!predictions.length) return '';
+
+  var highRisk = predictions.filter(function(p){return p.failProb>=60;}).sort(function(a,b){return b.failProb-a.failProb;});
+  var medRisk  = predictions.filter(function(p){return p.failProb>=40&&p.failProb<60;}).sort(function(a,b){return b.failProb-a.failProb;});
+  var lowRisk  = predictions.filter(function(p){return p.failProb<40;});
+
+  var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  var tomorrowName = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][tomorrow.getDay()];
+
+  var html = '<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+    +'<div style="font-size:13px;font-weight:700;color:var(--text)">🔮 Prediksi Besok ('+tomorrowName+')</div>'
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Berdasarkan pola historis & streak aktif</div>'
+    +'<div style="display:flex;flex-direction:column;gap:8px">';
+
+  predictions.slice(0,6).forEach(function(p){
+    var barW = p.successProb;
+    var barColor = p.failProb>=60?'#ef4444':p.failProb>=40?'#f59e0b':'#10b981';
+    var label = p.failProb>=60?'Rawan Skip':'Aman';
+    html += '<div style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg)">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">'
+      +'<span style="font-size:12px;font-weight:600;color:var(--text)">'+p.riskEmoji+' '+p.habitName+'</span>'
+      +'<span style="font-size:11px;font-weight:700;color:'+p.riskColor+'">'+p.failProb+'% gagal</span>'
+      +'</div>'
+      +'<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:4px">'
+      +'<div style="height:100%;width:'+barW+'%;background:'+barColor+';border-radius:3px;transition:width 0.5s ease"></div>'
+      +'</div>'
+      +'<div style="font-size:10px;color:var(--muted)">Sukses '+p.dowRate+'% di hari '+p.tomorrowDay+' historis · Streak: '+(p.riskLevel==='rendah'?'aktif 💪':'perlu dijaga')+'</div>'
+      +'</div>';
+  });
+
+  html += '</div>';
+  if(highRisk.length) {
+    html += '<div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:#ef444411;border:1px solid #ef444433">'
+      +'<div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:3px">💡 Tips untuk besok</div>'
+      +'<div style="font-size:11px;color:var(--text)">Siapkan "'+highRisk[0].habitName+'" malam ini — letakkan pengingat visual atau alat yang dibutuhkan di tempat yang mudah terlihat.</div>'
+      +'</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Render Habit Correlation Matrix ──
+function renderCorrelationCard(habits, days60) {
+  if(habits.length < 2) return '';
+  var corrs = calcHabitCorrelation(habits, days60);
+  if(!corrs.length) return '';
+
+  var strong = corrs.filter(function(c){return c.type==='strong_pos';}).slice(0,3);
+  var neg    = corrs.filter(function(c){return c.type==='negative';}).slice(0,2);
+  var top    = corrs.slice(0,Math.min(5, corrs.length));
+
+  var html = '<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
+    +'<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">🧩 Korelasi Antar Habit</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Habit mana yang saling mendukung — 60 hari terakhir</div>';
+
+  // Legend
+  html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">'
+    +'<span style="font-size:10px;color:#10b981;font-weight:600">🟢 Saling mendukung</span>'
+    +'<span style="font-size:10px;color:#6366f1;font-weight:600">🔵 Lemah positif</span>'
+    +'<span style="font-size:10px;color:#ef4444;font-weight:600">🔴 Tidak terkait</span>'
+    +'</div>';
+
+  html += '<div style="display:flex;flex-direction:column;gap:7px">';
+  top.forEach(function(c){
+    var strength = Math.abs(c.phi);
+    var barW = Math.round(strength*100);
+    var color = c.type==='strong_pos'?'#10b981':c.type==='weak_pos'?'#6366f1':c.type==='negative'?'#ef4444':'var(--muted)';
+    var icon = c.type==='strong_pos'?'💚':c.type==='weak_pos'?'💙':c.type==='negative'?'❌':'➡️';
+    var label = c.type==='strong_pos'?'Sering bareng ('+c.pct+'%)':c.type==='weak_pos'?'Kadang bareng ('+c.pct+'%)':c.type==='negative'?'Jarang bersamaan':'Tidak ada pola';
+    html += '<div style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg)">'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+      +'<span style="font-size:11px">'+icon+'</span>'
+      +'<span style="font-size:11px;font-weight:600;color:var(--text);flex:1">'+c.h1.name+' &amp; '+c.h2.name+'</span>'
+      +'<span style="font-size:10px;font-weight:700;color:'+color+'">φ='+c.phi.toFixed(2)+'</span>'
+      +'</div>'
+      +'<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:3px">'
+      +'<div style="height:100%;width:'+barW+'%;background:'+color+';border-radius:2px"></div>'
+      +'</div>'
+      +'<div style="font-size:10px;color:var(--muted)">'+label+'</div>'
+      +'</div>';
+  });
+  html += '</div>';
+
+  // Insight dari korelasi
+  if(strong.length) {
+    html += '<div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:#10b98111;border:1px solid #10b98133">'
+      +'<div style="font-size:11px;font-weight:700;color:#10b981;margin-bottom:3px">💡 Habit Stack Potensial</div>'
+      +'<div style="font-size:11px;color:var(--text)">'
+      +'Kamu sudah secara alami menggabungkan "'+strong[0].h1.name+'" dan "'+strong[0].h2.name+'". '
+      +'Ini adalah habit stack alami — manfaatkan dengan menjadikan keduanya satu ritual berurutan.'
+      +'</div></div>';
+  }
+  if(neg.length) {
+    html += '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#6366f111;border:1px solid #6366f133">'
+      +'<div style="font-size:11px;font-weight:700;color:#6366f1;margin-bottom:3px">🔍 Perlu Dijadwalkan Terpisah</div>'
+      +'<div style="font-size:11px;color:var(--text)">'
+      +'"'+neg[0].h1.name+'" dan "'+neg[0].h2.name+'" jarang selesai di hari yang sama. '
+      +'Mungkin keduanya membutuhkan energi yang sama — jadwalkan di waktu/slot berbeda.'
+      +'</div></div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+// ── Render Rapor Per Habit (Extended dengan Heatmap + Weekly Trend) ──
+function renderExtendedHabitCard(h, days28) {
+  var weeks = calcWeeklyTrend(h);
+  var weekMax = Math.max.apply(null,weeks)||1;
+  var weekLabels = ['M-4','M-3','M-2','M-1'];
+  var wkBars = weeks.map(function(c,i){
+    var pct=Math.round(c/7*100);
+    var barH = Math.round(c/weekMax*40);
+    var barColor = c>=6?'#10b981':c>=4?'#3b82f6':c>=2?'#f59e0b':'#ef4444';
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">'
+      +'<div style="font-size:9px;font-weight:700;color:var(--muted)">'+c+'/7</div>'
+      +'<div style="width:100%;background:var(--border);border-radius:3px;height:36px;display:flex;align-items:flex-end;overflow:hidden">'
+      +'<div style="width:100%;height:'+(barH||2)+'px;background:'+barColor+';border-radius:3px;min-height:2px"></div></div>'
+      +'<div style="font-size:9px;color:var(--muted)">'+weekLabels[i]+'</div>'
+      +'</div>';
+  }).join('');
+
+  // Heatmap 28 hari per habit
+  var heatRows = '';
+  var dayShort=['M','S','S','R','K','J','S'];
+  // Build 4 weeks x 7 days grid
+  var gridCells = '';
+  for(var i=27;i>=0;i--){
+    var date=new Date(); date.setDate(date.getDate()-i);
+    var ds=date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+    var done=h.t.history&&h.t.history.indexOf(ds)>=0;
+    var isToday=ds===todayStr;
+    var bg=done?'#10b981':'var(--border)';
+    gridCells+='<div title="'+ds+'" style="width:12px;height:12px;border-radius:2px;background:'+bg+';flex-shrink:0;outline:'+(isToday?'2px solid var(--accent)':'none')+';outline-offset:1px"></div>';
+  }
+
+  var trendIcon = h.trend>2?'📈':h.trend<-2?'📉':'➡️';
+  var trendColor = h.trend>2?'#10b981':h.trend<-2?'#ef4444':'var(--muted)';
+  var ctxMeta = getContextMeta(h.t);
+
+  return '<div style="border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--bg);margin-bottom:8px">'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+    +'<div style="width:34px;height:34px;border-radius:8px;background:'+h.gradeColor+'22;border:2px solid '+h.gradeColor+';display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;color:'+h.gradeColor+';flex-shrink:0">'+h.grade+'</div>'
+    +'<div style="flex:1;min-width:0">'
+    +'<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">'
+    +'<span style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+h.t.name+'</span>'
+    +'<span style="font-size:9px;font-weight:700;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1px 5px;white-space:nowrap">'+ctxMeta.emoji+' '+ctxMeta.label+'</span>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:2px">'
+    +'<span style="font-size:10px;color:var(--muted)">'+h.pct30+'% / 30hr</span>'
+    +'<span style="font-size:10px;color:var(--muted)">·</span>'
+    +'<span style="font-size:10px;color:var(--muted)">'+h.streak+'🔥 streak</span>'
+    +'<span style="font-size:10px;color:'+trendColor+'">'+trendIcon+' '+(h.trend>0?'+':'')+h.trend+'</span>'
+    +'</div></div>'
+    +'<div onclick="openDetail('+h.t.id+')" style="font-size:10px;color:var(--muted);cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid var(--border)">Detail</div>'
+    +'</div>'
+    // Heatmap 28 hari
+    +'<div style="margin-bottom:8px">'
+    +'<div style="font-size:9px;color:var(--muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">28 Hari Terakhir</div>'
+    +'<div style="display:flex;gap:3px;flex-wrap:wrap">'+gridCells+'</div>'
+    +'</div>'
+    // Weekly bar chart
+    +'<div>'
+    +'<div style="font-size:9px;color:var(--muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Tren Mingguan</div>'
+    +'<div style="display:flex;gap:4px;align-items:flex-end">'+wkBars+'</div>'
+    +'</div>'
+    +'</div>';
 }
 
 // ══════════════════════════════════════════════
@@ -13070,18 +13892,13 @@ function calcNextDue(t, fromDate) {
   if (!t.repeat) return null;
   var days = getRepeatDays(t.repeat);
   if (!days) return null;
-  var base = fromDate || todayStr;
+  // Kalau due asli sudah lewat, hitung dari hari ini supaya next due selalu ke depan
+  var base = (fromDate && fromDate >= todayStr) ? fromDate : todayStr;
   var dt = new Date(base + 'T00:00:00');
+  dt.setDate(dt.getDate() + days);
+  // Skip hari yang dikecualikan (Harian kecuali X)
   var skipDay = getExceptDay(t.repeat);
-  // Maju sesuai interval repeat sampai next due >= hari ini
-  // (menangani kasus overdue: task yang sudah lewat beberapa hari/minggu/bulan)
-  var maxIter = 1000; // safety guard
-  do {
-    dt.setDate(dt.getDate() + days);
-    // Skip hari yang dikecualikan (Harian kecuali X)
-    if (skipDay >= 0 && dt.getDay() === skipDay) dt.setDate(dt.getDate() + 1);
-    maxIter--;
-  } while (localDateStr(dt) < todayStr && maxIter > 0);
+  if (skipDay >= 0 && dt.getDay() === skipDay) dt.setDate(dt.getDate() + 1);
   return localDateStr(dt);
 }
 
@@ -13119,33 +13936,6 @@ function toggleDone(id){
         t.myday=(nextDue===todayStr);
       }
     }
-    // OVERDUE NON-REPEAT: task biasa (bukan repeat) yang due-nya sudah lewat,
-    // saat diselesaikan → spawn task baru dengan nama sama dan due hari ini
-    if(!t.repeat&&t.due&&t.due<todayStr){
-      var spawnTask={
-        id:nextId++,
-        name:t.name,
-        type:t.type||'Task',
-        repeat:'',
-        due:todayStr,
-        done:false,
-        important:t.important||false,
-        myday:true,
-        note:t.note||'',
-        group:t.group||'',
-        history:[],
-        color:t.color||'',
-        subtasks:[],
-        reminder:t.reminder||'',
-        xpVal:t.xpVal||0,
-        goldVal:t.goldVal||0,
-        isShopping:t.isShopping||false,
-        price:t.price||0,
-        walletId:t.walletId||''
-      };
-      tasks.push(spawnTask);
-      showToast('✅ Selesai! Task baru ditambahkan untuk hari ini 📅');
-    }
     // Shopping: deduct from wallet
     if(t.isShopping&&t.price&&t.walletId){
       var w=getWalletById(t.walletId);
@@ -13166,11 +13956,6 @@ function toggleDone(id){
     if(t.repeat&&t._prevDue!==undefined){
       t.due=t._prevDue;
       delete t._prevDue;
-    }
-    // FIX RESTORE: kalau due-nya kemarin (overdue), geser ke hari ini
-    // supaya task muncul kembali di My Day sebagai aktif
-    if(t.due&&t.due<todayStr){
-      t.due=todayStr;
     }
     t.myday=(t.due===todayStr||!t.due);
     if(t.steps)t.stepsDone=0;
@@ -13213,9 +13998,8 @@ function toggleDone(id){
       });
     }
   }
-  if(t.repeat&&!t.done&&t.due){showToast('✅ Selesai! Next due: '+t.due+' 🔄');}
-  else if(!t.done){showToast('↩️ Task dikembalikan ke My Day');}
-  else if((!t.isShopping||!t.price)&&!(t.due&&t.due<todayStr)){showToast('Task selesai! ✅');}
+  if((!t.isShopping||!t.price)&&!t.repeat)showToast(t.done?'Task selesai! ✅':'↩️ Task dibuka kembali');
+  else if(t.repeat&&!t.done&&t.due)showToast('✅ Selesai! Next due: '+t.due+' 🔄');
   checkAchievements();saveData(true);render();
 }
 
@@ -13918,29 +14702,6 @@ function mdGrpDrop(e,el){
     _touchSrcEl=null;_touchSrcGrp=null;_touchLastOver=null;
   });
 })();
-// Emoji picker for group
-var COMMON_EMOJIS=['📁','💪','🧼','❤️','🧠','🧘','🥗','👥','📌','⭐','🔥','🎯','📚','🏃','🎮','🎨','🎵','💰','🌿','✈️','🍎','💊','🧪','🏋️','🤸'];
-function openGroupEmojiPicker(){
-  var existing=document.getElementById('group-emoji-grid');
-  if(existing){existing.remove();return;}
-  var wrap=document.getElementById('group-emoji-wrap');if(!wrap)return;
-  var grid=document.createElement('div');
-  grid.id='group-emoji-grid';grid.className='emoji-grid';
-  COMMON_EMOJIS.forEach(function(em){
-    var btn=document.createElement('button');
-    btn.textContent=em;btn.type='button';
-    btn.onclick=function(){
-      var emojiEl=document.getElementById('custom-group-emoji');
-      if(emojiEl)emojiEl.textContent=em;
-      grid.remove();
-    };
-    grid.appendChild(btn);
-  });
-  document.addEventListener('click',function closeGrid(ev){
-    if(!wrap.contains(ev.target)){grid.remove();document.removeEventListener('click',closeGrid);}
-  });
-  wrap.appendChild(grid);
-}
 
 function refreshGroupSelects(){
   var all=getAllGroups();
@@ -13952,6 +14713,195 @@ function refreshGroupSelects(){
     el.value=cur;
   });
 }
+// ══════════════════════════════════════════════
+// KELOLA GRUP — view 'task-groups'
+// ══════════════════════════════════════════════
+var _GRP_EMOJIS=['📁','💪','🧼','❤️','🧠','🧘','🥗','👥','📌','⭐','🔥','🎯','📚','🏃','🎮','🎨','🎵','💰','🌿','✈️','🍎','💊','🧪','🏋️','🤸','🎒','🏠','🌟','⚡','🦋','🌈','🎁','🍕','☕','🐱','🐶','🚀','🔑','🧡','💜','🟢','🔵','🌊','🎤','🎬','📷','🕹️','🏆','🎖️','🏅','🔮','🎪','🌺','🌸','🍀','🦄','🐉','🎻','🥁','🎸','🏖️','⛺','🏕️','🧩','🎲','♟️','🖊️','📐','🔭','🧲','💡','🔐','🗝️','🛡️','⚔️','🧸','🪆','🎀','🎗️'];
+
+function renderGroupManager(el){
+  if(!el) el = document.getElementById('taskScroll');
+  if(!el) return;
+  var BASE_G = ['Belanja','Hygiene','Olahraga','Kesehatan','Produktivitas','Mindfulness','Nutrisi','Sosial','Ibadah','Lainnya'];
+  var customs = customGroups.filter(function(g){ return BASE_G.indexOf(g)<0; });
+  var html = '';
+
+  // ── Tambah Grup Baru ──
+  html += '<div style="background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px">➕ Tambah Grup Baru</div>'
+    + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">'
+    + '<div id="group-emoji-wrap" style="position:relative;flex-shrink:0">'
+    + '<button type="button" id="custom-group-emoji" onclick="openGroupEmojiPicker()" title="Pilih atau ketik icon" style="width:44px;height:44px;border-radius:12px;border:1.5px solid var(--border);background:var(--bg);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center">📁</button>'
+    + '</div>'
+    + '<input type="text" id="custom-group-input" placeholder="Nama grup baru..." maxlength="24"'
+    + ' onkeydown="if(event.key===\'Enter\')addCustomGroup()"'
+    + ' style="flex:1;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--bg);color:var(--text);font-size:14px;font-family:\'DM Sans\',sans-serif;outline:none;min-width:0">'
+    + '</div>'
+    + '<button onclick="addCustomGroup()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;box-shadow:0 3px 12px rgba(217,119,6,0.3)">＋ Tambah Grup</button>'
+    + '</div>';
+
+  // ── Grup Kustom ──
+  html += '<div style="background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px">✨ Grup Kustom</div>'
+    + '<span style="font-size:11px;background:rgba(217,119,6,0.12);color:var(--accent);padding:2px 8px;border-radius:8px;font-weight:700">'+customs.length+'</span>'
+    + '</div>';
+  if(!customs.length){
+    html += '<div style="text-align:center;padding:22px 0;color:var(--muted);font-size:13px;line-height:1.6">Belum ada grup kustom.<br>Buat satu di atas! 🎨</div>';
+  } else {
+    html += '<div style="display:flex;flex-direction:column;gap:7px">';
+    customs.forEach(function(g){
+      var icon = customGroupIcons[g]||'📁';
+      var count = tasks.filter(function(t){return t.group===g&&!isEffectiveDone(t);}).length;
+      var gSafe = g.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:12px;border:1px solid var(--border)">'
+        + '<button onclick="openGroupIconEditor(\''+gSafe+'\')" title="Ubah icon" style="width:38px;height:38px;font-size:22px;border:1.5px dashed var(--border);border-radius:10px;background:var(--card);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+icon+'</button>'
+        + '<span style="flex:1;font-size:14px;font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+g+'</span>'
+        + (count?'<span style="font-size:11px;background:rgba(217,119,6,0.15);color:var(--accent);padding:2px 8px;border-radius:8px;font-weight:700;flex-shrink:0">'+count+'</span>':'')
+        + '<button onclick="deleteCustomGroup(\''+gSafe+'\')" title="Hapus grup" style="width:32px;height:32px;border:none;background:rgba(220,38,38,0.1);color:#dc2626;border-radius:9px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">🗑</button>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ── Grup Bawaan ──
+  html += '<div style="background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:16px">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:12px">📦 Grup Bawaan</div>'
+    + '<div style="display:flex;flex-direction:column;gap:6px">';
+  BASE_G.forEach(function(g){
+    var icon = getGroupIcon(g);
+    var count = tasks.filter(function(t){return t.group===g&&!isEffectiveDone(t);}).length;
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg);border-radius:11px">'
+      + '<span style="font-size:22px;width:30px;text-align:center;flex-shrink:0">'+icon+'</span>'
+      + '<span style="flex:1;font-size:14px;font-weight:600;color:var(--text)">'+g+'</span>'
+      + (count?'<span style="font-size:11px;background:rgba(217,119,6,0.15);color:var(--accent);padding:2px 8px;border-radius:8px;font-weight:700">'+count+'</span>':'')
+      + '<span style="font-size:10px;color:var(--muted);padding:2px 8px;border:1px solid var(--border);border-radius:8px;flex-shrink:0">Bawaan</span>'
+      + '</div>';
+  });
+  html += '</div></div>';
+
+  el.innerHTML = '<div style="padding:4px 0 80px">'+html+'</div>';
+}
+
+// ── Picker FORM TAMBAH: dropdown di bawah tombol icon ──
+function openGroupEmojiPicker(){
+  var existing=document.getElementById('group-emoji-sheet');
+  if(existing){existing.remove();return;}
+  var wrap=document.getElementById('group-emoji-wrap');if(!wrap)return;
+
+  var sheet=document.createElement('div');
+  sheet.id='group-emoji-sheet';
+  sheet.style.cssText='position:absolute;left:0;top:52px;z-index:500;background:var(--card);border:1.5px solid var(--border);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18);padding:12px;width:290px;max-height:320px;overflow-y:auto';
+
+  // Baris input manual
+  var manRow=document.createElement('div');
+  manRow.style.cssText='display:flex;gap:7px;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)';
+  manRow.innerHTML='<span style="font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap">Ketik:</span>'
+    +'<input id="grp-emoji-new-input" type="text" maxlength="4" placeholder="✏️" '
+    +'style="flex:1;padding:7px 8px;border:1.5px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font-size:20px;font-family:\'DM Sans\',sans-serif;outline:none;min-width:0;text-align:center">'
+    +'<button type="button" onclick="_applyNewEmoji()" '
+    +'style="padding:7px 11px;background:var(--accent);color:#fff;border:none;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">✓ OK</button>';
+  sheet.appendChild(manRow);
+
+  // Label koleksi
+  var lbl=document.createElement('div');
+  lbl.style.cssText='font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:7px';
+  lbl.textContent='Atau pilih koleksi';
+  sheet.appendChild(lbl);
+
+  // Grid
+  var grid=document.createElement('div');
+  grid.style.cssText='display:grid;grid-template-columns:repeat(7,1fr);gap:3px';
+  _GRP_EMOJIS.forEach(function(em){
+    var btn=document.createElement('button');
+    btn.type='button';btn.textContent=em;
+    btn.style.cssText='width:34px;height:34px;border:2px solid transparent;border-radius:8px;background:transparent;font-size:19px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.1s';
+    btn.onmouseover=function(){btn.style.background='rgba(217,119,6,0.12)';};
+    btn.onmouseleave=function(){btn.style.background='transparent';};
+    btn.onclick=function(){
+      var emojiEl=document.getElementById('custom-group-emoji');
+      if(emojiEl)emojiEl.textContent=em;
+      sheet.remove();
+    };
+    grid.appendChild(btn);
+  });
+  sheet.appendChild(grid);
+  wrap.appendChild(sheet);
+
+  setTimeout(function(){var inp=document.getElementById('grp-emoji-new-input');if(inp)inp.focus();},60);
+  setTimeout(function(){
+    document.addEventListener('mousedown',function _cls(ev){
+      if(!wrap.contains(ev.target)){sheet.remove();document.removeEventListener('mousedown',_cls);}
+    });
+  },80);
+}
+function _applyNewEmoji(){
+  var inp=document.getElementById('grp-emoji-new-input');if(!inp)return;
+  var val=inp.value.trim();if(!val)return;
+  var emojiEl=document.getElementById('custom-group-emoji');
+  if(emojiEl)emojiEl.textContent=val;
+  var sheet=document.getElementById('group-emoji-sheet');if(sheet)sheet.remove();
+}
+
+// ── Editor icon grup yang sudah ada (bottom sheet) ──
+function openGroupIconEditor(groupName){
+  var existing=document.getElementById('group-icon-editor-popup');
+  if(existing){existing.remove();return;}
+  var curIcon=customGroupIcons[groupName]||'📁';
+  var gSafeJs=groupName.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+  var popup=document.createElement('div');
+  popup.id='group-icon-editor-popup';
+  popup.style.cssText='position:fixed;inset:0;z-index:600;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center';
+
+  var gridHtml=_GRP_EMOJIS.map(function(em){
+    var sel=em===curIcon;
+    return '<button type="button" onclick="applyGroupIcon(\''+gSafeJs+'\',\''+em+'\')" '
+      +'style="width:40px;height:40px;border:2px solid '+(sel?'var(--accent)':'transparent')+';border-radius:10px;'
+      +'background:'+(sel?'rgba(217,119,6,0.15)':'var(--bg)')+';font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center">'+em+'</button>';
+  }).join('');
+
+  popup.innerHTML=''
+    +'<div style="background:var(--card);border-radius:22px 22px 0 0;padding:18px 16px 36px;width:100%;max-width:440px;max-height:78vh;overflow-y:auto">'
+    // Header
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    +'<div style="font-size:15px;font-weight:700;color:var(--text)">🎨 Icon · <b>'+groupName+'</b></div>'
+    +'<button onclick="document.getElementById(\'group-icon-editor-popup\').remove()" style="border:none;background:var(--bg);border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center">✕</button>'
+    +'</div>'
+    // Preview + input manual dalam satu baris
+    +'<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--bg);border-radius:14px;margin-bottom:14px">'
+    +'<span id="grp-icon-preview" style="font-size:32px;flex-shrink:0;min-width:40px;text-align:center">'+curIcon+'</span>'
+    +'<input id="grp-emoji-edit-input" type="text" maxlength="4" value="'+curIcon+'" '
+    +'placeholder="Ketik emoji..." '
+    +'oninput="var p=document.getElementById(\'grp-icon-preview\');if(p&&this.value.trim())p.textContent=this.value.trim();" '
+    +'style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:22px;font-family:\'DM Sans\',sans-serif;outline:none;min-width:0;text-align:center">'
+    +'<button type="button" onclick="_applyEditEmoji(\''+gSafeJs+'\')" '
+    +'style="padding:9px 14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">✓ Pakai</button>'
+    +'</div>'
+    // Divider + label koleksi
+    +'<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:9px">Atau pilih dari koleksi</div>'
+    // Grid
+    +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px">'+gridHtml+'</div>'
+    +'</div>';
+
+  document.body.appendChild(popup);
+  popup.addEventListener('click',function(e){if(e.target===popup)popup.remove();});
+  setTimeout(function(){var inp=document.getElementById('grp-emoji-edit-input');if(inp){inp.focus();inp.select();}},80);
+}
+function _applyEditEmoji(groupName){
+  var inp=document.getElementById('grp-emoji-edit-input');if(!inp)return;
+  var val=inp.value.trim();if(!val)return;
+  applyGroupIcon(groupName,val);
+}
+
+function applyGroupIcon(groupName,icon){
+  customGroupIcons[groupName]=icon;
+  var popup=document.getElementById('group-icon-editor-popup');
+  if(popup)popup.remove();
+  saveData(true);refreshGroupSelects();render();
+  showToast('Icon "'+groupName+'" diperbarui!');
+}
+
 function refreshDetailGroups(){
   var all=getAllGroups();
   var el=document.getElementById('det-group');if(!el)return;
@@ -17035,7 +17985,13 @@ function shopClickItem(id,type){
       showToast('🎨 Tema '+item.name+' diaktifkan!');
     }
     else{activeEffect=id;applyEffect(id);showToast('✨ Efek '+item.name+' diaktifkan!');}
-    saveData(true);renderShop();return;
+    saveData(true);renderShop();
+    // Re-render dashboard supaya radar chart langsung update
+    setTimeout(function(){
+      var dashEl=document.getElementById('mainContent');
+      if(typeof renderDashboard==='function'&&dashEl) renderDashboard(dashEl);
+    },120);
+    return;
   }
   if(goldBalance<item.price){showToast('Gold tidak cukup! Butuh 🪙'+item.price);return;}
   openShopConfirm(
@@ -17055,6 +18011,11 @@ function shopClickItem(id,type){
       else{activeEffect=id;applyEffect(id);}
       updateGoldDisplay();showToast('✅ '+item.icon+' '+item.name+' dibeli & diaktifkan!');
       saveData(true);renderShop();
+      // Re-render dashboard supaya radar chart langsung update
+      setTimeout(function(){
+        var dashEl=document.getElementById('mainContent');
+        if(typeof renderDashboard==='function'&&dashEl) renderDashboard(dashEl);
+      },120);
     }
   );
 }
@@ -17211,7 +18172,7 @@ function buildCharStatsCard(){
   var cx=90,cy=90,r=62,sides=6;
   var statLevels=CHAR_STAT_DEF.map(function(d){return getStatLevel(d.key);});
   var statPcts=CHAR_STAT_DEF.map(function(d){return getStatLevelPct(d.key);});
-  var maxLv=Math.max(5,Math.max.apply(null,statLevels));
+  var maxLv=50;
   var uid='r'+Date.now().toString(36);
 
   function ang(i){return(Math.PI*2/sides)*i-Math.PI/2;}
