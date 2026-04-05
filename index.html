@@ -1813,7 +1813,11 @@ function ftFinish() {
   if (card) card.style.display = 'none';
 }
 
-window.addEventListener('resize', function() { if (_ftActive) _ftPosition(_ftStep); });
+window.addEventListener('resize', function() {
+  var _fa=document.activeElement;
+  if(_fa&&(_fa.tagName==='INPUT'||_fa.tagName==='TEXTAREA'))return;
+  if (_ftActive) _ftPosition(_ftStep);
+});
 
 var _tourFirestorePending = false; // guard: sedang menunggu hasil fetch Firestore
 
@@ -8636,8 +8640,29 @@ function buildDetailColorPicker(){
 // ══════════════════════════════════════════════
 function getFiltered(){
   switch(currentView){
-    case 'myday':     return tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done;}).concat(tasks.filter(function(t){return (t.myday||t.due===todayStr)&&t.done;}));
-    case 'important': return tasks.filter(function(t){return t.important&&!t.done;}).concat(tasks.filter(function(t){return t.important&&t.done;}));
+    case 'myday':     return tasks.filter(function(t){
+      if(!(t.myday||t.due===todayStr))return false;
+      // Habit done = ada di history untuk due-date-nya (bisa kemarin jika overdue lalu dicentang)
+      var hd=t.due&&t.due<todayStr?t.due:todayStr;
+      var habitDone=t.type==='Habit'&&t.history&&t.history.indexOf(hd)>=0;
+      return !t.done&&!habitDone;
+    }).concat(tasks.filter(function(t){
+      if(!(t.myday||t.due===todayStr))return false;
+      var hd=t.due&&t.due<todayStr?t.due:todayStr;
+      var habitDone=t.type==='Habit'&&t.history&&t.history.indexOf(hd)>=0;
+      return t.done||habitDone;
+    }));
+    case 'important': return tasks.filter(function(t){
+      if(!t.important)return false;
+      var hd=t.due&&t.due<todayStr?t.due:todayStr;
+      var habitDone=t.type==='Habit'&&t.history&&t.history.indexOf(hd)>=0;
+      return !t.done&&!habitDone;
+    }).concat(tasks.filter(function(t){
+      if(!t.important)return false;
+      var hd=t.due&&t.due<todayStr?t.due:todayStr;
+      var habitDone=t.type==='Habit'&&t.history&&t.history.indexOf(hd)>=0;
+      return t.done||habitDone;
+    }));
     case 'planned':   return tasks.filter(function(t){return t.due&&!t.done;}).sort(function(a,b){return a.due.localeCompare(b.due);});
     case 'all':       return tasks.slice().sort(function(a,b){return a.done-b.done;});
     case 'completed': return tasks.filter(function(t){return t.done;});
@@ -8693,6 +8718,10 @@ function isMaintView(v){return MAINT_VIEWS.indexOf(v)>=0||v.startsWith('maint-ca
 function isJournalView(v){return JOURNAL_VIEWS.indexOf(v)>=0;}
 
 function renderMain(){
+  // FIX: Jangan re-render DOM saat ada input/textarea yang sedang fokus
+  // (mencegah keyboard mobile tutup sendiri saat resize dipicu keyboard muncul)
+  var _focused=document.activeElement;
+  if(_focused&&(_focused.tagName==='INPUT'||_focused.tagName==='TEXTAREA')&&document.body.contains(_focused)){return;}
   var el=document.getElementById('taskScroll');
   var fw=document.getElementById('finWrap');
   var titles={
@@ -9015,7 +9044,10 @@ function taskCard(t){
   var over=isOverdue(t);
   var isMulti=t.steps&&t.steps>=2;
   var stepsDone=t.stepsDone||0;
-  var effectiveDone=isMulti?(stepsDone>=t.steps):t.done;
+  // FIX: Habit done = ada di history untuk due-date-nya (bisa kemarin jika overdue dicentang hari ini)
+  var _hd=t.due&&t.due<todayStr?t.due:todayStr;
+  var habitDoneToday=(t.type==='Habit'&&t.history&&t.history.indexOf(_hd)>=0);
+  var effectiveDone=isMulti?(stepsDone>=t.steps):(t.done||habitDoneToday);
   var color=t.color||'';
   var taskXP=getTaskXP(t);
 
@@ -13014,23 +13046,26 @@ function toggleDone(id){
   var t=tasks.filter(function(x){return x.id===id;})[0];if(!t)return;
   t.done=!t.done;
   if(t.done){
-    t.doneDate=todayStr;totalDone++;
+    // FIX OVERDUE: gunakan due date asli sebagai tanggal selesai (bukan hari ini)
+    // supaya repeat dihitung dari due asli, bukan dari hari dicentang
+    var effectiveDoneDate=(t.due&&t.due<todayStr)?t.due:todayStr;
+    t.doneDate=effectiveDoneDate;totalDone++;
     var xpGain=getTaskXP(t);
     addXP(xpGain,'+'+xpGain);
     var goldGain=t.goldVal||GOLD_PER_TASK;
     addGold(goldGain);
     awardStatProgress(t);
     triggerCompletionEffect();
-    // Repeat: jadwalkan otomatis ke due berikutnya (silent)
+    // Repeat: jadwalkan ke due berikutnya dihitung dari due asli (bukan hari ini)
     if(t.repeat){
-      var nextDue=calcNextDue(t,todayStr);
+      var nextDue=calcNextDue(t,effectiveDoneDate);
       if(nextDue){
         t._prevDue=t.due;
         t.due=nextDue;
         t.done=false;
         t.doneDate=null;
-        t.myday=false;
-        if(t.type==='Habit'){var hi=t.history?t.history.indexOf(todayStr):-1;if(hi>=0)t.history.splice(hi,1);}
+        // Jika next due = hari ini, langsung masuk myday
+        t.myday=(nextDue===todayStr);
       }
     }
     // Shopping: deduct from wallet
@@ -13038,7 +13073,7 @@ function toggleDone(id){
       var w=getWalletById(t.walletId);
       if(w){
         w.balance-=t.price;
-        finTransactions.push({id:'tx'+finNextId++,type:'expense',amount:t.price,category:'Belanja',walletId:t.walletId,date:todayStr,note:'Task: '+t.name});
+        finTransactions.push({id:'tx'+finNextId++,type:'expense',amount:t.price,category:'Belanja',walletId:t.walletId,date:effectiveDoneDate,note:'Task: '+t.name});
         showToast('✅ Selesai & '+fmtRp(t.price)+' dikurangi dari '+w.name);
       }
     }
@@ -13053,6 +13088,7 @@ function toggleDone(id){
       t.due=t._prevDue;
       delete t._prevDue;
       if(t.due===todayStr)t.myday=true;
+      else t.myday=false;
     }
     // Reverse shopping deduction (find latest matching tx)
     if(t.isShopping&&t.price&&t.walletId){
@@ -13069,8 +13105,16 @@ function toggleDone(id){
   }
   if(t.type==='Habit'){
     if(!t.history)t.history=[];
-    if(t.done){if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);}
-    else{var idx=t.history.indexOf(todayStr);if(idx>=0)t.history.splice(idx,1);}
+    // FIX OVERDUE HABIT: catat history di tanggal due asli, bukan hari ini
+    var histDate=(t.doneDate&&t.doneDate<todayStr)?t.doneDate:todayStr;
+    if(t.done){
+      if(t.history.indexOf(histDate)<0)t.history.push(histDate);
+    } else {
+      // Saat un-check: hapus dari history hari ini DAN due asli (jaga-jaga)
+      [todayStr, histDate].forEach(function(d){
+        var idx=t.history.indexOf(d);if(idx>=0)t.history.splice(idx,1);
+      });
+    }
   }
   if((!t.isShopping||!t.price)&&!t.repeat)showToast(t.done?'Task selesai! ✅':'Task dibuka kembali');
   checkAchievements();saveData(true);render();
@@ -13083,12 +13127,21 @@ function toggleStep(id,idx){
   if(idx==='all'){t.stepsDone=(t.stepsDone>=t.steps)?0:t.steps;}
   else{idx=parseInt(idx);t.stepsDone=(idx<t.stepsDone)?idx:idx+1;}
   t.done=(t.stepsDone>=t.steps);
-  if(t.done&&!wasDone){t.doneDate=todayStr;totalDone++;addXP(getTaskXP(t));var gg=t.goldVal||GOLD_PER_TASK;addGold(gg);awardStatProgress(t);triggerCompletionEffect();}
+  if(t.done&&!wasDone){
+    // FIX OVERDUE: doneDate & repeat base = due asli jika overdue
+    var effDate=(t.due&&t.due<todayStr)?t.due:todayStr;
+    t.doneDate=effDate;totalDone++;addXP(getTaskXP(t));var gg=t.goldVal||GOLD_PER_TASK;addGold(gg);awardStatProgress(t);triggerCompletionEffect();
+    if(t.repeat){
+      var nd=calcNextDue(t,effDate);
+      if(nd){t._prevDue=t.due;t.due=nd;t.done=false;t.doneDate=null;t.myday=(nd===todayStr);}
+    }
+  }
   else if(!t.done&&wasDone){t.doneDate=null;totalDone=Math.max(0,totalDone-1);xp=Math.max(0,xp-getTaskXP(t));updateXPBar();revokeStatProgress(t);}
   if(t.type==='Habit'){
     if(!t.history)t.history=[];
-    if(t.done){if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);}
-    else{var i=t.history.indexOf(todayStr);if(i>=0)t.history.splice(i,1);}
+    var hd=(t.doneDate&&t.doneDate<todayStr)?t.doneDate:todayStr;
+    if(t.done){if(t.history.indexOf(hd)<0)t.history.push(hd);}
+    else{[todayStr,hd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
   }
   showToast(t.done?'Semua langkah selesai! ✅':t.stepsDone+'/'+t.steps+' langkah ✓');
   checkAchievements();saveData(true);render();
@@ -14273,7 +14326,12 @@ function updateOnlineIndicator(){
 }
 window.addEventListener('online',updateOnlineIndicator);
 window.addEventListener('offline',updateOnlineIndicator);
-window.addEventListener('resize',function(){updateMobileBackBtn();updateOnlineIndicator();});
+window.addEventListener('resize',function(){
+  // FIX: Skip saat keyboard mobile muncul (ada input/textarea fokus)
+  var _fa=document.activeElement;
+  if(_fa&&(_fa.tagName==='INPUT'||_fa.tagName==='TEXTAREA'))return;
+  updateMobileBackBtn();updateOnlineIndicator();
+});
 
 
 // Open the correct sub-drawer based on current view (for back button)
@@ -20601,6 +20659,8 @@ setTimeout(function(){ bossInit(); }, 700);
       <button id="notifAllowBtn2" onclick="_settingsRequestNotif()" style="flex:1;padding:9px 0;border-radius:10px;border:none;background:var(--accent,#d97706);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Izinkan</button>
       <button id="notifTestBtn" onclick="_settingsTestNotif()" style="flex:1;padding:9px 0;border-radius:10px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Tes Notifikasi</button>
     </div>
+    <!-- Denied guide: shown when permission === 'denied' -->
+    <div id="notifDeniedGuide" style="display:none;margin-top:12px;background:rgba(255,60,60,0.07);border:1px solid rgba(255,80,80,0.2);border-radius:12px;padding:12px 13px"></div>
 
     <!-- ── Segera Dimulai Window Setting ── -->
     <div style="margin-top:14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:14px;padding:12px 14px">
@@ -21430,43 +21490,145 @@ function _updateNotifSettingsUI(){
   var badge  = document.getElementById('notifStatusBadge');
   var btnAllow = document.getElementById('notifAllowBtn2');
   var btnTest  = document.getElementById('notifTestBtn');
+  var deniedGuide = document.getElementById('notifDeniedGuide');
   if(!label) return;
 
   if(!('Notification' in window)){
     label.textContent = 'Tidak Didukung';
-    sub.textContent = 'Browser ini tidak mendukung notifikasi';
+    sub.textContent = 'Coba gunakan Chrome atau Samsung Browser';
     badge.textContent = '\u2715'; badge.style.background='rgba(255,80,80,0.2)'; badge.style.color='#ff6060';
     if(btnAllow) btnAllow.style.display='none';
     if(btnTest)  btnTest.style.display='none';
+    if(deniedGuide) deniedGuide.style.display='none';
     return;
   }
   var perm = Notification.permission;
   if(perm === 'granted'){
-    label.textContent = 'Notifikasi Aktif';
+    label.textContent = 'Notifikasi Aktif \u2705';
     sub.textContent = 'Reminder akan tampil tepat waktu';
     badge.textContent = '\u2713 Aktif'; badge.style.background='rgba(52,211,153,0.18)'; badge.style.color='#34d399';
     if(btnAllow) btnAllow.style.display='none';
     if(btnTest)  btnTest.style.display='';
+    if(deniedGuide) deniedGuide.style.display='none';
   } else if(perm === 'denied'){
-    label.textContent = 'Diblokir Browser';
-    sub.textContent = 'Aktifkan manual di setelan browser/HP';
+    label.textContent = 'Notifikasi Diblokir';
+    sub.textContent = 'Aktifkan manual lewat setelan situs di browser';
     badge.textContent = '\u2715 Blokir'; badge.style.background='rgba(255,80,80,0.2)'; badge.style.color='#ff6060';
-    if(btnAllow){ btnAllow.textContent='Cara Aktifkan'; btnAllow.style.display=''; btnAllow.onclick=function(){ window.open('https://support.google.com/chrome/answer/3220216','_blank'); }; }
+    if(btnAllow) btnAllow.style.display='none';
     if(btnTest)  btnTest.style.display='none';
+    if(deniedGuide) deniedGuide.style.display='';
+    _renderNotifDeniedGuide();
   } else {
     label.textContent = 'Belum Diizinkan';
-    sub.textContent = 'Izinkan agar reminder bisa muncul';
+    sub.textContent = 'Tap tombol di bawah untuk mengizinkan';
     badge.textContent = '? Belum'; badge.style.background='rgba(251,191,36,0.18)'; badge.style.color='#fbbf24';
-    if(btnAllow){ btnAllow.textContent='Izinkan'; btnAllow.onclick=_settingsRequestNotif; btnAllow.style.display=''; }
+    if(btnAllow){ btnAllow.textContent='\uD83D\uDD14 Izinkan Notifikasi'; btnAllow.onclick=_settingsRequestNotif; btnAllow.style.display=''; }
     if(btnTest)  btnTest.style.display='none';
+    if(deniedGuide) deniedGuide.style.display='none';
   }
 }
 
+function _isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+function _isSamsung(){ return /samsungbrowser/i.test(navigator.userAgent); }
+function _isFirefox(){ return /firefox/i.test(navigator.userAgent); }
+
+function _renderNotifDeniedGuide(){
+  var el = document.getElementById('notifDeniedGuide');
+  if(!el) return;
+  var isIOS = _isIOS(), isSamsung = _isSamsung(), isFF = _isFirefox();
+  var steps = [];
+  if(isIOS){
+    steps = [
+      {icon:'⚙️', text:'Buka <b>Pengaturan</b> iPhone/iPad'},
+      {icon:'📱', text:'Scroll ke bawah → pilih <b>Safari</b>'},
+      {icon:'🔔', text:'Tap <b>Notifikasi</b> → aktifkan untuk ChiTask'},
+      {icon:'🔄', text:'Balik ke ChiTask → <b>refresh halaman</b>'},
+    ];
+  } else if(isSamsung){
+    steps = [
+      {icon:'🔒', text:'Tap ikon <b>kunci 🔒</b> di address bar'},
+      {icon:'⚙️', text:'Pilih <b>"Izin situs"</b>'},
+      {icon:'🔔', text:'Tap <b>Notifikasi</b> → pilih <b>"Izinkan"</b>'},
+      {icon:'🔄', text:'<b>Refresh halaman</b> lalu buka Settings lagi'},
+    ];
+  } else if(isFF){
+    steps = [
+      {icon:'🔒', text:'Tap ikon <b>gembok 🔒</b> di address bar'},
+      {icon:'🔔', text:'Pilih <b>"Izin Situs" → "Notifikasi" → "Izinkan"</b>'},
+      {icon:'🔄', text:'<b>Refresh halaman</b> lalu buka Settings lagi'},
+    ];
+  } else {
+    // Chrome Android
+    steps = [
+      {icon:'🔒', text:'Tap ikon <b>kunci 🔒</b> atau <b>ⓘ</b> di sebelah kiri address bar'},
+      {icon:'⚙️', text:'Pilih <b>"Izin situs"</b> atau <b>"Site settings"</b>'},
+      {icon:'🔔', text:'Tap <b>Notifikasi</b> → ubah ke <b>"Izinkan"</b>'},
+      {icon:'🔄', text:'Kembali ke tab ChiTask → <b>refresh halaman</b>'},
+    ];
+  }
+  var html = '<div style="font-size:11px;font-weight:700;color:rgba(255,120,120,0.9);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">📋 Langkah aktifkan notifikasi:</div>';
+  steps.forEach(function(s){
+    html += '<div style="display:flex;align-items:flex-start;gap:9px;margin-bottom:8px">'
+      + '<div style="min-width:26px;height:26px;border-radius:50%;background:rgba(255,80,80,0.12);border:1px solid rgba(255,80,80,0.25);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">' + s.icon + '</div>'
+      + '<div style="font-size:12px;color:rgba(255,255,255,0.7);line-height:1.55;padding-top:4px">' + s.text + '</div>'
+      + '</div>';
+  });
+  // Visual address bar hint
+  html += '<div style="margin:10px 0 8px;padding:8px 10px;background:rgba(0,0,0,0.3);border-radius:8px;display:flex;align-items:center;gap:7px">'
+    + '<span style="font-size:16px">🔒</span>'
+    + '<div style="flex:1;background:rgba(255,255,255,0.08);border-radius:5px;padding:4px 10px;font-size:11px;color:rgba(255,255,255,0.3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + location.hostname + '</div>'
+    + '<span style="font-size:10px;color:rgba(255,120,120,0.8);font-weight:700;flex-shrink:0;white-space:nowrap">← tap sini</span>'
+    + '</div>';
+  // Open settings button (not iOS — can't deep link to Safari notif settings)
+  if(!isIOS){
+    html += '<button onclick="_openSiteSettings()" style="width:100%;margin-top:4px;padding:11px;border:1.5px solid rgba(255,80,80,0.35);border-radius:10px;background:rgba(255,80,80,0.1);color:rgba(255,150,150,0.95);font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px">'
+      + '⚙️ &nbsp;Coba Buka Setelan Situs'
+      + '</button>';
+  }
+  // Refresh button
+  html += '<button onclick="location.reload()" style="width:100%;margin-top:8px;padding:11px;border:1.5px solid rgba(52,211,153,0.25);border-radius:10px;background:rgba(52,211,153,0.08);color:rgba(52,211,153,0.9);font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px">'
+    + '🔄 &nbsp;Refresh Halaman (setelah diizinkan)'
+    + '</button>';
+  el.innerHTML = html;
+}
+
+function _openSiteSettings(){
+  // Android Chrome: try opening the notification settings via app settings
+  // chrome:// URLs are blocked from web pages — use Android intent instead
+  try {
+    // Works on some Android Chrome versions via intent
+    location.href = 'intent://notification#Intent;scheme=android-app;package=com.android.settings;action=android.settings.APP_NOTIFICATION_SETTINGS;end';
+  } catch(e){}
+  // Always show guidance toast as primary fallback
+  setTimeout(function(){
+    showToast('\uD83D\uDD12 Tap kunci \uD83D\uDD12 di address bar → Izin situs → Notifikasi → Izinkan → Refresh');
+  }, 600);
+}
+
 function _settingsRequestNotif(){
+  // If already denied, skip request and just show guide
+  if('Notification' in window && Notification.permission === 'denied'){
+    _updateNotifSettingsUI();
+    return;
+  }
   _requestNotifPermission(function(ok){
     _updateNotifSettingsUI();
-    if(ok){ showToast('\u2705 Notifikasi reminder aktif!'); scheduleReminders(); }
-    else   showToast('\u274C Notifikasi diblokir. Aktifkan di setelan browser.');
+    if(ok){
+      showToast('\u2705 Notifikasi reminder aktif!');
+      scheduleReminders();
+    } else {
+      // Could be denied OR silently blocked (browser refused to show prompt)
+      _updateNotifSettingsUI();
+      if('Notification' in window && Notification.permission !== 'denied'){
+        // Silently blocked — treat as denied and show guide
+        var dg = document.getElementById('notifDeniedGuide');
+        if(dg){ dg.style.display=''; _renderNotifDeniedGuide(); }
+        var lbl = document.getElementById('notifStatusLabel');
+        var sub = document.getElementById('notifStatusSub');
+        if(lbl) lbl.textContent = 'Tidak Dapat Meminta Izin';
+        if(sub) sub.textContent = 'Aktifkan manual lewat setelan situs browser';
+      }
+    }
   });
 }
 
@@ -21660,6 +21822,9 @@ document.addEventListener('DOMContentLoaded', function(){
 
 // Also handle window resize
 window.addEventListener('resize', function(){
+  // FIX: Skip saat keyboard mobile muncul (ada input/textarea fokus)
+  var _fa=document.activeElement;
+  if(_fa&&(_fa.tagName==='INPUT'||_fa.tagName==='TEXTAREA'))return;
   if(!isMobileNavMode()){
     document.body.classList.remove('mobile-nav-sidebar');
     var btn = document.getElementById('mobileSidebarToggleBtn');
