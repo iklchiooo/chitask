@@ -8638,34 +8638,62 @@ function buildDetailColorPicker(){
 // ══════════════════════════════════════════════
 // FILTER
 // ══════════════════════════════════════════════
+
+// Helper: apakah task dianggap "selesai" secara efektif?
+// - Task biasa: t.done === true
+// - Habit/Task repeat: t.done ATAU ada entry di t.history (karena setelah repeat
+//   reschedule, t.done di-reset ke false tapi history tanggal tetap tercatat)
+// - Task dengan steps: stepsDone >= steps (tapi setelah reset stepsDone=0, tidak done lagi)
+function isEffectiveDone(t){
+  if(t.done)return true;
+  if(t.history&&t.history.length){
+    // Cek apakah ada history entry yang bukan future (sudah terjadi)
+    for(var i=0;i<t.history.length;i++){
+      if(t.history[i]<=todayStr)return true;
+    }
+  }
+  return false;
+}
+
+// Helper: apakah task selesai UNTUK HARI INI atau due-date-nya (untuk filter per-tab)
+function isDoneForDate(t, dateStr){
+  if(t.done&&(t.doneDate===dateStr||!t.doneDate))return true;
+  if(t.history&&t.history.indexOf(dateStr)>=0)return true;
+  return false;
+}
+
 function getFiltered(){
   switch(currentView){
     case 'myday':     return tasks.filter(function(t){
       if(!(t.myday||t.due===todayStr))return false;
-      // Habit done = ada di history untuk due-date-nya (bisa kemarin jika overdue lalu dicentang)
       var hd=t.due&&t.due<todayStr?t.due:todayStr;
-      var habitDone=t.type==='Habit'&&t.history&&t.history.indexOf(hd)>=0;
-      return !t.done&&!habitDone;
+      return !isDoneForDate(t,hd);
     }).concat(tasks.filter(function(t){
       if(!(t.myday||t.due===todayStr))return false;
       var hd=t.due&&t.due<todayStr?t.due:todayStr;
-      var habitDone=t.type==='Habit'&&t.history&&t.history.indexOf(hd)>=0;
-      return t.done||habitDone;
+      return isDoneForDate(t,hd);
     }));
     case 'important': return tasks.filter(function(t){
       if(!t.important)return false;
       var hd=t.due&&t.due<todayStr?t.due:todayStr;
-      var habitDone=t.type==='Habit'&&t.history&&t.history.indexOf(hd)>=0;
-      return !t.done&&!habitDone;
+      return !isDoneForDate(t,hd);
     }).concat(tasks.filter(function(t){
       if(!t.important)return false;
       var hd=t.due&&t.due<todayStr?t.due:todayStr;
-      var habitDone=t.type==='Habit'&&t.history&&t.history.indexOf(hd)>=0;
-      return t.done||habitDone;
+      return isDoneForDate(t,hd);
     }));
-    case 'planned':   return tasks.filter(function(t){return t.due&&!t.done;}).sort(function(a,b){return a.due.localeCompare(b.due);});
-    case 'all':       return tasks.slice().sort(function(a,b){return a.done-b.done;});
-    case 'completed': return tasks.filter(function(t){return t.done;});
+    case 'planned':   return tasks.filter(function(t){
+      if(!t.due)return false;
+      return !isDoneForDate(t,t.due);
+    }).sort(function(a,b){return a.due.localeCompare(b.due);})
+    .concat(tasks.filter(function(t){
+      if(!t.due)return false;
+      return isDoneForDate(t,t.due);
+    }).sort(function(a,b){return a.due.localeCompare(b.due);}));
+    case 'all':       return tasks.slice().sort(function(a,b){
+      return isEffectiveDone(a)-isEffectiveDone(b);
+    });
+    case 'completed': return tasks.filter(function(t){return isEffectiveDone(t);});
     case 'habits':    return tasks.filter(function(t){return t.type==='Habit';});
     default:          return tasks;
   }
@@ -9015,7 +9043,7 @@ function renderMain(){
     return;
   }
   var html='';
-  var pending=list.filter(function(t){return!t.done;}),done=list.filter(function(t){return t.done;});
+  var pending=list.filter(function(t){return!isEffectiveDone(t);}),done=list.filter(function(t){return isEffectiveDone(t);});
   if(pending.length){
     if(currentView==='planned'){
       var overdueList=pending.filter(function(t){return t.due<todayStr;});
@@ -9044,10 +9072,9 @@ function taskCard(t){
   var over=isOverdue(t);
   var isMulti=t.steps&&t.steps>=2;
   var stepsDone=t.stepsDone||0;
-  // FIX: Habit done = ada di history untuk due-date-nya (bisa kemarin jika overdue dicentang hari ini)
-  var _hd=t.due&&t.due<todayStr?t.due:todayStr;
-  var habitDoneToday=(t.type==='Habit'&&t.history&&t.history.indexOf(_hd)>=0);
-  var effectiveDone=isMulti?(stepsDone>=t.steps):(t.done||habitDoneToday);
+  // FIX: gunakan isEffectiveDone untuk konsistensi dengan filter & render
+  var habitDoneToday=false; // sudah di-handle oleh isEffectiveDone
+  var effectiveDone=isMulti?(stepsDone>=t.steps):isEffectiveDone(t);
   var color=t.color||'';
   var taskXP=getTaskXP(t);
 
@@ -13064,6 +13091,8 @@ function toggleDone(id){
         t.due=nextDue;
         t.done=false;
         t.doneDate=null;
+        // FIX: reset steps supaya task muncul kembali sebagai aktif
+        if(t.steps)t.stepsDone=0;
         // Jika next due = hari ini, langsung masuk myday
         t.myday=(nextDue===todayStr);
       }
@@ -13103,8 +13132,10 @@ function toggleDone(id){
       }
     }
   }
+  // Catat history untuk semua task (bukan hanya Habit)
+  // supaya tab Selesai bisa query berdasarkan history tanggal
+  if(!t.history)t.history=[];
   if(t.type==='Habit'){
-    if(!t.history)t.history=[];
     // FIX OVERDUE HABIT: catat history di tanggal due asli, bukan hari ini
     var histDate=(t.doneDate&&t.doneDate<todayStr)?t.doneDate:todayStr;
     if(t.done){
@@ -13112,6 +13143,16 @@ function toggleDone(id){
     } else {
       // Saat un-check: hapus dari history hari ini DAN due asli (jaga-jaga)
       [todayStr, histDate].forEach(function(d){
+        var idx=t.history.indexOf(d);if(idx>=0)t.history.splice(idx,1);
+      });
+    }
+  } else {
+    // Task biasa: catat/hapus doneDate di history
+    var taskHistDate=t.doneDate||todayStr;
+    if(t.done){
+      if(t.history.indexOf(taskHistDate)<0)t.history.push(taskHistDate);
+    } else {
+      [todayStr,taskHistDate].forEach(function(d){
         var idx=t.history.indexOf(d);if(idx>=0)t.history.splice(idx,1);
       });
     }
@@ -13133,15 +13174,27 @@ function toggleStep(id,idx){
     t.doneDate=effDate;totalDone++;addXP(getTaskXP(t));var gg=t.goldVal||GOLD_PER_TASK;addGold(gg);awardStatProgress(t);triggerCompletionEffect();
     if(t.repeat){
       var nd=calcNextDue(t,effDate);
-      if(nd){t._prevDue=t.due;t.due=nd;t.done=false;t.doneDate=null;t.myday=(nd===todayStr);}
+      if(nd){
+        t._prevDue=t.due;
+        t.due=nd;
+        t.done=false;
+        t.doneDate=null;
+        // FIX: reset steps supaya task muncul kembali sebagai aktif di My Day
+        t.stepsDone=0;
+        t.myday=(nd===todayStr);
+      }
     }
   }
   else if(!t.done&&wasDone){t.doneDate=null;totalDone=Math.max(0,totalDone-1);xp=Math.max(0,xp-getTaskXP(t));updateXPBar();revokeStatProgress(t);}
+  if(!t.history)t.history=[];
   if(t.type==='Habit'){
-    if(!t.history)t.history=[];
     var hd=(t.doneDate&&t.doneDate<todayStr)?t.doneDate:todayStr;
     if(t.done){if(t.history.indexOf(hd)<0)t.history.push(hd);}
     else{[todayStr,hd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
+  } else {
+    var thd=t.doneDate||todayStr;
+    if(t.done){if(t.history.indexOf(thd)<0)t.history.push(thd);}
+    else{[todayStr,thd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
   }
   showToast(t.done?'Semua langkah selesai! ✅':t.stepsDone+'/'+t.steps+' langkah ✓');
   checkAchievements();saveData(true);render();
