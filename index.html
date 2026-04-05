@@ -8647,10 +8647,10 @@ function buildDetailColorPicker(){
 function isEffectiveDone(t){
   if(t.done)return true;
   if(t.history&&t.history.length){
-    // Cek apakah ada history entry yang bukan future (sudah terjadi)
-    for(var i=0;i<t.history.length;i++){
-      if(t.history[i]<=todayStr)return true;
-    }
+    // Untuk Habit/repeat: cek apakah due date saat ini ada di history
+    // (jangan cek semua history masa lalu — itu history hari-hari sebelumnya yang normal)
+    var checkDate=t.due&&t.due<=todayStr?t.due:todayStr;
+    if(t.history.indexOf(checkDate)>=0)return true;
   }
   return false;
 }
@@ -8920,7 +8920,12 @@ function renderMain(){
   if(currentView==='myday'){
     // FIX: Kumpulkan task overdue (due < hari ini, belum selesai, bukan habit) meski myday=false
     var overdueTasks=tasks.filter(function(t){
-      return !t.done && !t.myday && t.due && t.due<todayStr && t.type!=='Habit';
+      if(t.done||t.myday)return false;
+      if(!t.due||t.due>=todayStr)return false;
+      if(t.type==='Habit')return false;
+      // Exclude task yang sudah efektif selesai via history (repeat reschedule)
+      if(isEffectiveDone(t))return false;
+      return true;
     });
     var mydayTasks=tasks.filter(function(t){
       if(!t.myday)return false;
@@ -8957,8 +8962,8 @@ function renderMain(){
     var html=overdueHtml+getUpcomingTaskReminderHTML()+getJournalMyDayBannerHTML()+getTagihanMyDayHTML()+getMaintMyDayHTML();
     orderedGrps.forEach(function(g){
       var gTasks=groups[g];
-      var pending=gTasks.filter(function(t){return!t.done&&!(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);});
-      var done=gTasks.filter(function(t){return t.done||(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);});
+      var pending=gTasks.filter(function(t){return!isEffectiveDone(t)&&!(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);});
+      var done=gTasks.filter(function(t){return isEffectiveDone(t)||(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);});
       if(!pending.length&&done.length)return;
       var gKey='md_'+g;
       if(!(gKey in groupOpenState))groupOpenState[gKey]=true;
@@ -12932,9 +12937,11 @@ function confirmCustomRepeat() {
   else if (n===1 && unit==='Bulan')  val = 'Bulanan';
   else val = 'Tiap ' + n + ' ' + unit;
 
-  if (_customRepeatTargetSel) {
-    var sel = _customRepeatTargetSel;
-    // Tambah option baru kalau belum ada
+  // Tambah option custom ke SEMUA repeat select supaya saat sync antar bar tidak hilang
+  var allRepeatSels = ['chip-repeat','mchip-repeat','sqa-repeat'];
+  allRepeatSels.forEach(function(selId) {
+    var sel = document.getElementById(selId);
+    if (!sel) return;
     var found = false;
     for (var i = 0; i < sel.options.length; i++) {
       if (sel.options[i].value === val) { found = true; break; }
@@ -12942,10 +12949,15 @@ function confirmCustomRepeat() {
     if (!found) {
       var opt = document.createElement('option');
       opt.value = val; opt.textContent = val;
-      sel.insertBefore(opt, sel.lastElementChild);
+      // Sisipkan sebelum option __custom__ (selalu di ujung)
+      var anchor = sel.querySelector('option[value="__custom__"]');
+      sel.insertBefore(opt, anchor || sel.lastElementChild);
     }
-    sel.value = val;
-  }
+    // Set value hanya ke select yang jadi target
+    if (_customRepeatTargetSel && sel === _customRepeatTargetSel) {
+      sel.value = val;
+    }
+  });
   document.getElementById('customRepeatOverlay').style.display = 'none';
   document.getElementById('customRepeatModal').style.display = 'none';
   _customRepeatTargetSel = null;
@@ -12971,19 +12983,21 @@ function closeDailyExceptModal(){
 }
 function selectDailyExceptDay(hari){
   var val='Harian kecuali '+hari;
-  if(_dailyExceptTargetSel){
-    var sel=_dailyExceptTargetSel;
-    // Insert option if not already there
-    var exists=false;
-    for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===val){exists=true;break;}}
-    if(!exists){
-      var opt=document.createElement('option');
-      opt.value=val;opt.textContent=val;
-      var anchor=sel.querySelector('option[value="__daily_except__"]');
-      sel.insertBefore(opt,anchor?anchor.nextSibling:sel.lastElementChild);
+  // Tambah option ke SEMUA repeat select supaya sync antar bar tidak kehilangan nilai
+  var allRepeatSels2 = ['chip-repeat','mchip-repeat','sqa-repeat'];
+  allRepeatSels2.forEach(function(selId) {
+    var sel2 = document.getElementById(selId);
+    if (!sel2) return;
+    var exists2 = false;
+    for (var i = 0; i < sel2.options.length; i++) { if (sel2.options[i].value === val) { exists2 = true; break; } }
+    if (!exists2) {
+      var opt2 = document.createElement('option');
+      opt2.value = val; opt2.textContent = val;
+      var anchor2 = sel2.querySelector('option[value="__daily_except__"]');
+      sel2.insertBefore(opt2, anchor2 ? anchor2.nextSibling : sel2.lastElementChild);
     }
-    sel.value=val;
-  }
+    if (_dailyExceptTargetSel && sel2 === _dailyExceptTargetSel) sel2.value = val;
+  });
   closeDailyExceptModal();
 }
 function updateCustomRepeat() {
@@ -13062,10 +13076,16 @@ function calcNextDue(t, fromDate) {
   if (!days) return null;
   var base = fromDate || todayStr;
   var dt = new Date(base + 'T00:00:00');
-  dt.setDate(dt.getDate() + days);
-  // Skip hari yang dikecualikan (Harian kecuali X)
   var skipDay = getExceptDay(t.repeat);
-  if (skipDay >= 0 && dt.getDay() === skipDay) dt.setDate(dt.getDate() + 1);
+  // Maju sesuai interval repeat sampai next due >= hari ini
+  // (menangani kasus overdue: task yang sudah lewat beberapa hari/minggu/bulan)
+  var maxIter = 1000; // safety guard
+  do {
+    dt.setDate(dt.getDate() + days);
+    // Skip hari yang dikecualikan (Harian kecuali X)
+    if (skipDay >= 0 && dt.getDay() === skipDay) dt.setDate(dt.getDate() + 1);
+    maxIter--;
+  } while (localDateStr(dt) < todayStr && maxIter > 0);
   return localDateStr(dt);
 }
 
@@ -13093,9 +13113,42 @@ function toggleDone(id){
         t.doneDate=null;
         // FIX: reset steps supaya task muncul kembali sebagai aktif
         if(t.steps)t.stepsDone=0;
+        // FIX: hapus history effectiveDoneDate supaya isEffectiveDone tidak
+        // menganggap task masih selesai — task sudah direschedule ke hari ini
+        if(t.history){
+          var hi=t.history.indexOf(effectiveDoneDate);
+          if(hi>=0)t.history.splice(hi,1);
+        }
         // Jika next due = hari ini, langsung masuk myday
         t.myday=(nextDue===todayStr);
       }
+    }
+    // OVERDUE NON-REPEAT: task biasa (bukan repeat) yang due-nya sudah lewat,
+    // saat diselesaikan → spawn task baru dengan nama sama dan due hari ini
+    if(!t.repeat&&t.due&&t.due<todayStr){
+      var spawnTask={
+        id:nextId++,
+        name:t.name,
+        type:t.type||'Task',
+        repeat:'',
+        due:todayStr,
+        done:false,
+        important:t.important||false,
+        myday:true,
+        note:t.note||'',
+        group:t.group||'',
+        history:[],
+        color:t.color||'',
+        subtasks:[],
+        reminder:t.reminder||'',
+        xpVal:t.xpVal||0,
+        goldVal:t.goldVal||0,
+        isShopping:t.isShopping||false,
+        price:t.price||0,
+        walletId:t.walletId||''
+      };
+      tasks.push(spawnTask);
+      showToast('✅ Selesai! Task baru ditambahkan untuk hari ini 📅');
     }
     // Shopping: deduct from wallet
     if(t.isShopping&&t.price&&t.walletId){
@@ -13112,13 +13165,18 @@ function toggleDone(id){
     t.doneDate=null;totalDone=Math.max(0,totalDone-1);
     xp=Math.max(0,xp-getTaskXP(t));updateXPBar();
     revokeStatProgress(t);
-    // Undo repeat scheduling
+    // Undo repeat scheduling (kalau sebelumnya sudah di-reschedule)
     if(t.repeat&&t._prevDue!==undefined){
       t.due=t._prevDue;
       delete t._prevDue;
-      if(t.due===todayStr)t.myday=true;
-      else t.myday=false;
     }
+    // FIX RESTORE: kalau due-nya kemarin (overdue), geser ke hari ini
+    // supaya task muncul kembali di My Day sebagai aktif
+    if(t.due&&t.due<todayStr){
+      t.due=todayStr;
+    }
+    t.myday=(t.due===todayStr||!t.due);
+    if(t.steps)t.stepsDone=0;
     // Reverse shopping deduction (find latest matching tx)
     if(t.isShopping&&t.price&&t.walletId){
       var w=getWalletById(t.walletId);
@@ -13157,7 +13215,8 @@ function toggleDone(id){
       });
     }
   }
-  if((!t.isShopping||!t.price)&&!t.repeat)showToast(t.done?'Task selesai! ✅':'Task dibuka kembali');
+  if(t.repeat&&!t.done&&t.due){showToast('✅ Selesai! Next due: '+t.due+' 🔄');}
+  else if((!t.isShopping||!t.price)&&!t.repeat&&!(t.due&&t.due<todayStr)){showToast(t.done?'Task selesai! ✅':'Task dibuka kembali');}
   checkAchievements();saveData(true);render();
 }
 
@@ -13179,13 +13238,23 @@ function toggleStep(id,idx){
         t.due=nd;
         t.done=false;
         t.doneDate=null;
-        // FIX: reset steps supaya task muncul kembali sebagai aktif di My Day
         t.stepsDone=0;
+        // FIX: hapus history effDate supaya task tidak dianggap selesai setelah reschedule
+        if(t.history){var hi=t.history.indexOf(effDate);if(hi>=0)t.history.splice(hi,1);}
         t.myday=(nd===todayStr);
       }
     }
   }
-  else if(!t.done&&wasDone){t.doneDate=null;totalDone=Math.max(0,totalDone-1);xp=Math.max(0,xp-getTaskXP(t));updateXPBar();revokeStatProgress(t);}
+  else if(!t.done&&wasDone){
+    t.doneDate=null;totalDone=Math.max(0,totalDone-1);
+    xp=Math.max(0,xp-getTaskXP(t));updateXPBar();revokeStatProgress(t);
+    // Undo repeat jika ada
+    if(t.repeat&&t._prevDue!==undefined){t.due=t._prevDue;delete t._prevDue;}
+    // FIX RESTORE: due kemarin → geser ke hari ini, muncul di My Day aktif
+    if(t.due&&t.due<todayStr)t.due=todayStr;
+    t.myday=(t.due===todayStr||!t.due);
+    t.stepsDone=0;
+  }
   if(!t.history)t.history=[];
   if(t.type==='Habit'){
     var hd=(t.doneDate&&t.doneDate<todayStr)?t.doneDate:todayStr;
