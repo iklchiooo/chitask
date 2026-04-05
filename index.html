@@ -2503,9 +2503,9 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 .myday-drag-handle:active{cursor:grabbing}
 
 /* Calendar */
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:10px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:10px;overflow:visible;padding-top:12px}
 .cal-head{text-align:center;font-size:10px;font-weight:700;color:var(--muted);padding:4px 0}
-.cal-cell{text-align:center;padding:6px 2px;border-radius:6px;cursor:pointer;transition:background 0.1s;font-size:12px;border:1px solid transparent;min-height:44px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.cal-cell{text-align:center;padding:6px 2px;border-radius:6px;cursor:pointer;transition:background 0.1s;font-size:12px;border:1px solid transparent;min-height:44px;display:flex;flex-direction:column;align-items:center;gap:2px;overflow:visible}
 .cal-cell:hover{background:var(--hover)}
 .cal-cell.today{border-color:var(--accent);font-weight:700;color:var(--accent)}
 .cal-cell.has-tasks{background:rgba(217,119,6,0.06)}
@@ -3105,7 +3105,7 @@ body.sololeveling-theme .sqa-select option{
 /* ══════════════════════════════════════
    JURNAL HARIAN STYLES
 ══════════════════════════════════════ */
-.journal-cal-cell{text-align:center;padding:5px 2px;border-radius:6px;cursor:pointer;transition:background 0.1s;font-size:12px;border:1px solid transparent;min-height:44px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+.journal-cal-cell{text-align:center;padding:5px 2px;border-radius:6px;cursor:pointer;transition:background 0.1s;font-size:12px;border:1px solid transparent;min-height:44px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;overflow:visible}
 .journal-cal-cell:hover{background:var(--hover)}
 .journal-cal-cell.today{border-color:var(--accent);font-weight:700;color:var(--accent)}
 .journal-cal-cell.has-journal{background:rgba(139,92,246,0.06)}
@@ -7319,7 +7319,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
     <!-- Entry text -->
     <div style="margin-bottom:14px">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">✍️ Tulisan</div>
-      <textarea id="jm-content" rows="7" placeholder="Apa yang kamu rasakan hari ini? Apa yang terjadi? Apa yang kamu syukuri?" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--bg);outline:none;resize:vertical;transition:border-color 0.15s;line-height:1.6" onkeyup="journalAutoBullet(this,event)"></textarea>
+      <textarea id="jm-content" rows="7" placeholder="Apa yang kamu rasakan hari ini? Apa yang terjadi? Apa yang kamu syukuri?" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--bg);outline:none;resize:vertical;transition:border-color 0.15s;line-height:1.6" onkeydown="journalAutoBullet(this,event)"></textarea>
     </div>
     <!-- Tags -->
     <div style="margin-bottom:16px">
@@ -8306,28 +8306,51 @@ function scheduleReminders(){
     datesToSchedule.forEach(function(dateStr){
       var remind = new Date(dateStr + 'T' + timeStr + ':00');
       var diff = remind - now;
+      var taskName = t.name;
+      var taskId = t.id;
+      var dueDateLabel = (dateStr !== todayDateStr) ? ' (' + dateStr + ')' : '';
+
+      // ── Notifikasi utama (tepat waktu) ──
       if(diff > 0 && diff < maxFuture){
-        var taskName = t.name;
-        var taskId = t.id;
         var tag = 'chitask-rem-' + taskId + '-' + dateStr;
-        var dueDateLabel = (dateStr !== todayDateStr) ? ' (' + dateStr + ')' : '';
-        var timer = setTimeout(function(){
-          // Cek lagi task masih ada dan belum selesai saat notifikasi mau keluar
-          var stillActive = tasks.some(function(x){ return x.id === taskId && !x.done; });
-          if(!stillActive) return;
-          _fireNotification(
-            'ChiTask \u23F0 Pengingat',
-            taskName + dueDateLabel,
-            tag,
-            taskId
-          );
-        }, diff);
-        reminderTimers.push(timer);
+        (function(tn, ti, tg, dl, df){
+          var timer = setTimeout(function(){
+            var stillActive = tasks.some(function(x){ return x.id === ti && !x.done; });
+            if(!stillActive) return;
+            _fireNotification('ChiTask \u23F0 Waktunya!', '\u23f0 ' + tn + dl + ' — Sekarang!', tg, ti);
+          }, df);
+          reminderTimers.push(timer);
+        })(taskName, taskId, tag, dueDateLabel, diff);
         // ── FCM: simpan ke Firestore agar push tetap terkirim meski tab tutup ──
         if (fbUser && diff > 0) {
           _fcmSaveReminder(fbUser.uid, taskId, taskName + dueDateLabel, remind.getTime());
         }
       }
+
+      // ── Early reminder notifications: 2 jam, 1 jam, 30 menit sebelum ──
+      var earlySlots = [
+        { ms: 2*60*60*1000, label: '2 jam lagi' },
+        { ms: 60*60*1000,   label: '1 jam lagi' },
+        { ms: 30*60*1000,   label: '30 menit lagi' }
+      ];
+      earlySlots.forEach(function(slot){
+        var earlyDiff = diff - slot.ms;
+        if(earlyDiff > 0 && earlyDiff < maxFuture){
+          var earlyTag = 'chitask-early-' + taskId + '-' + dateStr + '-' + slot.ms;
+          (function(tn, ti, et, el, dl, ed){
+            var timer = setTimeout(function(){
+              var stillActive = tasks.some(function(x){ return x.id === ti && !x.done; });
+              if(!stillActive) return;
+              _fireNotification(
+                'ChiTask \u23F0 ' + el,
+                tn + dl + ' dimulai dalam ' + el,
+                et, ti
+              );
+            }, ed);
+            reminderTimers.push(timer);
+          })(taskName, taskId, earlyTag, slot.label, dueDateLabel, earlyDiff);
+        }
+      });
     });
   });
 }
@@ -9455,6 +9478,8 @@ function renderCalendar(el){
     var isToday=dateStr===todayStr;
     var isSel=dateStr===calSelectedDate;
     var dayTasks=tasks.filter(function(t){return t.due===dateStr||(t.type==='Habit'&&t.history&&t.history.indexOf(dateStr)>=0);});
+    // Deduplicate by id
+    var _seen={}; dayTasks=dayTasks.filter(function(t){return _seen[t.id]?false:(_seen[t.id]=true);});
     var dayGcal=(_gcalEvents[dateStr]||[]);
     var dotHtml='';
     dayTasks.slice(0,3).forEach(function(t){
@@ -9545,24 +9570,26 @@ function renderUnifiedCalendar(el) {
     var isToday = dateStr === todayStr;
     var isSel = dateStr === calSelectedDate;
     var dayTasks = tasks.filter(function(t){ return t.due===dateStr||(t.type==='Habit'&&t.history&&t.history.indexOf(dateStr)>=0); });
+    // Deduplicate by id (a habit with t.due===dateStr AND in t.history would be counted twice)
+    var seenIds = {}; var dedupedTasks = [];
+    dayTasks.forEach(function(t){ if(!seenIds[t.id]){seenIds[t.id]=true;dedupedTasks.push(t);} });
+    dayTasks = dedupedTasks;
     var dayGcal = (_gcalEvents[dateStr] || []);
     var hasJournal = !!getJournalEntry(dateStr);
     var dotHtml = '';
     dayTasks.slice(0,2).forEach(function(t){
       dotHtml += '<div class="cal-dot" style="background:' + (t.color||'var(--accent)') + '"></div>';
     });
-    if (hasJournal) dotHtml += '<div class="cal-dot" style="background:#8b5cf6;border-radius:2px"></div>';
     dayGcal.slice(0,2).forEach(function(ev){
       dotHtml += '<div class="cal-dot" style="background:' + ev.color + ';opacity:0.8"></div>';
     });
     var cls = 'cal-cell' + (isToday?' today':'') + ((dayTasks.length||dayGcal.length||hasJournal)?' has-tasks':'') + (isSel?' selected-date':'');
-    var moodEmoji = '';
     var je = getJournalEntry(dateStr);
-    if (je && je.mood >= 0) moodEmoji = '<div style="font-size:9px;line-height:1;margin-top:1px">' + MOODS[je.mood] + '</div>';
-    html += '<div class="' + cls + '" onclick="calDayClick(\'' + dateStr + '\')">'
+    var moodEmoji = je ? (je.mood >= 0 ? MOODS[je.mood] : '📓') : '';
+    html += '<div class="' + cls + '" onclick="calDayClick(\'' + dateStr + '\')" style="position:relative">'
+      + (moodEmoji ? '<div style="position:absolute;top:-11px;left:-9px;font-size:22px;line-height:1;z-index:2;pointer-events:none;filter:drop-shadow(0 0 1px var(--card)) drop-shadow(0 0 2px var(--card)) drop-shadow(0 0 3px var(--card))">' + moodEmoji + '</div>' : '')
       + '<div class="cal-cell-day">' + d + '</div>'
       + '<div class="cal-dots">' + dotHtml + '</div>'
-      + moodEmoji
       + '</div>';
   }
   var total = firstDay + daysInMonth;
@@ -9575,7 +9602,7 @@ function renderUnifiedCalendar(el) {
   // ── Legend ──
   html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 12px">'
     + '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)"><div class="cal-dot" style="background:var(--accent)"></div>Task</div>'
-    + '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)"><div class="cal-dot" style="background:#8b5cf6;border-radius:2px"></div>Jurnal</div>'
+    + '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)"><span style="font-size:13px;line-height:1">😊</span>Jurnal</div>'
     + '<div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted)"><div class="cal-dot" style="background:#4285F4;opacity:0.8"></div>Google Cal</div>'
     + '</div>';
 
@@ -9800,7 +9827,11 @@ function openReminderPicker(targetId){
     _remH=h24%12||12;
     _remM=m;
   } else {
-    _remH=8;_remM=0;_remAmPm='AM';
+    var _nowD=new Date();
+    var _nowH=_nowD.getHours(),_nowMin=_nowD.getMinutes();
+    _remAmPm=_nowH>=12?'PM':'AM';
+    _remH=_nowH%12||12;
+    _remM=_nowMin;
   }
   remBuildDrums();
   remSetAmPm(_remAmPm);
@@ -11193,10 +11224,23 @@ function getTagihanMyDayHTML(){
   return html;
 }
 
-// ── Upcoming task reminders (reminder waktu dalam 1 jam, belum lewat) ──
+// ── Helper: load/save segera dimulai window setting ──
+function getSegDimulaiWindowMs(){
+  try{
+    var v=parseInt(localStorage.getItem('chitask_segera_window')||'60',10);
+    if(isNaN(v)||v<5)v=60;
+    return v*60*1000;
+  }catch(e){return 3600000;}
+}
+function setSegDimulaiWindow(minutes){
+  try{localStorage.setItem('chitask_segera_window',String(minutes));}catch(e){}
+}
+
+// ── Upcoming task reminders (reminder waktu dalam window yg dipilih, belum lewat) ──
 function getUpcomingTaskReminderHTML(){
   var now=new Date();
   var nowMs=now.getTime();
+  var windowMs=getSegDimulaiWindowMs();
   var upcoming=tasks.filter(function(t){
     if(t.done||!t.reminder||!t.myday)return false;
     // Hanya task hari ini
@@ -11207,8 +11251,8 @@ function getUpcomingTaskReminderHTML(){
     var remDate=new Date(now);
     remDate.setHours(parseInt(parts[0]),parseInt(parts[1]),0,0);
     var diffMs=remDate-nowMs;
-    // Tampilkan kalau waktunya antara sekarang s/d 60 menit ke depan (belum lewat)
-    return diffMs>=0&&diffMs<=3600000;
+    // Tampilkan kalau waktunya antara sekarang s/d window yang dipilih (belum lewat)
+    return diffMs>=0&&diffMs<=windowMs;
   });
   if(!upcoming.length)return'';
   var isOpen=groupOpenState['upcoming_reminder_myday']!==false;
@@ -15237,13 +15281,13 @@ function renderJournalCalendar(el){
     var entry=getJournalEntry(dateStr);
     var hasTasks=tasks.filter(function(t){return t.due===dateStr||(t.type==='Habit'&&t.history&&t.history.indexOf(dateStr)>=0);}).length>0;
     var cls='cal-cell'+(isToday?' today':'')+(entry?' has-journal':'');
-    html+='<div class="'+cls+'" onclick="calDayClickJournal(\''+dateStr+'\')">'
+    var moodEmoji = (entry && entry.mood >= 0) ? MOODS[entry.mood] : (entry ? '📓' : '');
+    html+='<div class="'+cls+'" onclick="calDayClickJournal(\''+dateStr+'\')" style="position:relative">'
+      +(moodEmoji?'<div style="position:absolute;top:-11px;left:-9px;font-size:22px;line-height:1;z-index:2;pointer-events:none;filter:drop-shadow(0 0 1px var(--card)) drop-shadow(0 0 2px var(--card)) drop-shadow(0 0 3px var(--card))">'+moodEmoji+'</div>':'')
       +'<div class="cal-cell-day">'+d+'</div>'
       +'<div class="cal-dots">'
-      +(entry?'<div class="journal-dot" title="Jurnal ada"></div>':'')
       +(hasTasks?'<div class="cal-dot" style="background:var(--accent)" title="Task ada"></div>':'')
       +'</div>'
-      +(entry&&entry.mood>=0?'<div style="font-size:10px;line-height:1">'+MOODS[entry.mood]+'</div>':'')
       +'</div>';
   }
   var total=firstDay+daysInMonth;
@@ -15253,7 +15297,7 @@ function renderJournalCalendar(el){
 
   // Legend
   html+='<div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">'
-    +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)"><div class="journal-dot"></div> Ada jurnal</div>'
+    +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)"><span style="font-size:14px;line-height:1">😊</span> Ada jurnal</div>'
     +'<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)"><div class="cal-dot" style="background:var(--accent)"></div> Ada task</div>'
     +'</div>';
 
@@ -15443,21 +15487,76 @@ function renderJournalTagsInModal(){
   }).join('');
 }
 
-// ── Auto-bullet: ketik "-" di awal baris → "• " ──
+// ── Auto-bullet: ketik "- " di awal baris → "• ", Enter lanjutkan bullet, Backspace remove ──
 function journalAutoBullet(el, e) {
-  // Hanya proses jika user baru saja ketik spasi atau karakter setelah "-"
   var val = el.value;
   var pos = el.selectionStart;
-  // Cari awal baris saat ini
   var lineStart = val.lastIndexOf('\n', pos - 1) + 1;
   var lineText = val.substring(lineStart, pos);
-  // Jika baris dimulai dengan "- " (dash spasi), ganti jadi "• "
-  if (lineText === '- ' || lineText === '-\t') {
+  var BULLET = '\u2022 ';
+  var INDENT = '  '; // 2 spasi indent untuk align teks setelah bullet
+
+  // ── Space setelah "- " → konversi ke bullet ──
+  if (e.key === ' ' && lineText === '-') {
+    e.preventDefault();
     var before = val.substring(0, lineStart);
-    var after = val.substring(lineStart + 2);
-    el.value = before + '\u2022 ' + after;
-    var newPos = lineStart + 2; // posisi setelah "• "
-    el.setSelectionRange(newPos, newPos);
+    var after = val.substring(pos);
+    el.value = before + BULLET + after;
+    var np = lineStart + BULLET.length;
+    el.setSelectionRange(np, np);
+    return;
+  }
+
+  // ── Backspace: jika di awal bullet "• " → kembalikan ke "- " ──
+  if (e.key === 'Backspace') {
+    if (lineText === BULLET) {
+      e.preventDefault();
+      var before = val.substring(0, lineStart);
+      var after = val.substring(lineStart + BULLET.length);
+      el.value = before + '- ' + after;
+      var np = lineStart + 2;
+      el.setSelectionRange(np, np);
+      return;
+    }
+    // Jika di posisi awal "- " → hapus jadi kosong
+    if (lineText === '- ') {
+      e.preventDefault();
+      var before = val.substring(0, lineStart);
+      var after = val.substring(lineStart + 2);
+      el.value = before + after;
+      el.setSelectionRange(lineStart, lineStart);
+      return;
+    }
+    return;
+  }
+
+  // ── Enter: lanjutkan bullet atau keluar jika baris bullet kosong ──
+  if (e.key === 'Enter') {
+    var isBulletLine = lineText.substring(0, 2) === BULLET;
+    var isDashLine = lineText.substring(0, 2) === '- ';
+    var contentAfterBullet = isBulletLine ? lineText.substring(2).trim() : '';
+
+    if (isBulletLine || isDashLine) {
+      e.preventDefault();
+      // Baris bullet kosong (hanya "• " atau "- ") → keluar dari bullet mode
+      if (!contentAfterBullet && isBulletLine) {
+        var before = val.substring(0, lineStart);
+        var after = val.substring(pos);
+        // Hapus bullet di baris ini, lanjut baris baru normal
+        el.value = before.replace(/\u2022 $/, '') + '\n' + after;
+        var np = before.replace(/\u2022 $/, '').length + 1;
+        el.setSelectionRange(np, np);
+        return;
+      }
+      // Lanjutkan bullet di baris berikutnya
+      var prefix = isBulletLine ? BULLET : '- ';
+      var before = val.substring(0, pos);
+      var after = val.substring(pos);
+      el.value = before + '\n' + prefix + after;
+      var np = pos + 1 + prefix.length;
+      el.setSelectionRange(np, np);
+      return;
+    }
   }
 }
 
@@ -20502,6 +20601,30 @@ setTimeout(function(){ bossInit(); }, 700);
       <button id="notifAllowBtn2" onclick="_settingsRequestNotif()" style="flex:1;padding:9px 0;border-radius:10px;border:none;background:var(--accent,#d97706);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Izinkan</button>
       <button id="notifTestBtn" onclick="_settingsTestNotif()" style="flex:1;padding:9px 0;border-radius:10px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Tes Notifikasi</button>
     </div>
+
+    <!-- ── Segera Dimulai Window Setting ── -->
+    <div style="margin-top:14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:14px;padding:12px 14px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
+        <span style="font-size:15px">⏰</span>
+        <span style="font-size:12px;font-weight:800;color:rgba(255,255,255,0.85)">Segera Dimulai — My Day</span>
+      </div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:10px;line-height:1.5">Tampilkan task di bagian "⏰ Segera Dimulai" berapa lama sebelum waktu reminder. Notifikasi push juga akan dikirim 2 jam, 1 jam, dan 30 menit sebelumnya.</div>
+      <!-- Chip options -->
+      <div id="segDimulaiChips" style="display:flex;flex-wrap:wrap;gap:7px">
+        <button class="segdim-chip" data-val="30"  onclick="_selectSegDimWindow(30)"  style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);transition:all 0.15s">30 mnt</button>
+        <button class="segdim-chip" data-val="60"  onclick="_selectSegDimWindow(60)"  style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);transition:all 0.15s">1 jam</button>
+        <button class="segdim-chip" data-val="120" onclick="_selectSegDimWindow(120)" style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);transition:all 0.15s">2 jam</button>
+        <button class="segdim-chip" data-val="180" onclick="_selectSegDimWindow(180)" style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);transition:all 0.15s">3 jam</button>
+        <button class="segdim-chip" data-val="240" onclick="_selectSegDimWindow(240)" style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);transition:all 0.15s">4 jam</button>
+        <button class="segdim-chip" data-val="360" onclick="_selectSegDimWindow(360)" style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);transition:all 0.15s">6 jam</button>
+        <button class="segdim-chip" data-val="720" onclick="_selectSegDimWindow(720)" style="padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);transition:all 0.15s">12 jam</button>
+      </div>
+      <!-- Notif preview -->
+      <div id="segDimNotifPreview" style="margin-top:10px;background:rgba(0,0,0,0.25);border-radius:10px;padding:10px 12px;font-size:11px;color:rgba(255,255,255,0.5);line-height:1.7">
+        <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Contoh notifikasi yang akan dikirim:</div>
+        <div id="segDimNotifLines">—</div>
+      </div>
+    </div>
   </div>
 
   <div style="margin-top:18px;display:flex;gap:10px">
@@ -21287,6 +21410,9 @@ function openNavPreferenceModal(){
   if(typeof applyLang === 'function') applyLang(getLang());
   // Sync notification status UI
   _updateNotifSettingsUI();
+  // Sync segera dimulai window UI
+  var _curWin = parseInt(localStorage.getItem('chitask_segera_window')||'60',10);
+  setTimeout(function(){ _syncSegDimUI(_curWin); }, 50);
 }
 
 function closeNavPreferenceModal(){
@@ -21355,6 +21481,49 @@ function _settingsTestNotif(){
     null
   );
   showToast('\uD83D\uDD14 Notifikasi tes dikirim!');
+}
+
+// ── Segera Dimulai window setting helpers ──
+function _selectSegDimWindow(minutes){
+  setSegDimulaiWindow(minutes);
+  _syncSegDimUI(minutes);
+  showToast('\u2705 Jendela "Segera Dimulai" diset ke ' + _segDimLabel(minutes));
+  if(typeof render === 'function') setTimeout(render, 100);
+}
+
+function _segDimLabel(minutes){
+  if(minutes===30) return '30 menit';
+  if(minutes===60) return '1 jam';
+  if(minutes===120) return '2 jam';
+  if(minutes===180) return '3 jam';
+  if(minutes===240) return '4 jam';
+  if(minutes===360) return '6 jam';
+  if(minutes===720) return '12 jam';
+  return minutes + ' menit';
+}
+
+function _syncSegDimUI(minutes){
+  var chips = document.querySelectorAll('.segdim-chip');
+  chips.forEach(function(c){
+    var isActive = parseInt(c.getAttribute('data-val'),10) === minutes;
+    c.style.background = isActive ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.06)';
+    c.style.borderColor = isActive ? '#3b82f6' : 'rgba(255,255,255,0.15)';
+    c.style.color = isActive ? '#93c5fd' : 'rgba(255,255,255,0.55)';
+  });
+  // Update notif preview lines
+  var lines = document.getElementById('segDimNotifLines');
+  if(!lines) return;
+  var taskEx = 'Rapat Tim';
+  var timeEx = '14:00';
+  var showSlots = [];
+  var slots = [{ms:120,label:'2 jam'},{ms:60,label:'1 jam'},{ms:30,label:'30 mnt'}];
+  slots.forEach(function(s){ if(minutes >= s.ms) showSlots.push(s); });
+  var html = '<div>\uD83D\uDD14 <b style="color:rgba(255,255,255,0.75)">' + taskEx + '</b> dimulai dalam 2 jam &nbsp;<span style="opacity:0.4">(' + timeEx + ')</span></div>';
+  showSlots.forEach(function(s){
+    html += '<div style="margin-top:3px">\uD83D\uDD14 <b style="color:rgba(255,255,255,0.75)">' + taskEx + '</b> dimulai dalam ' + s.label + ' &nbsp;<span style="opacity:0.4">(' + timeEx + ')</span></div>';
+  });
+  html += '<div style="margin-top:3px">\u23F0 <b style="color:rgba(255,255,255,0.75)">' + taskEx + '</b> — Sekarang!</div>';
+  lines.innerHTML = html;
 }
 
 function selectNavMode(mode){
