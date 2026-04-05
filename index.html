@@ -8924,7 +8924,7 @@ function renderMain(){
       return true;
     });
     var mydayTasks=tasks.filter(function(t){
-      if(!t.myday)return false;
+      if(!t.myday&&t.due!==todayStr)return false;
       if(t.type==='Habit')return isHabitDueToday(t);
       return true;
     });
@@ -10193,7 +10193,7 @@ function datePickerClear() {
   var el = document.getElementById(_dpTargetId);
   if (el) el.value = '';
   taskbarDateUpdateLabel(_dpTargetId, '');
-  if (_dpTargetId === 'det-due') liveDetail();
+  if (_dpTargetId === 'det-due') { liveDetail(); saveData(true); render(); }
   closeDatePicker();
 }
 
@@ -10201,7 +10201,7 @@ function confirmDatePicker() {
   var el = document.getElementById(_dpTargetId);
   if (el) el.value = _dpSelectedDate;
   taskbarDateUpdateLabel(_dpTargetId, _dpSelectedDate);
-  if (_dpTargetId === 'det-due') liveDetail();
+  if (_dpTargetId === 'det-due') { liveDetail(); saveData(true); render(); }
   closeDatePicker();
 }
 
@@ -13660,6 +13660,10 @@ function liveDetail(){
   taskbarDateUpdateLabel('det-due', selectedTask.due||'');
   selectedTask.reminder=document.getElementById('det-reminder').value||'';
   selectedTask.myday=document.getElementById('det-myday').value==='true';
+  // Auto-sync myday: kalau due diubah ke hari ini, otomatis masuk My Day
+  if(selectedTask.due===todayStr) selectedTask.myday=true;
+  // Kalau due diubah ke masa depan dan myday tidak di-set manual, keluarkan dari My Day
+  else if(selectedTask.due&&selectedTask.due>todayStr&&document.getElementById('det-myday').value!=='true') selectedTask.myday=false;
   selectedTask.note=document.getElementById('det-note').value;
   selectedTask.group=document.getElementById('det-group').value;
   var xpRaw=parseInt(document.getElementById('det-xp').value)||0;  if(xpRaw>0)selectedTask.xpVal=xpRaw;
