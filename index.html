@@ -1217,6 +1217,8 @@ function loginAsGuest() {
 
 function logout() {
   if (!confirm(t('confirm_logout'))) return;
+  // FIX #1: Hentikan Firestore listener sebelum logout agar tidak jadi zombie listener
+  if (typeof annStopListener === 'function') annStopListener();
   if (fbAuth) fbAuth.signOut();
   // Jangan hapus data lokal untuk guest — itu satu-satunya penyimpanan mereka
   if (!fbUser || !fbUser._isGuest) {
@@ -7606,6 +7608,12 @@ var groupOpenState={}, customGroups=[], customGroupIcons={};
 var mydayGroupOrder=[]; // urutan grup di My Day (drag-to-reorder)
 var xp=0, achievements=[], totalDone=0, perfectDays=0, totalSubtasks=0;
 
+// ══════════════════════════════════════════════
+// ANNOUNCEMENT SYSTEM
+// ══════════════════════════════════════════════
+var _ANN_DEVELOPER_UID = 'sCMFCu4mZVXELiv6nZoTY2KAmng1'; // ← ganti dengan UID Firebase kamu
+var _annUnsubscribe = null; // listener Firestore real-time
+
 // ══ CHARACTER STATS SYSTEM ══
 var charStatProgress={intelligence:0,strength:0,wisdom:0,vitality:0,charisma:0,discipline:0};
 var charStatLastActivity={intelligence:'',strength:'',wisdom:'',vitality:'',charisma:'',discipline:''};
@@ -7967,6 +7975,24 @@ function applyNavSections(){
 // ══════════════════════════════════════════════
 // REPEAT HELPERS
 // ══════════════════════════════════════════════
+// Hitung berapa hari yang benar-benar dijadwalkan untuk habit t dalam array dayList
+function calcScheduledDays(t,dayList){
+  var days=Math.max(1,getRepeatDays(t.repeat||'Harian'));
+  var anchor=t.due||todayStr;
+  var anchorD=new Date(anchor+'T00:00:00');
+  var count=0;
+  dayList.forEach(function(d){
+    // Skip excluded days
+    var dateObj=new Date(d+'T00:00:00');
+    var skip=getExceptDay(t.repeat||'Harian');
+    if(skip>=0&&dateObj.getDay()===skip)return;
+    var diff=Math.round((dateObj-anchorD)/86400000);
+    if(diff<0)return;
+    if(days<=1||diff%days===0)count++;
+  });
+  return count||1; // minimal 1 agar tidak divide by zero
+}
+
 function getRepeatDays(repeat){
   if(!repeat)return 0;
   if(repeat==='Harian')return 1;
@@ -8011,8 +8037,13 @@ function isHabitDueToday(t){
   if(isRepeatSkipToday(t.repeat||'Harian'))return false;
   var days=getRepeatDays(t.repeat||'Harian');
   if(days<=1)return true;
-  // Find last scheduled date: use lastDoneDate or task creation anchor (due date)
-  var anchor=t.due||todayStr;
+  // Find best anchor: due date, atau tanggal paling awal di history, atau hari ini
+  var anchor=t.due;
+  if(!anchor&&t.history&&t.history.length){
+    // Pakai tanggal paling awal di history sebagai anchor yang stabil
+    anchor=t.history.slice().sort()[0];
+  }
+  if(!anchor)anchor=todayStr;
   // Walk forward from anchor by interval to find if today is a scheduled day
   var anchorD=new Date(anchor+'T00:00:00');
   var todayD=new Date(today);
@@ -8120,7 +8151,11 @@ function updateXPBar(){
   if(fill)fill.style.width=pct+'%';
 }
 function getStats(){
-  var maxStreak=tasks.filter(function(t){return t.type==='Habit';}).reduce(function(m,t){return Math.max(m,calcStreak(t));},0);
+  // Gunakan lastKnownStreak jika ada (sudah di-persist saat toggle), fallback ke calcStreak
+  var maxStreak=tasks.filter(function(t){return t.type==='Habit';}).reduce(function(m,t){
+    var s=t.lastKnownStreak!=null?t.lastKnownStreak:calcStreak(t);
+    return Math.max(m,s);
+  },0);
   return{totalDone:totalDone,maxStreak:maxStreak,level:getLevel(),perfectDays:perfectDays,totalSubtasks:totalSubtasks};
 }
 function checkAchievements(){
@@ -8430,17 +8465,30 @@ function calcStreak(t){
   var days=Math.max(1,getRepeatDays(t.repeat||'Harian'));
   var s=0;
   var d=new Date(today);
-  // Check if done today; if not, step back one interval
-  if(t.history.indexOf(localDateStr(d))<0)d.setDate(d.getDate()-days);
-  for(var i=0;i<365;i++){
-    var ds=localDateStr(d);
-    // Within a window of ±(days-1) days, count as done for that interval
-    var found=false;
-    for(var w=0;w<days;w++){
-      var check=new Date(d);check.setDate(check.getDate()-w);
-      if(t.history.indexOf(localDateStr(check))>=0){found=true;break;}
+  // Helper: cek apakah titik jadwal ini adalah excluded day
+  function isSkipPoint(dateObj){
+    if(days>1)return false; // skip-day hanya relevan untuk habit harian
+    var skip=getExceptDay(t.repeat||'Harian');
+    return skip>=0&&dateObj.getDay()===skip;
+  }
+  // Mundur sampai titik jadwal yang tidak di-skip
+  while(isSkipPoint(d))d.setDate(d.getDate()-1);
+  // Cek apakah interval ini sudah ada di history; jika belum, mundur satu interval
+  var winHalf=Math.floor((days-1)/2);
+  function intervalDone(center){
+    // Window simetris: cari history dalam rentang [center-(days-1), center+winHalf]
+    // Ini menangkap check-in lebih awal (forward) maupun terlambat (backward)
+    for(var w=-(days-1);w<=winHalf;w++){
+      var check=new Date(center);check.setDate(check.getDate()+w);
+      if(t.history.indexOf(localDateStr(check))>=0)return true;
     }
-    if(found){s++;d.setDate(d.getDate()-days);}else break;
+    return false;
+  }
+  if(!intervalDone(d))d.setDate(d.getDate()-days);
+  for(var i=0;i<365;i++){
+    // Lewati titik jadwal yang merupakan excluded day
+    while(isSkipPoint(d))d.setDate(d.getDate()-1);
+    if(intervalDone(d)){s++;d.setDate(d.getDate()-days);}else break;
   }
   return s;
 }
@@ -8572,6 +8620,10 @@ function init(){
   updateOnlineIndicator();
   updateMobileBackBtn();
   checkWeeklyReviewPopup();
+  // FIX #3: annStartListener dipanggil di sini (bukan di onAuthStateChanged)
+  // agar fbDb sudah pasti siap dan data sudah dimuat sebelum listener jalan.
+  // Berlaku untuk user Google maupun Guest (FIX #5).
+  annStartListener();
 
   // ── Google Calendar: auto-init via Worker jika pernah connect ──
   if (!_offlineMode && fbUser && !fbUser._isGuest) {
@@ -8693,8 +8745,9 @@ function buildDetailColorPicker(){
 function isEffectiveDone(t){
   if(t.done)return true;
   if(t.history&&t.history.length){
-    // Untuk Habit/repeat: cek apakah due date saat ini ada di history
-    // (jangan cek semua history masa lalu — itu history hari-hari sebelumnya yang normal)
+    // Task dengan due date di masa depan tidak bisa dianggap selesai via history
+    if(t.due&&t.due>todayStr)return false;
+    // Untuk Habit/repeat: cek apakah due date saat ini (atau hari ini) ada di history
     var checkDate=t.due&&t.due<=todayStr?t.due:todayStr;
     if(t.history.indexOf(checkDate)>=0)return true;
   }
@@ -8730,12 +8783,23 @@ function getFiltered(){
     }));
     case 'planned':   return tasks.filter(function(t){
       if(!t.due)return false;
-      return !isDoneForDate(t,t.due)&&!isEffectiveDone(t);
+      // Task future: tampilkan selama belum done (t.done saja, bukan isEffectiveDone)
+      if(t.due>todayStr)return !t.done;
+      // Task hari ini atau overdue: tampilkan jika belum done dan belum ada di history due-nya
+      return !t.done&&!isDoneForDate(t,t.due);
     }).sort(function(a,b){return a.due.localeCompare(b.due);});
     case 'all':       return tasks.slice().sort(function(a,b){
       return isEffectiveDone(a)-isEffectiveDone(b);
     });
-    case 'completed': return tasks.filter(function(t){return isEffectiveDone(t);});
+    case 'completed': return tasks.filter(function(t){
+      // Hanya hari ini — task future tidak mungkin selesai sekarang
+      if(t.due && t.due>todayStr) return false;
+      // Regular task: done=true DAN doneDate tepat hari ini
+      if(t.done && t.doneDate===todayStr) return true;
+      // Repeat/habit yang sudah di-reschedule: done=false tapi history hari ini ada
+      if(!t.done && t.history && t.history.indexOf(todayStr)>=0) return true;
+      return false;
+    });
     case 'habits':    return tasks.filter(function(t){return t.type==='Habit';});
     default:          return tasks;
   }
@@ -8769,7 +8833,12 @@ function updateCounts(){
   document.getElementById('cnt-myday').textContent=tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done&&!(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);}).length;
   document.getElementById('cnt-important').textContent=tasks.filter(function(t){return t.important&&!t.done;}).length;
   document.getElementById('cnt-planned').textContent=tasks.filter(function(t){return t.due&&!t.done;}).length;
-  document.getElementById('cnt-completed').textContent=tasks.filter(function(t){return t.done;}).length;
+  document.getElementById('cnt-completed').textContent=tasks.filter(function(t){
+    if(t.due&&t.due>todayStr)return false;
+    if(t.done&&t.doneDate===todayStr)return true;
+    if(!t.done&&t.history&&t.history.indexOf(todayStr)>=0)return true;
+    return false;
+  }).length;
   // Tagihan due soon (within 7 days or overdue)
   var now=new Date();now.setHours(0,0,0,0);
   var tagihanDue=finTagihan.filter(function(t){if(t.status==='paid')return false;var d=getTagihanNextDue(t);if(!d)return false;var diff=Math.round((new Date(d+'T00:00:00')-now)/86400000);return diff<=7;}).length;
@@ -9009,7 +9078,7 @@ function renderMain(){
       var gTasks=groups[g];
       var pending=gTasks.filter(function(t){return!isEffectiveDone(t)&&!(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);});
       var done=gTasks.filter(function(t){return isEffectiveDone(t)||(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);});
-      if(!pending.length&&done.length)return;
+      if(!pending.length)return;
       var gKey='md_'+g;
       if(!(gKey in groupOpenState))groupOpenState[gKey]=true;
       var isOpen=groupOpenState[gKey];
@@ -9556,6 +9625,31 @@ function gcalConnect() {
   }
 }
 
+// Helper: ambil semua task & habit yang relevan untuk satu tanggal di kalender.
+// Mencakup: due=dateStr, doneDate=dateStr (task selesai di hari itu), habit history
+function getTasksForDate(dateStr){
+  var seen={};
+  var result=[];
+  tasks.forEach(function(t){
+    if(seen[t.id])return;
+    // Task/habit dengan due = dateStr
+    if(t.due===dateStr){seen[t.id]=true;result.push(t);return;}
+    // Habit yang dicentang di dateStr (via history)
+    // PENTING: Jangan tampilkan habit di dateStr kalau due-nya masih di masa depan dari dateStr
+    if(t.type==='Habit'&&t.history&&t.history.indexOf(dateStr)>=0){
+      if(t.due&&t.due>dateStr)return; // due di masa depan → jangan tampilkan di dateStr ini
+      seen[t.id]=true;result.push(t);return;
+    }
+    // Regular task yang diselesaikan di dateStr (doneDate = dateStr, meski due beda)
+    if(t.done&&t.doneDate===dateStr){seen[t.id]=true;result.push(t);return;}
+    // Task tanpa due date tidak muncul di kalender (kecuali selesai di dateStr, sudah ditangani di atas)
+    // TIDAK include history umum di sini — repeat task yang sudah reschedule
+    // cukup muncul di due date barunya, bukan di tanggal history lama.
+    // Hanya Habit yang boleh muncul di history (sudah ditangani di atas).
+  });
+  return result;
+}
+
 function renderCalendar(el){
   var y=calendarYear,m=calendarMonth;
   var months=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -9586,7 +9680,7 @@ function renderCalendar(el){
     var dateStr=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     var isToday=dateStr===todayStr;
     var isSel=dateStr===calSelectedDate;
-    var dayTasks=tasks.filter(function(t){return t.due===dateStr||(t.type==='Habit'&&t.history&&t.history.indexOf(dateStr)>=0);});
+    var dayTasks=getTasksForDate(dateStr);
     // Deduplicate by id
     var _seen={}; dayTasks=dayTasks.filter(function(t){return _seen[t.id]?false:(_seen[t.id]=true);});
     var dayGcal=(_gcalEvents[dateStr]||[]);
@@ -9611,9 +9705,9 @@ function renderCalendar(el){
 
   // Selected date panel
   var selDate=calSelectedDate||todayStr;
-  var selTasks=tasks.filter(function(t){return t.due===selDate||(t.type==='Habit'&&t.history&&t.history.indexOf(selDate)>=0);});
+  var selTasks=getTasksForDate(selDate);
   var selGcal=(_gcalEvents[selDate]||[]);
-  html+='<div style="margin-top:14px"><div class="section-hdr"><span>📅 Task pada '+fmtDate(selDate)+'</span>'
+  html+='<div style="margin-top:14px"><div class="section-hdr"><span>📅 Task & Habit pada '+fmtDate(selDate)+'</span>'
     +'<button onclick="openCalModal(\''+selDate+'\')" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">+ Tambah Task</button>'
     +'</div>';
   if(!selTasks.length&&!selGcal.length){html+='<div style="color:var(--muted);font-size:13px;padding:12px 0">Tidak ada task — klik "+ Tambah Task" untuk menambahkan</div>';}
@@ -9678,7 +9772,7 @@ function renderUnifiedCalendar(el) {
     var dateStr = y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
     var isToday = dateStr === todayStr;
     var isSel = dateStr === calSelectedDate;
-    var dayTasks = tasks.filter(function(t){ return t.due===dateStr||(t.type==='Habit'&&t.history&&t.history.indexOf(dateStr)>=0); });
+    var dayTasks = getTasksForDate(dateStr);
     // Deduplicate by id (a habit with t.due===dateStr AND in t.history would be counted twice)
     var seenIds = {}; var dedupedTasks = [];
     dayTasks.forEach(function(t){ if(!seenIds[t.id]){seenIds[t.id]=true;dedupedTasks.push(t);} });
@@ -9755,7 +9849,7 @@ function renderUnifiedCalendar(el) {
 
   // ── Selected date detail panel ──
   var selDate = calSelectedDate || todayStr;
-  var selTasks = tasks.filter(function(t){ return t.due===selDate||(t.type==='Habit'&&t.history&&t.history.indexOf(selDate)>=0); });
+  var selTasks = getTasksForDate(selDate);
   var selGcal = (_gcalEvents[selDate] || []);
   var selJournal = getJournalEntry(selDate);
 
@@ -10432,7 +10526,7 @@ function renderHabitFull(el){
       if(mob){
         html+='<div style="padding:6px 8px 8px;display:flex;flex-direction:column;gap:8px">';
         gHabits.forEach(function(t){
-          var streak=calcStreak(t),wDone=days7.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(wDone/7*100);
+          var streak=calcStreak(t),wDone=days7.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(wDone/calcScheduledDays(t,days7)*100);
           var sc=streak>=7?'#c2410c':streak>=3?'var(--green)':'var(--muted)';
           var pc=pct>=70?'var(--green)':pct>=40?'#f59e0b':'var(--red)';
           var colorBorder=t.color?'border-left:3px solid '+t.color+';':'';
@@ -10464,7 +10558,7 @@ function renderHabitFull(el){
           +'<div>Habit</div>'+dayNames.map(function(d){return'<div style="text-align:center">'+d+'</div>';}).join('')
           +'<div style="text-align:center">Streak</div><div style="text-align:center">%</div></div>';
         gHabits.forEach(function(t){
-          var streak=calcStreak(t),wDone=days7.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(wDone/7*100);
+          var streak=calcStreak(t),wDone=days7.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(wDone/calcScheduledDays(t,days7)*100);
           var colorBar=t.color?'<div style="width:3px;background:'+t.color+';border-radius:2px;align-self:stretch;flex-shrink:0"></div>':'';
           html+='<div class="hft-row" style="grid-template-columns:'+col+';gap:4px" onclick="openDetail('+t.id+')">'
             +'<div style="display:flex;align-items:center;gap:4px;overflow:hidden">'+colorBar+'<span style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.name+'</span></div>';
@@ -10493,7 +10587,7 @@ function renderHabitFull(el){
       if(mob){
         html+='<div style="padding:6px 8px 8px;display:flex;flex-direction:column;gap:8px">';
         gHabits.forEach(function(t){
-          var streak=calcStreak(t),mDone=days30.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(mDone/30*100);
+          var streak=calcStreak(t),mDone=days30.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(mDone/calcScheduledDays(t,days30)*100);
           var sc=streak>=7?'#c2410c':streak>=3?'var(--green)':'var(--muted)';
           var pc=pct>=70?'var(--green)':pct>=40?'#f59e0b':'var(--red)';
           var colorBorder=t.color?'border-left:3px solid '+t.color+';':'';
@@ -10521,7 +10615,7 @@ function renderHabitFull(el){
           +'<div>Habit</div><div style="font-size:9px;color:var(--muted)">← 30 hari (lama → hari ini)</div>'
           +'<div style="text-align:center">Streak</div><div style="text-align:center">%</div></div>';
         gHabits.forEach(function(t){
-          var streak=calcStreak(t),mDone=days30.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(mDone/30*100);
+          var streak=calcStreak(t),mDone=days30.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(mDone/calcScheduledDays(t,days30)*100);
           var dotHtml='';
           days30.forEach(function(d){
             var done=t.history&&t.history.indexOf(d)>=0,isTd=d===todayStr;
@@ -10566,8 +10660,8 @@ function renderHabitAnalisa(el){
     var s7=days7.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length;
     var s30=days30.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length;
     var s90=days90.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length;
-    var pct7=Math.round(s7/7*100);
-    var pct30=Math.round(s30/30*100);
+    var pct7=Math.round(s7/calcScheduledDays(t,days7)*100);
+    var pct30=Math.round(s30/calcScheduledDays(t,days30)*100);
     var streak=calcStreak(t);
     // Best day of week (last 90 days)
     var dayCount=[0,0,0,0,0,0,0];
@@ -13904,16 +13998,24 @@ function calcNextDue(t, fromDate) {
 
 function toggleDone(id){
   var t=tasks.filter(function(x){return x.id===id;})[0];if(!t)return;
+  // Task dengan due masa depan tidak bisa dicentang
+  if(!t.done&&t.due&&t.due>todayStr){showToast('⏳ Task ini baru bisa diselesaikan pada '+fmt(t.due));return;}
+  var _wasChecked=!t.done; // true = baru dicentang, false = di-uncheck
+  var _savedDoneDate=t.doneDate; // simpan sebelum di-null
+  var effectiveDoneDate=(t.due&&t.due<todayStr)?t.due:todayStr; // tanggal efektif selesai
   t.done=!t.done;
   if(t.done){
     // FIX OVERDUE: gunakan due date asli sebagai tanggal selesai (bukan hari ini)
     // supaya repeat dihitung dari due asli, bukan dari hari dicentang
-    var effectiveDoneDate=(t.due&&t.due<todayStr)?t.due:todayStr;
     t.doneDate=effectiveDoneDate;totalDone++;
-    var xpGain=getTaskXP(t);
-    addXP(xpGain,'+'+xpGain);
-    var goldGain=t.goldVal||GOLD_PER_TASK;
-    addGold(goldGain);
+    // Hanya beri XP & Gold kalau task BELUM PERNAH selesai hari ini (cegah double reward)
+    var _alreadyRewarded=t.history&&(t.history.indexOf(todayStr)>=0||t.history.indexOf(effectiveDoneDate)>=0);
+    if(!_alreadyRewarded){
+      var xpGain=getTaskXP(t);
+      addXP(xpGain,'+'+xpGain);
+      var goldGain=t.goldVal||GOLD_PER_TASK;
+      addGold(goldGain);
+    }
     awardStatProgress(t);
     triggerCompletionEffect();
     // Repeat: jadwalkan ke due berikutnya dihitung dari due asli (bukan hari ini)
@@ -13926,12 +14028,9 @@ function toggleDone(id){
         t.doneDate=null;
         // FIX: reset steps supaya task muncul kembali sebagai aktif
         if(t.steps)t.stepsDone=0;
-        // FIX: hapus history effectiveDoneDate supaya isEffectiveDone tidak
-        // menganggap task masih selesai — task sudah direschedule ke hari ini
-        if(t.history){
-          var hi=t.history.indexOf(effectiveDoneDate);
-          if(hi>=0)t.history.splice(hi,1);
-        }
+        // NOTE: JANGAN hapus history effectiveDoneDate di sini!
+        // History tetap perlu dicatat supaya task muncul di tab Selesai hari ini.
+        // processRepeatReset akan membersihkan next-cycle saat due baru tiba.
         // Jika next due = hari ini, langsung masuk myday
         t.myday=(nextDue===todayStr);
       }
@@ -13948,9 +14047,10 @@ function toggleDone(id){
     var myDayTasks=tasks.filter(function(x){return x.myday;});
     if(myDayTasks.length&&myDayTasks.every(function(x){return x.done;})){perfectDays++;showToast('✨ Hari Sempurna! Semua task selesai!');}
   } else {
-    var _savedDoneDate=t.doneDate; // simpan sebelum di-null untuk cleanup history
     t.doneDate=null;totalDone=Math.max(0,totalDone-1);
     xp=Math.max(0,xp-getTaskXP(t));updateXPBar();
+    // Kembalikan gold yang pernah diberikan saat task diselesaikan
+    goldBalance=Math.max(0,goldBalance-(t.goldVal||GOLD_PER_TASK));updateGoldDisplay();
     revokeStatProgress(t);
     // Undo repeat scheduling (kalau sebelumnya sudah di-reschedule)
     if(t.repeat&&t._prevDue!==undefined){
@@ -13972,34 +14072,23 @@ function toggleDone(id){
       }
     }
   }
-  // Catat history untuk semua task (bukan hanya Habit)
-  // supaya tab Selesai bisa query berdasarkan history tanggal
+  // Catat history untuk semua task supaya tab Selesai bisa query berdasarkan tanggal
+  // History selalu pakai todayStr (hari task dicentang), bukan due date asli
+  // effectiveDoneDate hanya dipakai untuk repeat scheduling, bukan untuk history tab Selesai
   if(!t.history)t.history=[];
-  if(t.type==='Habit'){
-    // FIX OVERDUE HABIT: catat history di tanggal due asli, bukan hari ini
-    var histDate=(t.doneDate&&t.doneDate<todayStr)?t.doneDate:todayStr;
-    if(t.done){
-      if(t.history.indexOf(histDate)<0)t.history.push(histDate);
-    } else {
-      // Saat un-check: hapus dari history hari ini DAN due asli (jaga-jaga)
-      [todayStr, histDate].forEach(function(d){
-        var idx=t.history.indexOf(d);if(idx>=0)t.history.splice(idx,1);
-      });
-    }
+  if(_wasChecked){
+    if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);
   } else {
-    // Task biasa: catat/hapus doneDate di history
-    var taskHistDate=_savedDoneDate||todayStr;
-    if(t.done){
-      if(t.history.indexOf(taskHistDate)<0)t.history.push(taskHistDate);
-    } else {
-      // Hapus semua tanggal yang mungkin tercatat: saved doneDate, today, dan seluruh history hari ini
-      [todayStr, taskHistDate].forEach(function(d){
-        var idx=t.history.indexOf(d);if(idx>=0)t.history.splice(idx,1);
-      });
-    }
+    var hidx=t.history.indexOf(_savedDoneDate||todayStr);if(hidx>=0)t.history.splice(hidx,1);
+    var hidx2=t.history.indexOf(todayStr);if(hidx2>=0)t.history.splice(hidx2,1);
   }
-  if((!t.isShopping||!t.price)&&!t.repeat)showToast(t.done?'Task selesai! ✅':'↩️ Task dibuka kembali');
-  else if(t.repeat&&!t.done&&t.due)showToast('✅ Selesai! Next due: '+t.due+' 🔄');
+  if(_wasChecked){
+    if(t.type==='Habit')showToast('🔥 Habit selesai! Streak terjaga!');
+    else if(t.repeat&&t.due)showToast('✅ Selesai! Next due: '+t.due+' 🔄');
+    else if(!t.isShopping||!t.price)showToast('Task selesai! ✅');
+  } else {
+    showToast('↩️ Task dibuka kembali');
+  }
   checkAchievements();saveData(true);render();
 }
 
@@ -14013,7 +14102,11 @@ function toggleStep(id,idx){
   if(t.done&&!wasDone){
     // FIX OVERDUE: doneDate & repeat base = due asli jika overdue
     var effDate=(t.due&&t.due<todayStr)?t.due:todayStr;
-    t.doneDate=effDate;totalDone++;addXP(getTaskXP(t));var gg=t.goldVal||GOLD_PER_TASK;addGold(gg);awardStatProgress(t);triggerCompletionEffect();
+    t.doneDate=effDate;totalDone++;
+    // Hanya beri XP & Gold kalau belum pernah selesai sebelumnya (cegah double reward)
+    var _stepAlreadyRewarded=t.history&&(t.history.indexOf(todayStr)>=0||t.history.indexOf(effDate)>=0);
+    if(!_stepAlreadyRewarded){addXP(getTaskXP(t));var gg=t.goldVal||GOLD_PER_TASK;addGold(gg);}
+    awardStatProgress(t);triggerCompletionEffect();
     if(t.repeat){
       var nd=calcNextDue(t,effDate);
       if(nd){
@@ -14030,7 +14123,10 @@ function toggleStep(id,idx){
   }
   else if(!t.done&&wasDone){
     t.doneDate=null;totalDone=Math.max(0,totalDone-1);
-    xp=Math.max(0,xp-getTaskXP(t));updateXPBar();revokeStatProgress(t);
+    xp=Math.max(0,xp-getTaskXP(t));updateXPBar();
+    // Kembalikan gold saat step task dibuka kembali
+    goldBalance=Math.max(0,goldBalance-(t.goldVal||GOLD_PER_TASK));updateGoldDisplay();
+    revokeStatProgress(t);
     // Undo repeat jika ada
     if(t.repeat&&t._prevDue!==undefined){t.due=t._prevDue;delete t._prevDue;}
     // FIX RESTORE: due kemarin → geser ke hari ini, muncul di My Day aktif
@@ -14065,6 +14161,8 @@ function toggleHabitDay(id,dateStr){
   var idx=t.history.indexOf(dateStr);
   if(idx>=0)t.history.splice(idx,1);else t.history.push(dateStr);
   if(dateStr===todayStr&&!(t.steps&&t.steps>=2))t.done=t.history.indexOf(todayStr)>=0;
+  // Persist streak setelah perubahan agar achievement comparison konsisten
+  t.lastKnownStreak=calcStreak(t);
   saveData(true);render();
 }
 
@@ -15810,7 +15908,12 @@ function updateBottomNav(){
     'sdi-cnt-myday':tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done;}).length,
     'sdi-cnt-important':tasks.filter(function(t){return t.important&&!t.done;}).length,
     'sdi-cnt-planned':tasks.filter(function(t){return t.due&&!t.done;}).length,
-    'sdi-cnt-completed':tasks.filter(function(t){return t.done;}).length
+    'sdi-cnt-completed':tasks.filter(function(t){
+      if(t.due&&t.due>todayStr)return false;
+      if(t.done&&t.doneDate===todayStr)return true;
+      if(!t.done&&t.history&&t.history.indexOf(todayStr)>=0)return true;
+      return false;
+    }).length
   };
   Object.keys(cntMap).forEach(function(id){
     var el=document.getElementById(id);
@@ -16412,7 +16515,7 @@ function renderJournalCalendar(el){
     var dateStr=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     var isToday=dateStr===todayStr;
     var entry=getJournalEntry(dateStr);
-    var hasTasks=tasks.filter(function(t){return t.due===dateStr||(t.type==='Habit'&&t.history&&t.history.indexOf(dateStr)>=0);}).length>0;
+    var hasTasks=getTasksForDate(dateStr).length>0;
     var cls='cal-cell'+(isToday?' today':'')+(entry?' has-journal':'');
     var moodEmoji = (entry && entry.mood >= 0) ? MOODS[entry.mood] : (entry ? '📓' : '');
     html+='<div class="'+cls+'" onclick="calDayClickJournal(\''+dateStr+'\')" style="position:relative">'
@@ -21073,11 +21176,11 @@ var _origToggleDone = toggleDone;
 toggleDone = function(id){
   var tBefore = tasks.filter(function(x){ return x.id===id; })[0];
   var wasDone = tBefore ? tBefore.done : false;
+  // Task due masa depan: toggleDone akan bail out tanpa mengubah state
+  if(tBefore && !wasDone && tBefore.due && tBefore.due > todayStr) return _origToggleDone(id);
   _origToggleDone(id);
   var tAfter = tasks.filter(function(x){ return x.id===id; })[0];
   if(!tAfter || bossState.defeated) return;
-  // Task repeat: setelah diceklis, done langsung dibalik jadi false untuk reschedule.
-  // Deteksi via _prevDue yang hanya di-set saat repeat berjalan, atau done biasa.
   var wasJustCompleted = !wasDone && (tAfter.done || tAfter._prevDue !== undefined);
   if(wasJustCompleted && !(tAfter.steps && tAfter.steps >= 2)){
     setTimeout(function(){
@@ -21148,6 +21251,8 @@ toggleStep = function(id, idx){
   var tBefore = tasks.filter(function(x){ return x.id===id; })[0];
   var stepsBefore = tBefore ? (tBefore.stepsDone||0) : 0;
   var wasDone = tBefore ? tBefore.done : false;
+  // Task due masa depan tidak boleh memberikan damage boss
+  if(tBefore && tBefore.due && tBefore.due > todayStr) return _origToggleStep(id, idx);
   _origToggleStep(id, idx);
   var tAfter = tasks.filter(function(x){ return x.id===id; })[0];
   if(!tAfter || bossState.defeated) return;
@@ -21778,6 +21883,282 @@ setTimeout(function(){ bossInit(); }, 700);
     <button id="navPrefApplyBtn" onclick="applyNavMode()" style="flex:2;padding:13px;border:none;border-radius:12px;background:var(--accent,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Terapkan Nav</button>
   </div>
   <div id="navPrefHint" style="text-align:center;margin-top:14px;font-size:11px;color:rgba(255,255,255,0.25)">Bisa diubah kapan saja di ⚙️ Settings</div>
+
+  <!-- ══ DEVELOPER PANEL — hanya tampil untuk developer UID ══ -->
+  <div id="devSection" style="display:none;margin-top:20px;border-top:1px solid rgba(217,119,6,0.25);padding-top:20px">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,rgba(217,119,6,0.25),rgba(245,158,11,0.12));border:1px solid rgba(217,119,6,0.3);display:flex;align-items:center;justify-content:center;font-size:18px">🛠️</div>
+        <div>
+          <div style="font-size:15px;font-weight:900;color:#f59e0b;letter-spacing:-0.2px">Developer Console</div>
+          <div style="font-size:10px;color:rgba(217,119,6,0.5);font-weight:600;letter-spacing:0.3px">RESTRICTED ACCESS</div>
+        </div>
+      </div>
+      <span style="font-size:9px;font-weight:800;color:rgba(217,119,6,0.7);background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.25);border-radius:20px;padding:3px 10px;letter-spacing:0.5px;text-transform:uppercase">DEV ONLY</span>
+    </div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-bottom:16px;padding:8px 12px;background:rgba(0,0,0,0.2);border-radius:8px;border-left:3px solid rgba(217,119,6,0.4)">⚡ Panel ini hanya terlihat oleh akun developer. Perubahan langsung berdampak ke semua user.</div>
+
+    <!-- ─── TAB NAV ─── -->
+    <div style="display:flex;gap:5px;margin-bottom:14px;background:rgba(0,0,0,0.2);border-radius:10px;padding:4px">
+      <button id="devTab-ann" onclick="devSwitchTab('ann')"
+        style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:rgba(217,119,6,0.85);color:#fff;transition:all 0.2s">
+        📢 Announce
+      </button>
+      <button id="devTab-debug" onclick="devSwitchTab('debug')"
+        style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:transparent;color:rgba(255,255,255,0.4);transition:all 0.2s">
+        🐛 Debug
+      </button>
+      <button id="devTab-gami" onclick="devSwitchTab('gami')"
+        style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:transparent;color:rgba(255,255,255,0.4);transition:all 0.2s">
+        🎮 Gami
+      </button>
+      <button id="devTab-data" onclick="devSwitchTab('data')"
+        style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:transparent;color:rgba(255,255,255,0.4);transition:all 0.2s">
+        🗄️ Data
+      </button>
+    </div>
+
+    <!-- ══════ TAB: ANNOUNCEMENT ══════ -->
+    <div id="devTabContent-ann">
+
+      <!-- Form buat pengumuman baru -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px">
+          <span style="font-size:14px">✏️</span> Buat Pengumuman Baru
+        </div>
+
+        <!-- Style selector chips -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Pilih Gaya</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="dev-style-chip dev-style-active" data-style="info" onclick="devSelectStyle('info',this)"
+              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid #3b82f6;background:rgba(59,130,246,0.15);color:#60a5fa;transition:all 0.15s">
+              📢 Info
+            </button>
+            <button class="dev-style-chip" data-style="success" onclick="devSelectStyle('success',this)"
+              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">
+              ✅ Sukses
+            </button>
+            <button class="dev-style-chip" data-style="warning" onclick="devSelectStyle('warning',this)"
+              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">
+              ⚠️ Warning
+            </button>
+            <button class="dev-style-chip" data-style="danger" onclick="devSelectStyle('danger',this)"
+              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">
+              🚨 Bahaya
+            </button>
+            <button class="dev-style-chip" data-style="promo" onclick="devSelectStyle('promo',this)"
+              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">
+              🎁 Promo
+            </button>
+          </div>
+        </div>
+
+        <!-- Judul -->
+        <div style="margin-bottom:10px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Judul <span style="color:rgba(255,80,80,0.6)">*</span></div>
+          <input id="devAnnTitle" type="text" placeholder="Contoh: Update Versi 2.1 🎉" maxlength="80"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
+            onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+        </div>
+
+        <!-- Pesan -->
+        <div style="margin-bottom:10px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Isi Pesan <span style="color:rgba(255,80,80,0.6)">*</span></div>
+          <textarea id="devAnnMessage" placeholder="Tulis isi pengumuman di sini. Bisa pakai baris baru untuk paragraf." maxlength="500" rows="4"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;transition:border-color 0.2s;line-height:1.6"
+            onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'" oninput="devAnnCountChars(this)"></textarea>
+          <div style="text-align:right;font-size:10px;color:rgba(255,255,255,0.2);margin-top:3px"><span id="devAnnCharCount">0</span>/500</div>
+        </div>
+
+        <!-- Gambar Iklan (opsional) -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">🖼 Gambar Iklan <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none;letter-spacing:0">(opsional, max 500KB)</span></div>
+          <div id="devAnnImgZone"
+            onclick="document.getElementById('devAnnImgInput').click()"
+            ondragover="event.preventDefault();this.style.borderColor='rgba(217,119,6,0.6)';this.style.background='rgba(217,119,6,0.08)'"
+            ondragleave="this.style.borderColor='rgba(255,255,255,0.1)';this.style.background='rgba(255,255,255,0.03)'"
+            ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.1)';this.style.background='rgba(255,255,255,0.03)';devAnnHandleImg(event.dataTransfer.files[0])"
+            style="border:1.5px dashed rgba(255,255,255,0.1);border-radius:12px;background:rgba(255,255,255,0.03);padding:14px;text-align:center;cursor:pointer;transition:all 0.2s;min-height:56px;display:flex;align-items:center;justify-content:center;gap:10px;position:relative">
+            <div id="devAnnImgPlaceholder" style="display:flex;flex-direction:column;align-items:center;gap:4px">
+              <span style="font-size:22px">🖼</span>
+              <span style="font-size:11px;color:rgba(255,255,255,0.3);font-weight:600">Klik atau drag & drop gambar</span>
+              <span style="font-size:10px;color:rgba(255,255,255,0.15)">JPG, PNG, GIF, WebP</span>
+            </div>
+            <img id="devAnnImgPreview" src="" alt="" style="display:none;max-height:120px;max-width:100%;border-radius:8px;object-fit:cover">
+            <button id="devAnnImgRemove" onclick="event.stopPropagation();devAnnRemoveImg()" style="display:none;position:absolute;top:6px;right:6px;border:none;background:rgba(239,68,68,0.8);color:#fff;border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;font-weight:700;line-height:1;padding:0">✕</button>
+          </div>
+          <input id="devAnnImgInput" type="file" accept="image/*" style="display:none" onchange="devAnnHandleImg(this.files[0])">
+          <div id="devAnnImgInfo" style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:4px;text-align:right"></div>
+        </div>
+
+        <!-- Link URL (opsional, muncul saat ada gambar) -->
+        <div id="devAnnLinkWrap" style="margin-bottom:12px;display:none">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">🔗 Link saat gambar diklik <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none;letter-spacing:0">(opsional)</span></div>
+          <input id="devAnnLink" type="url" placeholder="https://contoh.com/promo"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 13px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
+            onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+        </div>
+
+        <!-- Mode + Expiry row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+          <div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Mode Tampil</div>
+            <select id="devAnnMode" style="width:100%;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;color:#fff;padding:9px 10px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:auto">
+              <option value="once" style="background:#1c1917">1️⃣ Sekali per user</option>
+              <option value="always" style="background:#1c1917">🔄 Selalu tiap buka</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Kedaluwarsa</div>
+            <input id="devAnnExpiry" type="datetime-local"
+              style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 10px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;color-scheme:dark">
+          </div>
+        </div>
+
+        <!-- Preview button + submit -->
+        <div style="display:flex;gap:8px">
+          <button onclick="devAnnPreview()"
+            style="flex:1;padding:11px;border:1.5px solid rgba(217,119,6,0.4);border-radius:10px;background:rgba(217,119,6,0.08);color:#f59e0b;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+            👁 Preview
+          </button>
+          <button id="devAnnSubmitBtn" onclick="devAnnSubmit()"
+            style="flex:2;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 14px rgba(217,119,6,0.35);transition:all 0.15s;letter-spacing:0.2px">
+            📢 Kirim Pengumuman
+          </button>
+        </div>
+      </div>
+
+      <!-- Daftar pengumuman existing -->
+      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.5px">📋 Pengumuman Tersimpan</div>
+          <button onclick="_devAnnLoadList()" style="padding:5px 12px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px">↻ Refresh</button>
+        </div>
+        <div id="devAnnList">
+          <div style="color:rgba(255,255,255,0.2);font-size:12px;padding:12px 0;text-align:center">— Klik Refresh untuk memuat —</div>
+        </div>
+      </div>
+    </div><!-- /tab-ann -->
+
+    <!-- ══════ TAB: DEBUG ══════ -->
+    <div id="devTabContent-debug" style="display:none">
+
+      <!-- User Info -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">👤 Info User Aktif</div>
+        <div id="devUserInfo" style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.9;font-family:monospace">—</div>
+        <button onclick="devRefreshUserInfo()" style="margin-top:10px;width:100%;padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.45);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">↻ Refresh Info</button>
+      </div>
+
+      <!-- Debug Actions -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚡ Quick Actions</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <button onclick="devForceShowAnn()" style="padding:9px 6px;border:1px solid rgba(59,130,246,0.3);border-radius:9px;background:rgba(59,130,246,0.08);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">📢 Test Ann Modal</button>
+          <button onclick="devClearAnnReads()" style="padding:9px 6px;border:1px solid rgba(245,158,11,0.3);border-radius:9px;background:rgba(245,158,11,0.08);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🗑 Clear Ann Reads</button>
+          <button onclick="devShowToast()" style="padding:9px 6px;border:1px solid rgba(34,197,94,0.3);border-radius:9px;background:rgba(34,197,94,0.08);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🍞 Test Toast</button>
+          <button onclick="devCheckFirestore()" style="padding:9px 6px;border:1px solid rgba(139,92,246,0.3);border-radius:9px;background:rgba(139,92,246,0.08);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔥 Cek Firestore</button>
+          <button onclick="devReloadApp()" style="padding:9px 6px;border:1px solid rgba(255,255,255,0.15);border-radius:9px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔄 Reload App</button>
+          <button onclick="devClearLocalStorage()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">💣 Clear Storage</button>
+        </div>
+      </div>
+
+      <!-- Console Log -->
+      <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px">📟 Debug Log</div>
+          <button onclick="devClearLog()" style="padding:3px 9px;border:1px solid rgba(255,255,255,0.08);border-radius:6px;background:transparent;color:rgba(255,255,255,0.25);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Clear</button>
+        </div>
+        <div id="devConsoleLog" style="font-size:10px;font-family:monospace;color:rgba(255,255,255,0.45);line-height:1.8;max-height:140px;overflow-y:auto;word-break:break-all">
+          <span style="color:rgba(255,255,255,0.2)">// Ready. Gunakan tombol di atas untuk debug.</span>
+        </div>
+      </div>
+    </div><!-- /tab-debug -->
+
+    <!-- ══════ TAB: GAMIFICATION ══════ -->
+    <div id="devTabContent-gami" style="display:none">
+
+      <!-- XP & Gold inject -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚡ Inject XP & Gold (ke diri sendiri)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;margin-bottom:4px;text-transform:uppercase">XP</div>
+            <input id="devXpAmount" type="number" value="100" min="1" max="9999"
+              style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 11px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
+          </div>
+          <div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;margin-bottom:4px;text-transform:uppercase">Gold 🪙</div>
+            <input id="devGoldAmount" type="number" value="50" min="1" max="9999"
+              style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 11px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="devInjectXp()" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,rgba(251,191,36,0.8),rgba(245,158,11,0.7));color:#1c1400;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">⚡ +XP</button>
+          <button onclick="devInjectGold()" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,rgba(251,191,36,0.6),rgba(217,119,6,0.5));color:#fff3c0;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">🪙 +Gold</button>
+          <button onclick="devInjectBoth()" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">🎁 Both</button>
+        </div>
+      </div>
+
+      <!-- Boss Debug -->
+      <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(167,139,250,0.7);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚔️ Boss Battle Debug</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px">
+          <button onclick="devBossSpawn()" style="padding:9px 6px;border:1px solid rgba(139,92,246,0.35);border-radius:9px;background:rgba(139,92,246,0.1);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">⚔️ Spawn Boss Baru</button>
+          <button onclick="devBossKill()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💀 Kill Boss Skrg</button>
+          <button onclick="devBossDmg()" style="padding:9px 6px;border:1px solid rgba(245,158,11,0.3);border-radius:9px;background:rgba(245,158,11,0.08);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💥 Deal 100 DMG</button>
+          <button onclick="devBossStatus()" style="padding:9px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:9px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.45);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Log Boss Status</button>
+        </div>
+        <div id="devBossInfo" style="font-size:10px;font-family:monospace;color:rgba(167,139,250,0.5);background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;min-height:36px">— Boss status akan tampil di sini —</div>
+      </div>
+
+      <!-- Level reset -->
+      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:16px;padding:14px">
+        <div style="font-size:10px;font-weight:800;color:rgba(248,113,113,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">⚠️ Reset / Danger Zone</div>
+        <div style="display:flex;gap:7px">
+          <button onclick="devResetGami()" style="flex:1;padding:9px;border:1px solid rgba(239,68,68,0.35);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔁 Reset XP/Gold/Level</button>
+          <button onclick="devUnlockAllAchv()" style="flex:1;padding:9px;border:1px solid rgba(251,191,36,0.3);border-radius:9px;background:rgba(251,191,36,0.07);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🏆 Unlock Semua Achv</button>
+        </div>
+      </div>
+    </div><!-- /tab-gami -->
+
+    <!-- ══════ TAB: DATA ══════ -->
+    <div id="devTabContent-data" style="display:none">
+
+      <!-- Export -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">📦 Export / Import Data User</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px">
+          <button onclick="devExportTasks()" style="padding:9px 6px;border:1px solid rgba(59,130,246,0.3);border-radius:9px;background:rgba(59,130,246,0.07);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Export Tasks</button>
+          <button onclick="devExportHabits()" style="padding:9px 6px;border:1px solid rgba(34,197,94,0.3);border-radius:9px;background:rgba(34,197,94,0.07);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔥 Export Habits</button>
+          <button onclick="devExportFinance()" style="padding:9px 6px;border:1px solid rgba(251,191,36,0.3);border-radius:9px;background:rgba(251,191,36,0.07);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Export Finance</button>
+          <button onclick="devExportAll()" style="padding:9px 6px;border:1px solid rgba(217,119,6,0.4);border-radius:9px;background:rgba(217,119,6,0.1);color:#f59e0b;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Export Semua</button>
+        </div>
+      </div>
+
+      <!-- Firestore stats -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px">🔥 Firestore Stats</div>
+          <button onclick="devLoadFirestoreStats()" style="padding:4px 10px;border:1px solid rgba(255,255,255,0.1);border-radius:7px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Load</button>
+        </div>
+        <div id="devFirestoreStats" style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);line-height:1.9">— Klik Load untuk memuat —</div>
+      </div>
+
+      <!-- Danger: wipe -->
+      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:16px;padding:14px">
+        <div style="font-size:10px;font-weight:800;color:rgba(248,113,113,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔥 Danger Zone</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:10px;line-height:1.5">Tindakan di bawah ini permanen dan tidak bisa di-undo.</div>
+        <div style="display:flex;gap:7px">
+          <button onclick="devWipeUserData()" style="flex:1;padding:9px;border:1.5px solid rgba(239,68,68,0.4);border-radius:9px;background:rgba(239,68,68,0.1);color:#f87171;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">💣 Wipe User Data</button>
+        </div>
+      </div>
+    </div><!-- /tab-data -->
+
+  </div><!-- /devSection -->
 </div>
 
 <!-- GAMIFICATION MODE ONBOARDING (full screen) -->
@@ -22540,6 +22921,10 @@ function openNavPreferenceModal(){
   // On desktop, hide the nav mode section header and options (only gamification applies)
   var navModeSection = document.getElementById('navPrefNavSection');
   if(navModeSection) navModeSection.style.display = isMobileNavMode() ? '' : 'none';
+
+  // Tampilkan developer section hanya untuk developer
+  var devSec = document.getElementById('devSection');
+  if(devSec) devSec.style.display = isDeveloper() ? 'block' : 'none';
 
   ov.style.display = 'flex';
   modal.style.display = 'block';
@@ -23746,8 +24131,740 @@ function sholatLoadAndRender() {
 // Update lastrun key setelah inject berhasil (hook ke saveData)
 var _origSaveData = typeof saveData === 'function' ? saveData : null;
 
-</script>
+// ══════════════════════════════════════════════════════════════════
+// ANNOUNCEMENT SYSTEM — Semua fungsi
+// ══════════════════════════════════════════════════════════════════
 
+function isDeveloper(){
+  return fbUser && fbUser.uid === _ANN_DEVELOPER_UID;
+}
+
+// ── Mulai listener real-time saat user login ──
+// ── Antrian pengumuman untuk tampil satu per satu ──
+var _annQueue = [];
+var _annShowing = false;
+// FIX #2: Throttle mode 'always' — catat ID yang sudah dismiss di sesi ini
+var _annSessionDismissed = {};
+
+// FIX #3: annStartListener dipanggil dari initApp (setelah fbDb siap), bukan dari onAuthStateChanged
+// FIX #5: Guest mendapat pengumuman via one-time fetch (tanpa Firestore listener & tanpa readIds)
+function annStartListener(){
+  if(!fbDb) return; // fbDb null = pure offline, tidak ada pengumuman
+  // Berhenti listener lama kalau ada (FIX #1 support)
+  if(_annUnsubscribe){ _annUnsubscribe(); _annUnsubscribe=null; }
+
+  if(fbUser && !fbUser._isGuest){
+    // ── Login Google: real-time listener seperti sebelumnya ──
+    _annUnsubscribe = fbDb.collection('announcements')
+      .where('active','==',true)
+      .onSnapshot(function(snapshot){
+        var anns = [];
+        snapshot.forEach(function(doc){ anns.push(Object.assign({id:doc.id}, doc.data())); });
+        _annProcessAndShow(anns);
+      }, function(err){ console.warn('Announcement listener error:', err); });
+  } else if(fbUser && fbUser._isGuest){
+    // FIX #5 (revised): Guest — one-time fetch pakai Firestore (fbDb sudah tersedia karena
+    // Firebase SDK load sebelum loginAsGuest dipanggil). _isOffline hanya berarti data app
+    // disimpan lokal, bukan berarti fbDb tidak bisa dipakai untuk baca pengumuman.
+    // Firestore enablePersistence juga memungkinkan baca cache saat betul-betul offline.
+    fbDb.collection('announcements').where('active','==',true).get().then(function(snapshot){
+      var anns = [];
+      snapshot.forEach(function(doc){ anns.push(Object.assign({id:doc.id}, doc.data())); });
+      _annProcessAndShowGuest(anns);
+    }).catch(function(err){ console.warn('Guest announcement fetch error:', err); });
+  }
+}
+
+// ── Stop listener saat logout ──
+function annStopListener(){
+  if(_annUnsubscribe){ _annUnsubscribe(); _annUnsubscribe=null; }
+  // Reset antrian & sesi saat logout
+  _annQueue = [];
+  _annShowing = false;
+  _annSessionDismissed = {};
+}
+
+// ── Proses pengumuman untuk user Google (dengan readIds Firestore) ──
+function _annProcessAndShow(anns){
+  if(!anns || !anns.length) return;
+  var now = Date.now();
+  var valid = anns.filter(function(a){
+    if(!a.active) return false;
+    if(a.expiresAt && a.expiresAt.toMillis && a.expiresAt.toMillis() < now) return false;
+    if(a.expiresAt && typeof a.expiresAt === 'number' && a.expiresAt < now) return false;
+    return true;
+  });
+  if(!valid.length) return;
+  valid.sort(function(a,b){
+    return (b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():0)
+          -(a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():0);
+  });
+  // BUG FIX #6: Jangan pakai readIds dari closure (stale).
+  // Selalu baca fresh dari Firestore saat enqueue, dan saat dismiss pakai merge
+  // sehingga tiap dismiss hanya menambah 1 ID ke Firestore tanpa overwrite yang lain.
+  fbDb.collection('announcement_reads').doc(fbUser.uid).get().then(function(doc){
+    var readIds = (doc.exists && doc.data().readIds) ? doc.data().readIds : [];
+    _annEnqueue(valid, readIds);
+  }).catch(function(){
+    _annEnqueue(valid, []);
+  });
+}
+
+// FIX #5: Proses pengumuman untuk guest (localStorage sebagai readIds, tanpa Firestore write)
+function _annProcessAndShowGuest(anns){
+  if(!anns || !anns.length) return;
+  var now = Date.now();
+  var valid = anns.filter(function(a){
+    if(!a.active) return false;
+    if(a.expiresAt && a.expiresAt.toMillis && a.expiresAt.toMillis() < now) return false;
+    if(a.expiresAt && typeof a.expiresAt === 'number' && a.expiresAt < now) return false;
+    return true;
+  });
+  if(!valid.length) return;
+  valid.sort(function(a,b){
+    return (b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():0)
+          -(a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():0);
+  });
+  // Baca readIds dari localStorage untuk guest
+  var guestReadIds = [];
+  try { guestReadIds = JSON.parse(localStorage.getItem('chitask_guest_ann_reads') || '[]'); } catch(e){}
+  _annEnqueue(valid, guestReadIds);
+}
+
+// FIX #4: Antrian — semua pengumuman yang belum dibaca ditampilkan satu per satu
+function _annEnqueue(valid, readIds){
+  var toShow = valid.filter(function(a){
+    // FIX #2: mode 'always' hanya muncul sekali per sesi (bukan setiap kali snapshot)
+    if(a.displayMode === 'always') return !_annSessionDismissed[a.id];
+    return readIds.indexOf(a.id) < 0;
+  });
+  if(!toShow.length) return;
+  // Tambahkan ke antrian hanya yang belum ada di antrian
+  toShow.forEach(function(a){
+    var alreadyQueued = _annQueue.some(function(q){ return q.ann.id === a.id; });
+    if(!alreadyQueued) _annQueue.push({ ann:a });
+  });
+  _annDequeueNext();
+}
+
+function _annDequeueNext(){
+  if(_annShowing || !_annQueue.length) return;
+  var item = _annQueue.shift();
+  _annShowing = true;
+  _annShowPopup(item.ann);
+}
+
+// ── Tampilkan popup pengumuman ──
+function _annShowPopup(ann){
+  var overlay = document.getElementById('annOverlay');
+  if(!overlay) return;
+  var iconMap    = { warning:'⚠️', success:'✅', info:'📢', danger:'🚨', promo:'🎁' };
+  var dismissMap = { warning:'⚠️ Oke, Mengerti', success:'✅ Mantap!', info:'✓ Oke, Mengerti!', danger:'🚨 Oke, Dipahami', promo:'🎁 Klaim Sekarang' };
+  var styleKey = ann.style || 'info';
+  var card = document.getElementById('annCard');
+
+  card.setAttribute('data-ann-style', styleKey);
+  document.getElementById('annIcon').textContent = iconMap[styleKey] || '📢';
+  document.getElementById('annTitle').textContent = ann.title || 'Pengumuman';
+  document.getElementById('annMessage').textContent = ann.message || '';
+  document.getElementById('annDismissBtn').textContent = dismissMap[styleKey] || '✓ Oke, Mengerti!';
+
+  var timeBadge = document.getElementById('annTimeBadge');
+  if(timeBadge){
+    var ts = ann.createdAt && ann.createdAt.toDate ? ann.createdAt.toDate() : null;
+    timeBadge.textContent = ts ? _relativeTime(ts) : '';
+  }
+
+  var footer = document.getElementById('annFooterNote');
+  if(footer){
+    var isGuest = fbUser && fbUser._isGuest;
+    footer.textContent = isGuest
+      ? 'ChiTask · Pesan untuk semua pengguna'
+      : (ann.displayMode === 'always' ? 'ChiTask · Pesan selalu ditampilkan' : 'ChiTask · Pesan dari developer');
+  }
+
+  // Gambar iklan
+  var imgWrap = document.getElementById('annImageWrap');
+  var imgEl   = document.getElementById('annImage');
+  var imgHint = document.getElementById('annImageLinkHint');
+  if(imgWrap && imgEl){
+    if(ann.imageBase64){
+      imgEl.src = ann.imageBase64;
+      imgWrap.style.display = 'block';
+      // Simpan link ke dataset agar annImageClick() bisa baca
+      imgWrap.dataset.link = ann.imageLink || '';
+      if(imgHint) imgHint.style.display = ann.imageLink ? 'block' : 'none';
+    } else {
+      imgWrap.style.display = 'none';
+      imgEl.src = '';
+      imgWrap.dataset.link = '';
+      if(imgHint) imgHint.style.display = 'none';
+    }
+  }
+
+  // FIX #7: Click-outside overlay juga dismiss (konsisten dengan modal lain)
+  overlay.onclick = function(e){ if(e.target === overlay) _annDismiss(ann); };
+  document.getElementById('annDismissBtn').onclick = function(){ _annDismiss(ann); };
+  overlay.style.display = 'flex';
+  setTimeout(function(){ card.classList.add('ann-visible'); }, 15);
+}
+
+// Klik gambar iklan → buka link di tab baru (jika ada)
+function annImageClick(){
+  var imgWrap = document.getElementById('annImageWrap');
+  if(!imgWrap) return;
+  var link = imgWrap.dataset.link;
+  if(link) window.open(link, '_blank', 'noopener');
+}
+
+function _relativeTime(date){
+  var diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if(diff < 60) return 'Baru saja';
+  if(diff < 3600) return Math.floor(diff/60) + ' mnt lalu';
+  if(diff < 86400) return Math.floor(diff/3600) + ' jam lalu';
+  return Math.floor(diff/86400) + ' hari lalu';
+}
+
+// ── Dismiss: tutup popup, catat readId, lanjut ke antrian berikutnya ──
+function _annDismiss(ann){
+  var overlay = document.getElementById('annOverlay');
+  var card = document.getElementById('annCard');
+  // Lepas onclick overlay agar tidak terpanggil lagi setelah tutup
+  overlay.onclick = null;
+  card.classList.remove('ann-visible');
+  card.style.transform='translateY(16px) scale(0.94)'; card.style.opacity='0';
+  setTimeout(function(){
+    overlay.style.display='none';
+    card.style.transform=''; card.style.opacity='';
+    // FIX #4: Lanjut tampilkan pengumuman berikutnya di antrian
+    _annShowing = false;
+    _annDequeueNext();
+  }, 280);
+
+  // FIX #2: Tandai sudah dismiss di sesi ini (untuk mode 'always')
+  _annSessionDismissed[ann.id] = true;
+
+  if(ann.displayMode !== 'always'){
+    var isGuest = fbUser && fbUser._isGuest;
+    if(isGuest){
+      // FIX #5: Guest — simpan ke localStorage (fresh read dulu agar tidak overwrite)
+      var guestReadIds = [];
+      try { guestReadIds = JSON.parse(localStorage.getItem('chitask_guest_ann_reads') || '[]'); } catch(e){}
+      if(guestReadIds.indexOf(ann.id) < 0) guestReadIds.push(ann.id);
+      try { localStorage.setItem('chitask_guest_ann_reads', JSON.stringify(guestReadIds)); } catch(e){}
+    } else if(fbDb && fbUser){
+      // FIX #6: User Google — pakai merge:true dengan array union agar tidak overwrite
+      // readIds dari sesi lain yang lebih baru. Tidak bergantung closure readIds lama.
+      fbDb.collection('announcement_reads').doc(fbUser.uid)
+        .set({
+          readIds: firebase.firestore.FieldValue.arrayUnion(ann.id)
+        }, { merge: true })
+        .catch(function(e){ console.warn('annDismiss save error:', e); });
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+// DEVELOPER — Fungsi panel lengkap (v3)
+// ══════════════════════════════════════════════
+
+// ── Hidden style field (chip selector) ──
+var _devAnnSelectedStyle = 'info';
+
+function devSelectStyle(style, btn){
+  _devAnnSelectedStyle = style;
+  var styleColors = {
+    info:    { border:'#3b82f6', bg:'rgba(59,130,246,0.15)',   color:'#60a5fa' },
+    success: { border:'#10b981', bg:'rgba(16,185,129,0.15)',   color:'#34d399' },
+    warning: { border:'#f59e0b', bg:'rgba(245,158,11,0.15)',   color:'#fbbf24' },
+    danger:  { border:'#ef4444', bg:'rgba(239,68,68,0.15)',    color:'#f87171' },
+    promo:   { border:'#8b5cf6', bg:'rgba(139,92,246,0.15)',   color:'#a78bfa' }
+  };
+  document.querySelectorAll('.dev-style-chip').forEach(function(c){
+    c.style.borderColor='rgba(255,255,255,0.12)';
+    c.style.background='rgba(255,255,255,0.05)';
+    c.style.color='rgba(255,255,255,0.4)';
+  });
+  var sc = styleColors[style] || styleColors['info'];
+  btn.style.borderColor = sc.border;
+  btn.style.background  = sc.bg;
+  btn.style.color       = sc.color;
+}
+
+// ── Image upload untuk dev panel ──
+var _devAnnImgBase64 = null; // base64 string gambar yang dipilih
+
+function devAnnHandleImg(file){
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ showToast('⚠️ File harus berupa gambar!'); return; }
+  if(file.size > 500 * 1024){
+    showToast('⚠️ Gambar terlalu besar! Max 500KB.');
+    var info = document.getElementById('devAnnImgInfo');
+    if(info) info.textContent = '❌ ' + (file.size/1024).toFixed(0) + 'KB — max 500KB';
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    _devAnnImgBase64 = e.target.result; // data:image/...;base64,...
+    // Tampilkan preview
+    var preview = document.getElementById('devAnnImgPreview');
+    var placeholder = document.getElementById('devAnnImgPlaceholder');
+    var removeBtn = document.getElementById('devAnnImgRemove');
+    var info = document.getElementById('devAnnImgInfo');
+    var linkWrap = document.getElementById('devAnnLinkWrap');
+    if(preview){ preview.src = _devAnnImgBase64; preview.style.display = 'block'; }
+    if(placeholder) placeholder.style.display = 'none';
+    if(removeBtn) removeBtn.style.display = 'block';
+    if(info) info.textContent = '✅ ' + file.name + ' (' + (file.size/1024).toFixed(0) + 'KB)';
+    if(linkWrap) linkWrap.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function devAnnRemoveImg(){
+  _devAnnImgBase64 = null;
+  var preview = document.getElementById('devAnnImgPreview');
+  var placeholder = document.getElementById('devAnnImgPlaceholder');
+  var removeBtn = document.getElementById('devAnnImgRemove');
+  var info = document.getElementById('devAnnImgInfo');
+  var linkWrap = document.getElementById('devAnnLinkWrap');
+  var input = document.getElementById('devAnnImgInput');
+  if(preview){ preview.src=''; preview.style.display='none'; }
+  if(placeholder) placeholder.style.display='flex';
+  if(removeBtn) removeBtn.style.display='none';
+  if(info) info.textContent='';
+  if(linkWrap) linkWrap.style.display='none';
+  if(input) input.value='';
+}
+
+function devAnnCountChars(el){
+  var cnt = document.getElementById('devAnnCharCount');
+  if(cnt) cnt.textContent = el.value.length;
+}
+
+function devAnnPreview(){
+  var title   = document.getElementById('devAnnTitle').value.trim() || 'Preview Judul';
+  var message = document.getElementById('devAnnMessage').value.trim() || 'Ini adalah preview pesan pengumuman.';
+  var linkEl  = document.getElementById('devAnnLink');
+  var ann = {
+    id:'__preview__', title:title, message:message,
+    style:_devAnnSelectedStyle||'info', displayMode:'always', createdAt:null,
+    imageBase64: _devAnnImgBase64 || null,
+    imageLink:   (linkEl && linkEl.value.trim()) || null
+  };
+  // Reset _annShowing agar preview bisa tampil kapanpun
+  _annShowing = false;
+  _annShowPopup(ann);
+}
+
+// ── Tab switcher ──
+function devSwitchTab(tab){
+  ['ann','debug','gami','data'].forEach(function(t){
+    var content = document.getElementById('devTabContent-'+t);
+    var btn     = document.getElementById('devTab-'+t);
+    if(!content||!btn) return;
+    if(t === tab){
+      content.style.display = 'block';
+      btn.style.background = 'rgba(217,119,6,0.85)';
+      btn.style.color = '#fff';
+    } else {
+      content.style.display = 'none';
+      btn.style.background = 'transparent';
+      btn.style.color = 'rgba(255,255,255,0.4)';
+    }
+  });
+  if(tab === 'debug') devRefreshUserInfo();
+}
+
+// ── openDevAnnPanel kept for backward compat ──
+function openDevAnnPanel(){ devSwitchTab('ann'); }
+
+// ── Announcement list ──
+function _devAnnLoadList(){
+  if(!fbDb){ showToast('Firestore belum tersambung'); return; }
+  var listEl = document.getElementById('devAnnList');
+  listEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:12px;padding:8px 0;text-align:center">⏳ Memuat...</div>';
+  fbDb.collection('announcements').orderBy('createdAt','desc').limit(20).get().then(function(snap){
+    if(snap.empty){ listEl.innerHTML = '<div style="color:rgba(255,255,255,0.2);font-size:12px;padding:12px 0;text-align:center">— Belum ada pengumuman —</div>'; return; }
+    var html = '';
+    snap.forEach(function(doc){
+      var d = doc.data();
+      var styleColors = {info:'#3b82f6',success:'#10b981',warning:'#f59e0b',danger:'#ef4444',promo:'#8b5cf6'};
+      var clr = styleColors[d.style||'info'] || '#3b82f6';
+      html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-left:3px solid '+clr+';border-radius:10px;padding:10px 12px;margin-bottom:7px">'
+        + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:12px;font-weight:800;color:rgba(255,255,255,0.8);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (d.title||'(tanpa judul)') + '</div>'
+        + '<div style="font-size:10px;color:rgba(255,255,255,0.3)">' + (d.displayMode||'once') + ' · ' + (d.style||'info') + ' · ' + (d.active?'<span style="color:#4ade80">aktif</span>':'<span style="color:#f87171">nonaktif</span>') + '</div>'
+        + '</div>'
+        + '<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;border:1px solid;color:'+clr+';border-color:'+clr+';background:'+clr+'18;flex-shrink:0">' + (d.style||'info').toUpperCase() + '</span>'
+        + '</div>'
+        + '<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:8px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + (d.message||'') + '</div>'
+        + '<div style="display:flex;gap:6px">'
+        + '<button onclick="_devAnnToggle(\''+doc.id+'\','+(!d.active)+')" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">'+(d.active?'🔕 Nonaktif':'✅ Aktifkan')+'</button>'
+        + '<button onclick="_devAnnDelete(\''+doc.id+'\')" style="padding:5px 11px;border-radius:7px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.07);color:#f87171;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">🗑 Hapus</button>'
+        + '</div>'
+        + '</div>';
+    });
+    listEl.innerHTML = html;
+  }).catch(function(e){ listEl.innerHTML = '<div style="color:#f87171;font-size:11px">Error: '+e.message+'</div>'; });
+}
+
+function devAnnSubmit(){
+  if(!isDeveloper() || !fbDb) return;
+  var title     = document.getElementById('devAnnTitle').value.trim();
+  var message   = document.getElementById('devAnnMessage').value.trim();
+  var mode      = document.getElementById('devAnnMode').value;
+  var expiryVal = document.getElementById('devAnnExpiry').value;
+  var linkVal   = (document.getElementById('devAnnLink') && document.getElementById('devAnnLink').value.trim()) || '';
+  if(!title || !message){ showToast('⚠️ Judul dan pesan harus diisi!'); return; }
+  var data = {
+    title:title, message:message, style:_devAnnSelectedStyle||'info',
+    displayMode:mode, active:true,
+    createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+    createdBy:fbUser.uid,
+    expiresAt:expiryVal ? firebase.firestore.Timestamp.fromDate(new Date(expiryVal)) : null,
+    imageBase64: _devAnnImgBase64 || null,
+    imageLink:   linkVal || null
+  };
+  var btn = document.getElementById('devAnnSubmitBtn');
+  btn.disabled=true; btn.textContent='⏳ Menyimpan...';
+  fbDb.collection('announcements').add(data).then(function(){
+    showToast('✅ Pengumuman dikirim ke semua user!');
+    document.getElementById('devAnnTitle').value='';
+    document.getElementById('devAnnMessage').value='';
+    document.getElementById('devAnnExpiry').value='';
+    var cnt = document.getElementById('devAnnCharCount'); if(cnt) cnt.textContent='0';
+    // Reset gambar
+    devAnnRemoveImg();
+    var linkEl = document.getElementById('devAnnLink'); if(linkEl) linkEl.value='';
+    btn.disabled=false; btn.textContent='📢 Kirim Pengumuman';
+    _devAnnLoadList();
+  }).catch(function(e){
+    showToast('Error: '+e.message);
+    btn.disabled=false; btn.textContent='📢 Kirim Pengumuman';
+  });
+}
+
+function _devAnnToggle(id, newActive){
+  fbDb.collection('announcements').doc(id).update({ active: newActive }).then(function(){
+    showToast(newActive ? '✅ Pengumuman diaktifkan' : '🔕 Pengumuman dinonaktifkan');
+    _devAnnLoadList();
+  });
+}
+
+function _devAnnDelete(id){
+  if(!confirm('Hapus pengumuman ini permanen?')) return;
+  fbDb.collection('announcements').doc(id).delete().then(function(){
+    showToast('🗑 Pengumuman dihapus');
+    _devAnnLoadList();
+  });
+}
+
+// ── DEBUG TAB ──
+function _devLog(msg, type){
+  var el = document.getElementById('devConsoleLog');
+  if(!el) return;
+  var colors = { info:'#60a5fa', ok:'#4ade80', warn:'#fbbf24', err:'#f87171' };
+  var clr = colors[type||'info'] || '#60a5fa';
+  var time = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  el.innerHTML += '\n<span style="color:rgba(255,255,255,0.2)">['+time+']</span> <span style="color:'+clr+'">'+msg+'</span>';
+  el.scrollTop = el.scrollHeight;
+}
+
+function devRefreshUserInfo(){
+  var el = document.getElementById('devUserInfo'); if(!el) return;
+  var info = '';
+  if(fbUser){
+    info += '🆔 UID: <span style="color:#60a5fa">'+fbUser.uid+'</span>\n';
+    info += '📧 Email: '+(fbUser.email||'—')+'\n';
+    info += '👤 Name: '+(fbUser.displayName||'—')+'\n';
+    info += '🌐 Guest: '+(fbUser._isGuest?'<span style="color:#fbbf24">Ya</span>':'<span style="color:#4ade80">Tidak</span>');
+  } else { info = '<span style="color:#f87171">Tidak ada user login</span>'; }
+  el.innerHTML = info;
+}
+
+function devClearLog(){ var el=document.getElementById('devConsoleLog'); if(el) el.innerHTML='<span style="color:rgba(255,255,255,0.2)">// Log cleared.</span>'; }
+
+function devForceShowAnn(){
+  _devLog('Forcing test announcement modal...','info');
+  var ann = { id:'__test__', title:'🧪 Test Pengumuman', message:'Ini adalah test modal pengumuman dari Developer Console. Tampilannya akan seperti ini saat pengumuman dikirim ke semua user.', style:_devAnnSelectedStyle||'info', displayMode:'always', createdAt:null };
+  _annShowing = false;
+  _annShowPopup(ann);
+}
+
+function devClearAnnReads(){
+  // FIX #5: Guest bisa clear reads dari localStorage
+  if(fbUser && fbUser._isGuest){
+    try { localStorage.removeItem('chitask_guest_ann_reads'); } catch(e){}
+    _annSessionDismissed = {};
+    _annQueue = [];
+    _annShowing = false;
+    showToast('✅ Ann reads (guest) cleared');
+    _devLog('Cleared guest announcement_reads dari localStorage','ok');
+    return;
+  }
+  if(!fbDb||!fbUser){ showToast('Butuh login Firebase'); return; }
+  fbDb.collection('announcement_reads').doc(fbUser.uid).delete().then(function(){
+    _annSessionDismissed = {};
+    _annQueue = [];
+    _annShowing = false;
+    showToast('✅ Ann reads cleared');
+    _devLog('Cleared announcement_reads for uid: '+fbUser.uid,'ok');
+  }).catch(function(e){ _devLog('Error: '+e.message,'err'); });
+}
+
+function devShowToast(){ showToast('🍞 Ini adalah test toast notification dari Developer Console!'); _devLog('Toast triggered','ok'); }
+
+function devCheckFirestore(){
+  if(!fbDb){ _devLog('Firestore tidak tersambung!','err'); return; }
+  _devLog('Checking Firestore connection...','info');
+  fbDb.collection('_devping').doc('ping').set({ ts: firebase.firestore.FieldValue.serverTimestamp() })
+    .then(function(){ _devLog('✅ Firestore OK — read/write berhasil','ok'); showToast('✅ Firestore OK!'); })
+    .catch(function(e){ _devLog('❌ Firestore error: '+e.message,'err'); });
+}
+
+function devReloadApp(){ if(confirm('Reload app?')) window.location.reload(); }
+
+function devClearLocalStorage(){
+  if(!confirm('Clear localStorage? Ini akan hapus preferensi lokal (bukan data Firebase).')) return;
+  localStorage.clear();
+  showToast('💣 localStorage cleared — reload diperlukan');
+  _devLog('localStorage cleared','warn');
+}
+
+// ── GAMI TAB ──
+function devInjectXp(){
+  var amt = parseInt(document.getElementById('devXpAmount').value)||100;
+  if(typeof addXP==='function'){ addXP(amt,'🛠️ Dev Inject'); showToast('⚡ +'+amt+' XP injected!'); _devLog('+'+amt+' XP injected','ok'); }
+  else { _devLog('addXP tidak ditemukan','err'); showToast('addXP function tidak ada'); }
+}
+function devInjectGold(){
+  var amt = parseInt(document.getElementById('devGoldAmount').value)||50;
+  if(typeof addGold==='function'){ addGold(amt,'🛠️ Dev Inject'); showToast('🪙 +'+amt+' Gold!'); _devLog('+'+amt+' Gold injected','ok'); }
+  else if(typeof _gamiAddGold==='function'){ _gamiAddGold(amt); showToast('🪙 +'+amt+' Gold!'); }
+  else { _devLog('Gold function tidak ditemukan','err'); showToast('Gold function tidak ada'); }
+}
+function devInjectBoth(){ devInjectXp(); setTimeout(devInjectGold,300); }
+
+function devBossSpawn(){
+  if(typeof spawnBoss==='function'){ spawnBoss(); showToast('⚔️ Boss spawned!'); _devLog('Boss spawned','ok'); }
+  else if(typeof _bossSpawn==='function'){ _bossSpawn(); showToast('⚔️ Boss spawned!'); }
+  else { _devLog('spawnBoss tidak ditemukan','warn'); showToast('⚠️ spawnBoss tidak ada'); }
+}
+function devBossKill(){
+  if(typeof killBoss==='function'){ killBoss(); showToast('💀 Boss killed!'); _devLog('Boss killed','ok'); }
+  else { _devLog('killBoss tidak ditemukan','warn'); showToast('⚠️ killBoss tidak ada'); }
+}
+function devBossDmg(){
+  if(typeof dealBossDamage==='function'){ dealBossDamage(100); showToast('💥 100 DMG dealt!'); _devLog('100 DMG dealt to boss','ok'); }
+  else if(typeof _bossDmg==='function'){ _bossDmg(100); showToast('💥 100 DMG!'); }
+  else { _devLog('dealBossDamage tidak ditemukan','warn'); showToast('⚠️ DMG function tidak ada'); }
+}
+function devBossStatus(){
+  var info = document.getElementById('devBossInfo');
+  var status='';
+  try {
+    if(typeof _bossState!=='undefined'){ status=JSON.stringify(_bossState,null,1); }
+    else if(typeof getBossState==='function'){ status=JSON.stringify(getBossState(),null,1); }
+    else { status='Boss state tidak ditemukan di global scope'; }
+  } catch(e){ status='Error: '+e.message; }
+  if(info) info.textContent=status;
+  _devLog('Boss status logged','info');
+}
+function devResetGami(){
+  if(!confirm('Reset XP, Gold, Level ke 0? Tidak bisa di-undo!')) return;
+  if(typeof resetGamification==='function'){ resetGamification(); showToast('🔁 Gamification reset!'); _devLog('Gamification reset','warn'); }
+  else { _devLog('resetGamification tidak ditemukan','err'); showToast('⚠️ Reset function tidak ada'); }
+}
+function devUnlockAllAchv(){
+  if(!confirm('Unlock semua achievements?')) return;
+  if(typeof unlockAllAchievements==='function'){ unlockAllAchievements(); showToast('🏆 Semua achievements unlocked!'); _devLog('All achievements unlocked','ok'); }
+  else { _devLog('unlockAllAchievements tidak ditemukan','warn'); showToast('⚠️ Function tidak ada'); }
+}
+
+// ── DATA TAB ──
+function _devExport(collectionName, filename){
+  if(!fbDb||!fbUser||fbUser._isGuest){ showToast('Butuh login Firebase'); return; }
+  fbDb.collection('users').doc(fbUser.uid).collection(collectionName).get().then(function(snap){
+    var data=[]; snap.forEach(function(doc){ data.push(Object.assign({_id:doc.id},doc.data())); });
+    var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=filename+'_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+    showToast('📦 '+filename+' exported! ('+data.length+' items)');
+    _devLog('Exported '+data.length+' docs from '+collectionName,'ok');
+  }).catch(function(e){ _devLog('Export error: '+e.message,'err'); showToast('Error: '+e.message); });
+}
+function devExportTasks(){ _devExport('tasks','chitask_tasks'); }
+function devExportHabits(){ _devExport('habits','chitask_habits'); }
+function devExportFinance(){ _devExport('transactions','chitask_finance'); }
+function devExportAll(){
+  if(!fbDb||!fbUser||fbUser._isGuest){ showToast('Butuh login Firebase'); return; }
+  var cols=['tasks','habits','transactions','wallets','journals']; var allData={}; var pending=cols.length;
+  cols.forEach(function(col){
+    fbDb.collection('users').doc(fbUser.uid).collection(col).get().then(function(snap){
+      allData[col]=[];
+      snap.forEach(function(doc){ allData[col].push(Object.assign({_id:doc.id},doc.data())); });
+      if(--pending===0){
+        allData._exportedAt=new Date().toISOString(); allData._uid=fbUser.uid;
+        var blob=new Blob([JSON.stringify(allData,null,2)],{type:'application/json'});
+        var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+        a.download='chitask_fullexport_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+        showToast('📦 Full export berhasil!'); _devLog('Full export complete','ok');
+      }
+    }).catch(function(){ pending--; });
+  });
+}
+function devLoadFirestoreStats(){
+  if(!fbDb||!fbUser||fbUser._isGuest){ showToast('Butuh login Firebase'); return; }
+  var el=document.getElementById('devFirestoreStats'); if(el) el.innerHTML='⏳ Memuat...';
+  var cols=['tasks','habits','transactions','journals','wallets']; var stats={}; var pending=cols.length;
+  cols.forEach(function(col){
+    fbDb.collection('users').doc(fbUser.uid).collection(col).get().then(function(snap){
+      stats[col]=snap.size; if(--pending===0){
+        var html=''; Object.keys(stats).forEach(function(k){ html+='📁 '+k+': <span style="color:#60a5fa">'+stats[k]+' docs</span>\n'; });
+        if(el) el.innerHTML=html; _devLog('Firestore stats loaded','ok');
+      }
+    }).catch(function(){ pending--; });
+  });
+}
+function devWipeUserData(){
+  if(!confirm('‼️ SERIUS: Hapus SEMUA data user dari Firestore? Tidak bisa di-undo!')) return;
+  if(!confirm('Konfirmasi sekali lagi — semua data Firebase user ini akan dihapus?')) return;
+  showToast('⚠️ Wipe diblokir — lakukan manual via Firebase Console untuk keamanan');
+  _devLog('⚠️ Wipe blocked — gunakan Firebase Console','warn');
+}</script>
+
+
+<!-- ══ ANNOUNCEMENT POPUP — tampil ke semua user ══════════════════ -->
+<style>
+/* ── Ann Modal ── */
+#annOverlay { display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:20px;box-sizing:border-box }
+#annCard {
+  width:100%;max-width:420px;
+  background:linear-gradient(145deg,rgba(15,15,25,0.97) 0%,rgba(20,20,35,0.98) 100%);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:28px;
+  font-family:'DM Sans',sans-serif;
+  transform:translateY(32px) scale(0.95);opacity:0;
+  transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),opacity 0.25s ease;
+  overflow:hidden;
+  box-shadow:0 32px 80px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04);
+  position:relative;
+}
+#annCard.ann-visible { transform:translateY(0) scale(1);opacity:1 }
+
+/* style variants */
+#annCard[data-ann-style="info"]    { --ann-clr:#3b82f6;--ann-clr2:#60a5fa;--ann-glow:rgba(59,130,246,0.18) }
+#annCard[data-ann-style="success"] { --ann-clr:#10b981;--ann-clr2:#34d399;--ann-glow:rgba(16,185,129,0.18) }
+#annCard[data-ann-style="warning"] { --ann-clr:#f59e0b;--ann-clr2:#fbbf24;--ann-glow:rgba(245,158,11,0.18) }
+#annCard[data-ann-style="danger"]  { --ann-clr:#ef4444;--ann-clr2:#f87171;--ann-glow:rgba(239,68,68,0.18) }
+#annCard[data-ann-style="promo"]   { --ann-clr:#8b5cf6;--ann-clr2:#a78bfa;--ann-glow:rgba(139,92,246,0.18) }
+
+/* Glow top bar */
+#annGlowBar {
+  position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,transparent,var(--ann-clr,#3b82f6),var(--ann-clr2,#60a5fa),transparent);
+  opacity:0.9;
+}
+/* Ambient blob */
+#annAmbient {
+  position:absolute;top:-60px;right:-60px;width:180px;height:180px;
+  border-radius:50%;
+  background:radial-gradient(circle,var(--ann-glow,rgba(59,130,246,0.18)) 0%,transparent 70%);
+  pointer-events:none;
+}
+/* Icon badge */
+.ann-icon-wrap {
+  width:56px;height:56px;border-radius:18px;
+  background:linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02));
+  border:1px solid rgba(255,255,255,0.1);
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;flex-shrink:0;
+  box-shadow:0 4px 16px rgba(0,0,0,0.3);
+}
+/* Dismiss btn */
+#annDismissBtn {
+  width:100%;padding:14px;border:none;
+  background:linear-gradient(135deg,var(--ann-clr,#3b82f6),var(--ann-clr2,#60a5fa));
+  color:#fff;font-size:14px;font-weight:700;cursor:pointer;
+  font-family:'DM Sans',sans-serif;letter-spacing:0.3px;
+  border-radius:16px;
+  box-shadow:0 6px 20px var(--ann-glow,rgba(59,130,246,0.3));
+  transition:transform 0.15s,box-shadow 0.15s;
+  position:relative;overflow:hidden;
+}
+#annDismissBtn:active { transform:scale(0.98) }
+#annDismissBtn::after {
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,0.12),transparent);
+}
+/* Gambar iklan */
+#annImageWrap { transition: opacity 0.2s; }
+#annImageWrap:hover { opacity: 0.92; }
+#annImageWrap img { transition: transform 0.3s ease; }
+#annImageWrap:hover img { transform: scale(1.01); }
+
+/* Tag chip */
+.ann-tag {
+  display:inline-flex;align-items:center;gap:4px;
+  padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:0.3px;
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+  color:rgba(255,255,255,0.5);text-transform:uppercase;
+}
+</style>
+
+<div id="annOverlay">
+  <div id="annCard" data-ann-style="info">
+    <!-- Glow elements -->
+    <div id="annGlowBar"></div>
+    <div id="annAmbient"></div>
+
+    <!-- Body -->
+    <div style="padding:28px 24px 0;position:relative;z-index:1">
+      <!-- Top row: icon + meta -->
+      <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px">
+        <div class="ann-icon-wrap">
+          <span id="annIcon" style="font-size:28px;line-height:1">📢</span>
+        </div>
+        <div style="flex:1;min-width:0">
+          <!-- App badge -->
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span class="ann-tag">📣 Pengumuman</span>
+            <span id="annTimeBadge" style="font-size:10px;color:rgba(255,255,255,0.25);font-weight:600"></span>
+          </div>
+          <div id="annTitle" style="font-size:18px;font-weight:900;color:#fff;line-height:1.25;letter-spacing:-0.3px;margin-bottom:0">Pengumuman</div>
+        </div>
+        <!-- Close X -->
+        <button id="annCloseX" onclick="document.getElementById('annDismissBtn').click()" style="border:none;background:rgba(255,255,255,0.06);border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:13px;color:rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.15s">✕</button>
+      </div>
+
+      <!-- Message body -->
+      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px 18px;margin-bottom:20px">
+        <div id="annMessage" style="font-size:14px;color:rgba(255,255,255,0.82);line-height:1.7;white-space:pre-wrap"></div>
+      </div>
+
+      <!-- Gambar iklan (tampil jika ada) -->
+      <div id="annImageWrap" style="display:none;margin-bottom:20px;border-radius:14px;overflow:hidden;position:relative;cursor:pointer" onclick="annImageClick()">
+        <img id="annImage" src="" alt="" style="width:100%;max-height:220px;object-fit:cover;display:block;border-radius:14px">
+        <div id="annImageLinkHint" style="display:none;position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none">🔗 Buka Link</div>
+      </div>
+
+      <!-- Divider -->
+      <div style="height:1px;background:rgba(255,255,255,0.06);margin-bottom:20px"></div>
+    </div>
+
+    <!-- Footer actions -->
+    <div style="padding:0 24px 24px;position:relative;z-index:1">
+      <button id="annDismissBtn">
+        ✓ Oke, Mengerti!
+      </button>
+      <div style="text-align:center;margin-top:12px">
+        <span id="annFooterNote" style="font-size:11px;color:rgba(255,255,255,0.2)">ChiTask · Pesan dari developer</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ══ DATE PICKER MODAL ══════════════════════════════════════════════════ -->
 <div id="datePickerOverlay" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.45);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px;box-sizing:border-box" onclick="if(event.target===this)closeDatePicker()">
