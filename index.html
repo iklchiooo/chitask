@@ -8684,12 +8684,8 @@ function getFiltered(){
     }));
     case 'planned':   return tasks.filter(function(t){
       if(!t.due)return false;
-      return !isDoneForDate(t,t.due);
-    }).sort(function(a,b){return a.due.localeCompare(b.due);})
-    .concat(tasks.filter(function(t){
-      if(!t.due)return false;
-      return isDoneForDate(t,t.due);
-    }).sort(function(a,b){return a.due.localeCompare(b.due);}));
+      return !isDoneForDate(t,t.due)&&!isEffectiveDone(t);
+    }).sort(function(a,b){return a.due.localeCompare(b.due);});
     case 'all':       return tasks.slice().sort(function(a,b){
       return isEffectiveDone(a)-isEffectiveDone(b);
     });
@@ -9062,7 +9058,7 @@ function renderMain(){
       pending.forEach(function(t){html+=taskCard(t);});
     }
   }
-  if(done.length&&currentView!=='completed'){
+  if(done.length&&currentView!=='completed'&&currentView!=='planned'){
     html+='<div class="section-hdr" style="margin-top:14px"><span>Selesai ('+done.length+')</span></div>';
     done.forEach(function(t){html+=taskCard(t);});
   }
@@ -13162,6 +13158,7 @@ function toggleDone(id){
     var myDayTasks=tasks.filter(function(x){return x.myday;});
     if(myDayTasks.length&&myDayTasks.every(function(x){return x.done;})){perfectDays++;showToast('✨ Hari Sempurna! Semua task selesai!');}
   } else {
+    var _savedDoneDate=t.doneDate; // simpan sebelum di-null untuk cleanup history
     t.doneDate=null;totalDone=Math.max(0,totalDone-1);
     xp=Math.max(0,xp-getTaskXP(t));updateXPBar();
     revokeStatProgress(t);
@@ -13206,17 +13203,19 @@ function toggleDone(id){
     }
   } else {
     // Task biasa: catat/hapus doneDate di history
-    var taskHistDate=t.doneDate||todayStr;
+    var taskHistDate=_savedDoneDate||todayStr;
     if(t.done){
       if(t.history.indexOf(taskHistDate)<0)t.history.push(taskHistDate);
     } else {
-      [todayStr,taskHistDate].forEach(function(d){
+      // Hapus semua tanggal yang mungkin tercatat: saved doneDate, today, dan seluruh history hari ini
+      [todayStr, taskHistDate].forEach(function(d){
         var idx=t.history.indexOf(d);if(idx>=0)t.history.splice(idx,1);
       });
     }
   }
   if(t.repeat&&!t.done&&t.due){showToast('✅ Selesai! Next due: '+t.due+' 🔄');}
-  else if((!t.isShopping||!t.price)&&!t.repeat&&!(t.due&&t.due<todayStr)){showToast(t.done?'Task selesai! ✅':'Task dibuka kembali');}
+  else if(!t.done){showToast('↩️ Task dikembalikan ke My Day');}
+  else if((!t.isShopping||!t.price)&&!(t.due&&t.due<todayStr)){showToast('Task selesai! ✅');}
   checkAchievements();saveData(true);render();
 }
 
