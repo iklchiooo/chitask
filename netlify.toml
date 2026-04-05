@@ -3,9 +3,11 @@
   publish = "."                         # folder root (index.html ada di sini)
   functions = "netlify/functions"       # folder functions
 
+# ── Node bundler untuk semua functions ───────────────────────────
+[functions]
+  node_bundler = "esbuild"
+
 # ── Scheduled Function: cek reminder tiap menit ──────────────────
-# Sintaks cron: "* * * * *" = setiap menit
-# Butuh Netlify plan yang support scheduled functions (Free tier: OK)
 [functions."send-reminders"]
   schedule = "* * * * *"
 
