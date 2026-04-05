@@ -1003,15 +1003,9 @@ function _initFirebase(baseUrl, onDone) {
       if (e2 instanceof Error) { onDone(e2); return; }
       _loadScript(baseUrl + 'firebase-firestore-compat.js', function(e3) {
         if (e3 instanceof Error) { onDone(e3); return; }
-        // FCM messaging SDK — tunggu sampai firebase.messaging benar-benar attach
+        // FCM messaging SDK
         _loadScript(baseUrl + 'firebase-messaging-compat.js', function(e4) {
-          if (e4 instanceof Error) {
-            console.warn('[FCM] Messaging SDK gagal load:', e4);
-          } else if (!firebase.messaging) {
-            console.warn('[FCM] firebase.messaging masih undefined setelah load — kemungkinan SDK error');
-          } else {
-            console.log('[FCM] Messaging SDK berhasil load ✓');
-          }
+          // messaging gagal tidak fatal (fallback ke setTimeout notif)
           onDone(null);
         });
       });
@@ -8116,52 +8110,32 @@ var _FCM_VAPID_KEY = 'BM2WWZ3-KsRiRhKpKutCmeJfkwamUTOEvY7JOGi026NEE2fWzc2TNh1Kbl
 
 // Subscribe FCM dan simpan token ke Firestore koleksi 'fcm_tokens'
 function _fcmSubscribe(userId) {
-  if (!userId) { console.warn('[FCM] _fcmSubscribe: userId kosong'); return; }
-  if (!window.firebase) { console.warn('[FCM] firebase SDK belum load'); return; }
-  if (!firebase.messaging) { console.warn('[FCM] firebase.messaging tidak tersedia (SDK belum load?)'); return; }
-  if (!('serviceWorker' in navigator)) { console.warn('[FCM] Browser tidak support serviceWorker'); return; }
-  if (Notification.permission === 'denied') { console.warn('[FCM] Notifikasi di-block user'); return; }
+  if (!userId || !window.firebase || !firebase.messaging) return;
+  if (!('serviceWorker' in navigator)) return;
 
-  function _doGetToken(swReg) {
+  // Minta izin notifikasi dulu jika belum
+  if (Notification.permission === 'denied') return;
+
+  navigator.serviceWorker.ready.then(function(swReg) {
     try {
       var msg = firebase.messaging();
       msg.getToken({ vapidKey: _FCM_VAPID_KEY, serviceWorkerRegistration: swReg })
         .then(function(token) {
-          if (!token) { console.warn('[FCM] Token kosong setelah permission granted — cek VAPID key atau SW'); return; }
+          if (!token) { console.warn('[FCM] Token kosong, izin notifikasi belum diberikan?'); return; }
           console.log('[FCM] Token OK:', token.substring(0, 20) + '...');
-          window._fcmToken = token;
+          // Simpan token ke Firestore untuk dipakai Netlify function
           if (fbDb) {
             fbDb.collection('fcm_tokens').doc(userId).set({
               userId:    userId,
               token:     token,
               updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }).then(function(){ console.log('[FCM] Token tersimpan ke Firestore ✓'); })
-              .catch(function(e){ console.warn('[FCM] Gagal simpan token ke Firestore:', e); });
+            }).catch(function(e){ console.warn('[FCM] Gagal simpan token:', e); });
           }
+          window._fcmToken = token;
         })
         .catch(function(err) { console.warn('[FCM] getToken error:', err); });
     } catch(e) { console.warn('[FCM] messaging init error:', e); }
-  }
-
-  function _runWithSW() {
-    // Pakai SW yang sudah teregister kalau ada, fallback ke navigator.serviceWorker.ready
-    if (window._reminderSWReg) {
-      _doGetToken(window._reminderSWReg);
-    } else {
-      navigator.serviceWorker.ready.then(_doGetToken);
-    }
-  }
-
-  // Minta permission dulu, baru getToken
-  if (Notification.permission === 'granted') {
-    _runWithSW();
-  } else {
-    // permission masih 'default' — minta dulu sebelum getToken
-    _requestNotifPermission(function(granted) {
-      if (!granted) { console.warn('[FCM] User menolak izin notifikasi'); return; }
-      _runWithSW();
-    });
-  }
+  });
 }
 
 // Simpan reminder ke Firestore koleksi 'reminders' agar Netlify function bisa kirim FCM
@@ -8201,11 +8175,6 @@ function _fcmDeleteReminder(userId, taskId) {
     .then(function(reg){
       window._reminderSWReg = reg;
       console.log('[ChiTask] SW registered:', reg.scope);
-      // Kalau user sudah login sebelum SW siap, subscribe FCM sekarang
-      if (typeof fbUser !== 'undefined' && fbUser && fbUser.uid) {
-        console.log('[FCM] SW baru siap, re-subscribe FCM untuk user:', fbUser.uid);
-        _fcmSubscribe(fbUser.uid);
-      }
     })
     .catch(function(err){
       console.warn('[ChiTask] SW register gagal, fallback ke Notification API:', err);
@@ -8644,7 +8613,7 @@ function buildDetailColorPicker(){
 // ══════════════════════════════════════════════
 function getFiltered(){
   switch(currentView){
-    case 'myday':     return tasks.filter(function(t){return t.myday&&!t.done;}).concat(tasks.filter(function(t){return t.myday&&t.done;}));
+    case 'myday':     return tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done;}).concat(tasks.filter(function(t){return (t.myday||t.due===todayStr)&&t.done;}));
     case 'important': return tasks.filter(function(t){return t.important&&!t.done;}).concat(tasks.filter(function(t){return t.important&&t.done;}));
     case 'planned':   return tasks.filter(function(t){return t.due&&!t.done;}).sort(function(a,b){return a.due.localeCompare(b.due);});
     case 'all':       return tasks.slice().sort(function(a,b){return a.done-b.done;});
@@ -8679,7 +8648,7 @@ function renderPlannedGroup(key, list, label, color, defaultOpen){
 function render(){updateCounts();updateMaintCount();renderMain();renderHabitPanel();updateGoldDisplay();}
 
 function updateCounts(){
-  document.getElementById('cnt-myday').textContent=tasks.filter(function(t){return t.myday&&!t.done&&!(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);}).length;
+  document.getElementById('cnt-myday').textContent=tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done&&!(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);}).length;
   document.getElementById('cnt-important').textContent=tasks.filter(function(t){return t.important&&!t.done;}).length;
   document.getElementById('cnt-planned').textContent=tasks.filter(function(t){return t.due&&!t.done;}).length;
   document.getElementById('cnt-completed').textContent=tasks.filter(function(t){return t.done;}).length;
@@ -8917,6 +8886,60 @@ function renderMain(){
       var label=g?(getGroupIcon(g)+' '+g):'📁 Tanpa Grup';
       var badge='<span class="group-badge">'+pending.length+'</span>';
       var gSafe=g.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+      // Estimasi saldo wallet untuk grup Belanja
+      var estimasiHtml='';
+      if(g==='Belanja'){
+        var shopItems=gTasks.filter(function(t){return t.isShopping&&t.price;});
+        if(shopItems.length){
+          var walletTotals={};
+          var noWalletPlanned=0, noWalletSpent=0;
+          shopItems.forEach(function(t){
+            // Pakai walletId apa adanya — jangan fallback ke default
+            var wid = t.walletId || '';
+            if(!wid){
+              if(t.done) noWalletSpent+=t.price;
+              else noWalletPlanned+=t.price;
+            } else {
+              if(!walletTotals[wid]) walletTotals[wid]={spent:0,planned:0};
+              if(t.done) walletTotals[wid].spent+=t.price;
+              else walletTotals[wid].planned+=t.price;
+            }
+          });
+          // Hanya tampilkan card wallet yang punya item pending (planned > 0)
+          var walletKeys=Object.keys(walletTotals).filter(function(wid){return walletTotals[wid].planned>0;});
+          var hasAnyCard = walletKeys.length > 0 || noWalletPlanned > 0;
+          if(hasAnyCard){
+            estimasiHtml='<div style="margin:0 0 8px;display:flex;flex-direction:column;gap:5px">';
+            walletKeys.forEach(function(wid){
+              var w=getWalletById(wid);
+              if(!w)return;
+              var info=walletTotals[wid];
+              var sisa=w.balance-info.planned;
+              var sisaColor=sisa<0?'#dc2626':'#16a34a';
+              estimasiHtml+='<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:12px">'
+                +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+                +'<span style="font-weight:700;color:var(--text)">'+w.icon+' '+w.name+'</span>'
+                +'<span style="color:var(--muted);font-size:11px">Saldo: <b style="color:var(--text)">'+fmtRp(w.balance)+'</b></span>'
+                +'</div>'
+                +'<div style="display:flex;align-items:center;justify-content:space-between">'
+                +'<span style="color:var(--muted)">Estimasi belanja: <b style="color:#d97706">'+fmtRp(info.planned)+'</b></span>'
+                +'<span style="font-weight:700;color:'+sisaColor+'">Sisa ≈ '+fmtRp(sisa)+'</span>'
+                +'</div>'
+                +(sisa<0?'<div style="font-size:10px;color:#dc2626;margin-top:3px">⚠️ Saldo tidak cukup untuk semua item</div>':'')
+                +'</div>';
+            });
+            if(noWalletPlanned>0){
+              estimasiHtml+='<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:12px">'
+                +'<span style="font-weight:700;color:var(--text)">👜 Tanpa Wallet</span>'
+                +'<div style="color:var(--muted);margin-top:4px">Estimasi belanja: <b style="color:#d97706">'+fmtRp(noWalletPlanned)+'</b></div>'
+                +'</div>';
+            }
+            estimasiHtml+='</div>';
+          }
+        }
+      }
+
       html+='<div class="group-accordion myday-drag-grp" draggable="true" data-grp="'+g.replace(/"/g,'&quot;')+'"'
         +' ondragstart="mdGrpDragStart(event,this)" ondragend="mdGrpDragEnd(event,this)"'
         +' ondragover="mdGrpDragOver(event)" ondragleave="mdGrpDragLeave(event)" ondrop="mdGrpDrop(event,this)">'
@@ -8925,7 +8948,8 @@ function renderMain(){
         +'<div class="group-header-left" style="flex:1">'+label+badge+'</div>'
         +'<span class="group-chevron'+(isOpen?' open':'')+'">▼</span>'
         +'</div>'
-        +'<div class="group-body'+(isOpen?' open':'')+'"><div style="padding:6px 8px 8px">';
+        +'<div class="group-body'+(isOpen?' open':'')+'"><div style="padding:6px 8px 8px">'
+        +estimasiHtml;
       pending.forEach(function(t){html+=taskCard(t);});
       html+='</div></div></div>';
     });
@@ -9310,7 +9334,7 @@ function gcalCreateEvent(task) {
     }).then(function(ev) {
       if (!ev) return;
       if (ev && ev.id) {
-        var t = tasks.find(function(t) { return t.id === task.id; });
+        var t = tasks ? tasks.find(function(t) { return t && t.id === task.id; }) : null;
         if (t) { t.gcalEventId = ev.id; saveData(); }
         gcalFetchMonth(calendarYear, calendarMonth);
       }
@@ -13148,7 +13172,7 @@ function openShoppingQuick(){
 
   // ── Populate wallet select ──
   var sel=document.getElementById('sqWallet');
-  if(sel) sel.innerHTML=buildWalletOpts('');
+  if(sel) sel.innerHTML=buildWalletOpts('', true);
   var hint=document.getElementById('sqDefaultWalletHint');
   if(hint) hint.style.display=(defaultShoppingWalletId&&finWallets.some(function(w){return w.id===defaultShoppingWalletId;}))?'block':'none';
 
@@ -13171,7 +13195,7 @@ function confirmShoppingQuick(){
   if(!name){showToast('Ketik nama barang dulu 😊');if(nameEl)nameEl.focus();return;}
 
   var price=getRawVal(document.getElementById('sqPrice'))||0;
-  var walletId=document.getElementById('sqWallet').value||'';
+  var walletId=document.getElementById('sqWallet').value;
   var noteEl=document.getElementById('sqNote');
   var note=(noteEl?noteEl.value.trim():'');
 
@@ -14598,7 +14622,7 @@ function updateBottomNav(){
   if(badge){var c=getMaintDueCount();badge.textContent=c;badge.style.display=c?'':'none';}
   // update task badge
   var tbadge=document.getElementById('bn-task-badge');
-  if(tbadge){var tc=tasks.filter(function(t){return t.myday&&!t.done;}).length;tbadge.textContent=tc;tbadge.style.display=tc?'':'none';}
+  if(tbadge){var tc=tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done;}).length;tbadge.textContent=tc;tbadge.style.display=tc?'':'none';}
   // update sub-drawer active items
   updateSubDrawerActive();
   // update journal count badge
@@ -14606,7 +14630,7 @@ function updateBottomNav(){
   if(jcnt){var jc=journalEntries.length;jcnt.textContent=jc;jcnt.style.display=jc?'':'none';}
   // update sdi counts
   var cntMap={
-    'sdi-cnt-myday':tasks.filter(function(t){return t.myday&&!t.done;}).length,
+    'sdi-cnt-myday':tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done;}).length,
     'sdi-cnt-important':tasks.filter(function(t){return t.important&&!t.done;}).length,
     'sdi-cnt-planned':tasks.filter(function(t){return t.due&&!t.done;}).length,
     'sdi-cnt-completed':tasks.filter(function(t){return t.done;}).length
@@ -17615,7 +17639,7 @@ var bossPhraseTimeout = null;
 
 function bossLoad(){ try{ var r=JSON.parse(localStorage.getItem(BOSS_KEY)||'null'); if(r)bossState=r; }catch(e){} }
 function bossSave(){ try{ localStorage.setItem(BOSS_KEY,JSON.stringify(bossState)); }catch(e){} }
-function bossToday(){ var d=new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+function bossToday(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function bossCur(){ return BOSS_DEFS[bossState.idx]||BOSS_DEFS[0]; }
 
 function bossInit(){
@@ -19809,10 +19833,13 @@ toggleDone = function(id){
   _origToggleDone(id);
   var tAfter = tasks.filter(function(x){ return x.id===id; })[0];
   if(!tAfter || bossState.defeated) return;
-  if(tAfter.done && !wasDone && !(tAfter.steps && tAfter.steps >= 2)){
+  // Task repeat: setelah diceklis, done langsung dibalik jadi false untuk reschedule.
+  // Deteksi via _prevDue yang hanya di-set saat repeat berjalan, atau done biasa.
+  var wasJustCompleted = !wasDone && (tAfter.done || tAfter._prevDue !== undefined);
+  if(wasJustCompleted && !(tAfter.steps && tAfter.steps >= 2)){
     setTimeout(function(){
       if(bossState.defeated) return;
-      var dmg = 70 + Math.floor(Math.random()*51); // 70-120
+      var dmg = 70 + Math.floor(Math.random()*51);
       bossState.hp = Math.max(0, bossState.hp - dmg);
       if(bossState.hp === 0 && !bossState.defeated){
         bossState.defeated = true;
@@ -22006,6 +22033,23 @@ function sholatToggleFeature(enabled) {
   } else {
     var panel = document.getElementById('sholat-panel');
     if (panel) panel.classList.remove('open');
+    // Hapus habit sholat hari ini saat fitur dimatikan
+    if (typeof tasks !== 'undefined') {
+      var sholatNamesToRemove = SHOLAT_NAMES.map(function(name, i) {
+        return SHOLAT_ICONS[i] + ' Sholat ' + name;
+      });
+      sholatNamesToRemove.push('🕌 Sholat Jumat');
+      var before = tasks.length;
+      tasks = tasks.filter(function(t) {
+        return sholatNamesToRemove.indexOf(t.name) === -1;
+      });
+      if (tasks.length !== before) {
+        localStorage.removeItem('chitask_sholat_lastrun');
+        if (typeof saveData   === 'function') saveData(true);
+        if (typeof render     === 'function') render();
+        if (typeof showToast  === 'function') showToast('🗑️ Habit sholat hari ini dihapus');
+      }
+    }
   }
 }
 
@@ -22107,7 +22151,7 @@ function sholatAutoInject() {
       tasks.push({
         id: nextId++,
         name: nm,
-        type: 'Task',
+        type: 'Habit',
         repeat: repeatVal || 'Harian',
         due: todayStr,
         done: false,
