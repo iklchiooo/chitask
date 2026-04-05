@@ -10662,6 +10662,23 @@ function renderHabitAnalisa(el){
     +'<div style="text-align:center"><div style="font-size:20px;font-weight:800;color:var(--text)">'+topStreak.streak+'\uD83D\uDD25</div><div style="font-size:11px;color:var(--muted)">Streak Terbaik</div></div>'
     +'</div></div>';
 
+  // ── AI Insight (Groq) — paling atas ──
+  html += '<div id="habitAnalisaAIBox" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+    +'<div style="font-size:13px;font-weight:700;color:var(--text)">🤖 Analisa AI Personal</div>'
+    +'<button onclick="refreshHabitAI()" style="font-size:11px;padding:4px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-family:\'DM Sans\',sans-serif">↻ Refresh</button>'
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Saran personal berbasis pola habit kamu — powered by Llama 70B</div>'
+    +'<div id="habitAILoading" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:8px 0">'
+    +'<span style="display:inline-flex;gap:3px"><span class="ai-dot"></span><span class="ai-dot" style="animation-delay:0.2s"></span><span class="ai-dot" style="animation-delay:0.4s"></span></span>'
+    +'Sedang menganalisa pola habit kamu...</div>'
+    +'<div id="habitAIText" style="display:none;font-size:13px;color:var(--text);line-height:1.7"></div>'
+    +'<div id="habitAIError" style="display:none;font-size:12px;color:#ef4444;padding:8px 0"></div>'
+    +'</div>';
+
+  // ── Tabs: Laporan Mingguan & Bulanan ──
+  html += renderHabitReportTabs(habitStats, habits, days7, days30, days60, avgPct30, topStreak, doneToday, totalHabits);
+
   // Heatmap 90 hari (gabungan semua habit)
   html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
     +'<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">\uD83D\uDCCA Aktivitas 90 Hari Terakhir</div>'
@@ -10684,13 +10701,13 @@ function renderHabitAnalisa(el){
     +'<span style="font-size:11px;color:#ef4444;font-weight:700">\u26A0\uFE0F Terlemah: '+dayNames[worstDowGlobal]+'</span>'
     +'</div></div>';
 
-  // ── Prediksi Kegagalan Besok (NEW) ──
+  // ── Prediksi Kegagalan Besok ──
   html += renderFailurePredictionCard(habitStats, days30);
 
-  // ── Habit Correlation (NEW) ──
+  // ── Habit Correlation ──
   html += renderCorrelationCard(habits, days60);
 
-  // ── Rapor Per Habit (Extended dengan heatmap & weekly chart) (ENHANCED) ──
+  // ── Rapor Per Habit ──
   html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
     +'<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">\uD83C\uDFC5 Rapor Per Habit</div>'
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Heatmap 28 hari + tren mingguan per habit</div>'
@@ -10702,23 +10719,6 @@ function renderHabitAnalisa(el){
 
   // ── Insight Cerdas (Rule-based) ──
   html += renderHabitInsightBox(insight);
-
-  // ── AI Insight (Groq) ──
-  html += '<div id="habitAnalisaAIBox" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
-    +'<div style="font-size:13px;font-weight:700;color:var(--text)">🤖 Analisa AI Personal</div>'
-    +'<button onclick="refreshHabitAI()" style="font-size:11px;padding:4px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-family:\'DM Sans\',sans-serif">↻ Refresh</button>'
-    +'</div>'
-    +'<div style="font-size:11px;color:var(--muted);margin-bottom:10px">Saran personal berbasis pola habit kamu — powered by Llama 70B</div>'
-    +'<div id="habitAILoading" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:8px 0">'
-    +'<span style="display:inline-flex;gap:3px"><span class="ai-dot"></span><span class="ai-dot" style="animation-delay:0.2s"></span><span class="ai-dot" style="animation-delay:0.4s"></span></span>'
-    +'Sedang menganalisa pola habit kamu...</div>'
-    +'<div id="habitAIText" style="display:none;font-size:13px;color:var(--text);line-height:1.7"></div>'
-    +'<div id="habitAIError" style="display:none;font-size:12px;color:#ef4444;padding:8px 0"></div>'
-    +'</div>';
-
-  // ── Tabs: Laporan Mingguan & Bulanan ──
-  html += renderHabitReportTabs(habitStats, habits, days7, days30, days60, avgPct30, topStreak, doneToday, totalHabits);
 
   el.innerHTML=html;
 
