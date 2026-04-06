@@ -22274,6 +22274,30 @@ setTimeout(function(){ bossInit(); }, 700);
     <button onclick="showGamificationOnboarding();closeNavPreferenceModal()" style="width:100%;margin-top:10px;padding:9px;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;background:transparent;color:rgba(255,255,255,0.4);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif"><span id="settingsGamiReview">↩ Lihat ulang pilihan mode</span></button>
   </div>
 
+  <!-- ── BACKUP & RESTORE SECTION ── -->
+  <div style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:18px">🗄️</span>
+      <span style="font-size:15px;font-weight:800;color:#fff">Backup & Restore</span>
+    </div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:14px;line-height:1.5">
+      Ekspor semua data lokal ke file JSON untuk backup manual. Impor file backup untuk memulihkan data.
+    </div>
+    <!-- Export Button -->
+    <button onclick="backupExportJSON()" style="width:100%;padding:12px;border:1.5px solid rgba(34,197,94,0.35);border-radius:12px;background:rgba(34,197,94,0.08);color:#4ade80;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;transition:all 0.2s">
+      <span style="font-size:16px">⬇️</span>
+      <span>Export Data ke JSON</span>
+    </button>
+    <!-- Import Button -->
+    <button onclick="document.getElementById('backupImportFileInput').click()" style="width:100%;padding:12px;border:1.5px solid rgba(99,102,241,0.35);border-radius:12px;background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s">
+      <span style="font-size:16px">⬆️</span>
+      <span>Import Data dari JSON</span>
+    </button>
+    <input type="file" id="backupImportFileInput" accept=".json,application/json" style="display:none" onchange="backupImportJSON(this)">
+    <!-- Status message -->
+    <div id="backupStatusMsg" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;font-size:12px;font-weight:600;text-align:center"></div>
+  </div>
+
   <div style="margin-top:18px;display:flex;gap:10px">
     <button id="navPrefCancelBtn" onclick="closeNavPreferenceModal()" style="flex:1;padding:13px;border:1px solid rgba(255,255,255,0.15);border-radius:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.6);font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Tutup</button>
     <button id="navPrefApplyBtn" onclick="applyNavMode()" style="flex:2;padding:13px;border:none;border-radius:12px;background:var(--accent,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Simpan Setting</button>
@@ -26744,6 +26768,142 @@ function devWipeUserData(){
     </div>
   </div>
 </div>
+
+<!-- ══ BACKUP & RESTORE FUNCTIONS ══ -->
+<script>
+// ─── EXPORT: kumpulkan semua data dan download sebagai JSON ───
+function backupExportJSON() {
+  try {
+    var keysToExport = [
+      'chitask_v6_data',
+      'chitask_lang',
+      'chitask_nav_mode',
+      'chitask_nav_mode_set',
+      'chitask_gamification_mode',
+      'chitask_gamification_set',
+      'chitask_tour_done',
+      'chitask_formtour_done',
+      'chitask_segera_window',
+      'chitask_boss_state',
+      'chitask_radar_show',
+      'chitask_sholat_feature',
+      'chitask_sholat_kota'
+    ];
+
+    var exportObj = {
+      _meta: {
+        app: 'ChiTask',
+        exportedAt: new Date().toISOString(),
+        version: 1
+      }
+    };
+
+    keysToExport.forEach(function(key) {
+      try {
+        var val = localStorage.getItem(key);
+        if (val !== null) {
+          try { exportObj[key] = JSON.parse(val); }
+          catch(e) { exportObj[key] = val; }
+        }
+      } catch(e) {}
+    });
+
+    var json = JSON.stringify(exportObj, null, 2);
+    var blob = new Blob([json], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var dateStr = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = 'chitask-backup-' + dateStr + '.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 300);
+
+    backupShowStatus('✅ Backup berhasil diunduh!', 'success');
+  } catch(err) {
+    backupShowStatus('❌ Gagal export: ' + err.message, 'error');
+  }
+}
+
+// ─── IMPORT: baca file JSON dan pulihkan ke localStorage ───
+function backupImportJSON(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var raw = e.target.result;
+      var data = JSON.parse(raw);
+
+      if (!data || typeof data !== 'object') {
+        backupShowStatus('❌ File tidak valid — bukan format backup ChiTask.', 'error');
+        return;
+      }
+
+      var confirmed = confirm(
+        '⚠️ Import akan MENIMPA data lokal saat ini.\n\n' +
+        'Pastikan kamu sudah membackup data yang ada.\n\n' +
+        'Lanjutkan import dari file: ' + file.name + '?'
+      );
+      if (!confirmed) {
+        input.value = '';
+        return;
+      }
+
+      var restored = 0;
+      var skipped = ['_meta'];
+
+      Object.keys(data).forEach(function(key) {
+        if (skipped.indexOf(key) !== -1) return;
+        try {
+          var val = data[key];
+          var strVal = (typeof val === 'object' && val !== null) ? JSON.stringify(val) : String(val);
+          localStorage.setItem(key, strVal);
+          restored++;
+        } catch(e) {}
+      });
+
+      input.value = '';
+      backupShowStatus('✅ Import berhasil! ' + restored + ' item dipulihkan. Halaman akan dimuat ulang...', 'success');
+
+      setTimeout(function() {
+        window.location.reload();
+      }, 2000);
+
+    } catch(err) {
+      backupShowStatus('❌ Gagal membaca file: ' + err.message, 'error');
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ─── Tampilkan pesan status di bawah tombol ───
+function backupShowStatus(msg, type) {
+  var el = document.getElementById('backupStatusMsg');
+  if (!el) return;
+  el.style.display = 'block';
+  if (type === 'success') {
+    el.style.background = 'rgba(34,197,94,0.12)';
+    el.style.border = '1px solid rgba(34,197,94,0.3)';
+    el.style.color = '#4ade80';
+  } else {
+    el.style.background = 'rgba(239,68,68,0.12)';
+    el.style.border = '1px solid rgba(239,68,68,0.3)';
+    el.style.color = '#f87171';
+  }
+  el.textContent = msg;
+  if (msg.indexOf('dimuat ulang') === -1) {
+    setTimeout(function() {
+      el.style.display = 'none';
+    }, 4000);
+  }
+}
+</script>
 
 </body>
 </html>
