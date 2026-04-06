@@ -944,6 +944,7 @@ document.addEventListener('DOMContentLoaded', function(){ applyLang(getLang()); 
 var fbAuth = null, fbDb = null, fbUser = null;
 var _fbSyncTimer = null, _fbInitialized = false;
 var _offlineMode = false;
+var _presenceTimer = null; // heartbeat timer untuk presence system
 
 // ── Offline fallback: masuk pakai data localStorage ──
 function _enterOfflineMode() {
@@ -1045,6 +1046,10 @@ function _startFirebase() {
 
         // ── FCM: Subscribe push notification setelah login ────
         _fcmSubscribe(user.uid);
+
+        // ── PRESENCE: Tandai user online & mulai heartbeat ──
+        _presenceUpdate(user);
+        _presenceStartHeartbeat(user);
 
         // Simpan info user ke localStorage untuk offline mode nanti
         try {
@@ -2540,16 +2545,14 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 .ach-desc{font-size:9px;color:var(--muted);margin-top:2px}
 
 /* Toast & overlay */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(200%);background:#1c1917;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;z-index:9990;transition:transform 0.35s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:88vw;text-align:center;pointer-events:none}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(200%);background:#1c1917;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;z-index:9990;transition:transform 0.35s cubic-bezier(.34,1.56,.64,1),bottom 0.15s ease;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:88vw;text-align:center;pointer-events:none;will-change:transform}
 .toast.show{transform:translateX(-50%) translateY(0);pointer-events:auto}
 @media(max-width:700px){
-  .toast{bottom:calc(72px + env(safe-area-inset-bottom,0));white-space:normal;font-size:12px;padding:9px 16px}
-  body.mobile-nav-sidebar .toast{bottom:24px}
+  .toast{bottom:var(--toast-bottom,calc(72px + env(safe-area-inset-bottom,0)));white-space:normal;font-size:12px;padding:9px 16px}
 }
 .xp-toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(200%);background:linear-gradient(135deg,var(--accent),#fbbf24);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;z-index:9991;transition:transform 0.3s cubic-bezier(.34,1.56,.64,1),opacity 0.3s ease;white-space:nowrap;box-shadow:0 4px 16px rgba(217,119,6,0.4);pointer-events:none;opacity:0}
 .xp-toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-@media(max-width:700px){.xp-toast{bottom:calc(118px + env(safe-area-inset-bottom,0))}}
-@media(max-width:700px){body.mobile-nav-sidebar .xp-toast{bottom:70px}}
+@media(max-width:700px){.xp-toast{bottom:var(--xp-toast-bottom,calc(118px + env(safe-area-inset-bottom,0)))}}
 .empty{text-align:center;padding:48px 20px;color:var(--muted);font-size:13px;line-height:1.9}
 .empty-icon{font-size:34px;margin-bottom:8px}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:99;display:none;backdrop-filter:blur(2px)}
@@ -3134,8 +3137,7 @@ body.sololeveling-theme .sqa-select option{
 /* ═══ GOLD SYSTEM ═══ */
 .gold-toast{position:fixed;bottom:116px;left:50%;transform:translateX(-50%) translateY(200%);background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#1c1917;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;z-index:9992;transition:transform 0.3s cubic-bezier(.34,1.56,.64,1),opacity 0.3s ease;white-space:nowrap;box-shadow:0 4px 16px rgba(245,158,11,0.5);pointer-events:none;opacity:0}
 .gold-toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-@media(max-width:700px){.gold-toast{bottom:calc(164px + env(safe-area-inset-bottom,0))}}
-@media(max-width:700px){body.mobile-nav-sidebar .gold-toast{bottom:116px}}
+@media(max-width:700px){.gold-toast{bottom:var(--gold-toast-bottom,calc(164px + env(safe-area-inset-bottom,0)))}}
 .gold-display{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gold);font-family:'DM Mono',monospace;font-weight:700;cursor:pointer;padding:3px 8px;border-radius:12px;background:rgba(245,158,11,0.12);transition:background 0.15s}
 .gold-display:hover{background:rgba(245,158,11,0.2)}
 
@@ -6511,7 +6513,7 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
     </div>
     <div style="display:flex;flex-direction:column;gap:8px">
       <input type="text" id="mfin-desc" placeholder="Deskripsi..." style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:11px 14px;font-size:15px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;width:100%">
-      <input type="number" id="mfin-amount" placeholder="Jumlah (Rp)" min="0" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:11px 14px;font-size:15px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;width:100%">
+      <input type="text" inputmode="numeric" id="mfin-amount" placeholder="Jumlah (Rp)" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:11px 14px;font-size:15px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;width:100%" oninput="autoFormatRp(this)">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <select id="mfin-cat" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:10px 12px;font-size:13px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:none"></select>
         <select id="mfin-wallet" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:10px 12px;font-size:13px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:none"></select>
@@ -6543,7 +6545,7 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
         <input type="date" id="mmaint-last" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:10px 12px;font-size:13px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;color-scheme:dark">
         <input type="number" id="mmaint-interval" placeholder="Interval (hari)" min="1" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:10px 12px;font-size:13px;color:#fff;font-family:'DM Sans',sans-serif;outline:none">
       </div>
-      <input type="number" id="mmaint-cost" placeholder="Estimasi biaya (Rp, opsional)" min="0" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:10px 12px;font-size:13px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;width:100%">
+      <input type="text" inputmode="numeric" id="mmaint-cost" placeholder="Estimasi biaya (Rp, opsional)" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:10px 12px;font-size:13px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;width:100%" oninput="autoFormatRp(this)">
       <input type="text" id="mmaint-note" placeholder="Catatan (opsional)" style="background:rgba(255,255,255,0.1);border:1.5px solid rgba(255,255,255,0.2);border-radius:10px;padding:10px 12px;font-size:13px;color:#fff;font-family:'DM Sans',sans-serif;outline:none;width:100%">
     </div>
   </div>
@@ -7097,7 +7099,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
       <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.5px">🛒 Info Belanja</div>
       <div class="det-field">
         <div class="det-label">Harga (Rp)</div>
-        <input type="number" class="det-input" id="det-price" min="0" placeholder="0" oninput="liveDetail()">
+        <input type="text" inputmode="numeric" class="det-input" id="det-price" placeholder="0" oninput="autoFormatRp(this);liveDetail()">
       </div>
       <div class="det-field">
         <div class="det-label">Dari Wallet</div>
@@ -7248,7 +7250,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div style="flex:1;min-width:100px">
             <div class="fin-form-label">Jumlah (Rp)</div>
-            <input type="number" class="fin-input" id="wm-tx-amount" placeholder="0" min="0">
+            <input type="text" inputmode="numeric" class="fin-input" id="wm-tx-amount" placeholder="0" oninput="autoFormatRp(this)">
           </div>
           <div style="flex:1;min-width:120px">
             <div class="fin-form-label">Dari Wallet</div>
@@ -7299,7 +7301,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
       </div>
       <div>
         <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Limit per Bulan (Rp)</div>
-        <input type="number" id="bsm-amount" placeholder="cth: 500000" min="0" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--card);color:var(--text);outline:none">
+        <input type="text" inputmode="numeric" id="bsm-amount" placeholder="cth: 500000" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--card);color:var(--text);outline:none" oninput="autoFormatRp(this)">
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:16px">
@@ -8310,9 +8312,32 @@ function _requestNotifPermission(callback){
 }
 
 // ── Banner minta izin notifikasi ──
+// Guard: simpan dismiss di sessionStorage (hilang saat tab ditutup)
+// + cooldown 24 jam di localStorage agar tidak muncul terus-menerus
+var _NOTIF_BANNER_COOLDOWN_KEY = 'chitask_notif_banner_ts';
+var _NOTIF_BANNER_SESSION_KEY  = 'chitask_notif_banner_dismissed';
+var _NOTIF_BANNER_COOLDOWN_MS  = 24 * 60 * 60 * 1000; // 24 jam
+
+function _notifBannerDismiss(permanent){
+  // Mark session: jangan tampil lagi sampai tab di-refresh
+  try{ sessionStorage.setItem(_NOTIF_BANNER_SESSION_KEY, '1'); }catch(e){}
+  // Mark cooldown localStorage
+  if(permanent){
+    try{ localStorage.setItem(_NOTIF_BANNER_COOLDOWN_KEY, String(Date.now())); }catch(e){}
+  }
+  var b=document.getElementById('_notifPermBanner');if(b)b.remove();
+}
+
 function _showNotifPermissionBanner(){
   if(!('Notification' in window)||Notification.permission!=='default')return;
   if(document.getElementById('_notifPermBanner'))return;
+  // Cek session dismiss (sudah klik Nanti di sesi ini)
+  try{ if(sessionStorage.getItem(_NOTIF_BANNER_SESSION_KEY)==='1')return; }catch(e){}
+  // Cek cooldown localStorage
+  try{
+    var lastTs=parseInt(localStorage.getItem(_NOTIF_BANNER_COOLDOWN_KEY)||'0',10);
+    if(lastTs && Date.now()-lastTs < _NOTIF_BANNER_COOLDOWN_MS)return;
+  }catch(e){}
   var banner=document.createElement('div');
   banner.id='_notifPermBanner';
   banner.style.cssText='position:fixed;bottom:76px;left:50%;transform:translateX(-50%);z-index:9999;background:var(--card);border:1.5px solid var(--accent);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 28px rgba(0,0,0,0.22);max-width:360px;width:calc(100% - 32px);animation:_notifBannerIn 0.3s ease';
@@ -8328,15 +8353,21 @@ function _showNotifPermissionBanner(){
   document.body.appendChild(banner);
   document.getElementById('_notifAllowBtn').onclick=function(){
     _requestNotifPermission(function(ok){
-      var b=document.getElementById('_notifPermBanner');if(b)b.remove();
+      _notifBannerDismiss(true);
       if(ok){ showToast('\u2705 Notifikasi reminder aktif!'); scheduleReminders(); }
       else showToast('\u274C Notifikasi diblokir. Aktifkan manual di setelan browser.');
     });
   };
   document.getElementById('_notifDismissBtn').onclick=function(){
-    var b=document.getElementById('_notifPermBanner');if(b)b.remove();
+    // Klik "Nanti": simpan cooldown 24 jam + session flag
+    _notifBannerDismiss(true);
   };
-  setTimeout(function(){var b=document.getElementById('_notifPermBanner');if(b)b.remove();},20000);
+  // Auto-close setelah 20 detik: hanya set session flag, TIDAK cooldown 24 jam
+  // supaya muncul lagi keesokan harinya
+  setTimeout(function(){
+    var b=document.getElementById('_notifPermBanner');
+    if(b){ _notifBannerDismiss(false); }
+  }, 20000);
 }
 
 // ── scheduleReminders: jadwalkan semua task dengan reminder ──
@@ -8350,6 +8381,8 @@ function scheduleReminders(){
   var hasReminders = tasks.some(function(t){ return t.reminder && !t.done; });
 
   // Kalau ada reminder tapi belum ada izin → tampilkan banner
+  // _showNotifPermissionBanner sudah punya guard session+cooldown,
+  // jadi aman dipanggil berkali-kali — tidak akan muncul terus-menerus
   if(hasReminders && 'Notification' in window && Notification.permission === 'default'){
     setTimeout(_showNotifPermissionBanner, 1200);
     // Lanjut juga scheduling, nanti dicek ulang saat izin diberikan
@@ -8745,9 +8778,12 @@ function buildDetailColorPicker(){
 function isEffectiveDone(t){
   if(t.done)return true;
   if(t.history&&t.history.length){
-    // Task dengan due date di masa depan tidak bisa dianggap selesai via history
+    // Habit/repeat yang sudah selesai HARI INI dan di-reschedule ke masa depan:
+    // due-nya sudah jadi besok, tapi history hari ini tetap ada → anggap selesai
+    if(t.history.indexOf(todayStr)>=0)return true;
+    // Task dengan due date di masa depan yang belum dikerjakan sama sekali → false
     if(t.due&&t.due>todayStr)return false;
-    // Untuk Habit/repeat: cek apakah due date saat ini (atau hari ini) ada di history
+    // Untuk task overdue: cek apakah due date-nya ada di history
     var checkDate=t.due&&t.due<=todayStr?t.due:todayStr;
     if(t.history.indexOf(checkDate)>=0)return true;
   }
@@ -8792,12 +8828,11 @@ function getFiltered(){
       return isEffectiveDone(a)-isEffectiveDone(b);
     });
     case 'completed': return tasks.filter(function(t){
-      // Hanya hari ini — task future tidak mungkin selesai sekarang
-      if(t.due && t.due>todayStr) return false;
+      // Repeat/habit yang sudah selesai hari ini lalu di-reschedule ke masa depan:
+      // due-nya sudah jadi besok, tapi history hari ini tetap ada → tampilkan
+      if(t.history && t.history.indexOf(todayStr)>=0) return true;
       // Regular task: done=true DAN doneDate tepat hari ini
       if(t.done && t.doneDate===todayStr) return true;
-      // Repeat/habit yang sudah di-reschedule: done=false tapi history hari ini ada
-      if(!t.done && t.history && t.history.indexOf(todayStr)>=0) return true;
       return false;
     });
     case 'habits':    return tasks.filter(function(t){return t.type==='Habit';});
@@ -11835,7 +11870,7 @@ function addMaintForm(catId){
     +'<div class="maint-form-grid-3">'
     +'<div><label class="maint-label">Tanggal Terakhir</label><input type="date" class="maint-input" id="maint-add-last" value="'+todayStr+'"></div>'
     +'<div><label class="maint-label">Interval (hari)</label><input type="number" class="maint-input" id="maint-add-interval" placeholder="cth: 90" min="1"></div>'
-    +'<div><label class="maint-label">Biaya (Rp)</label><input type="number" class="maint-input" id="maint-add-cost" placeholder="0" min="0"></div>'
+    +'<div><label class="maint-label">Biaya (Rp)</label><input type="text" inputmode="numeric" class="maint-input" id="maint-add-cost" placeholder="0" oninput="autoFormatRp(this)"></div>'
     +'</div>'
     +'<div class="maint-form-grid">'
     +'<div><label class="maint-label">Potong dari Wallet</label><select class="maint-input" id="maint-add-wallet">'+walletOpts+'</select></div>'
@@ -12075,7 +12110,7 @@ function openMaintDetail(itemId){
     +'</div>'
     +'<div class="maint-form-grid-3">'
     +'<div><label class="maint-label">Interval (hari)</label><input type="number" class="maint-input" id="md-interval" value="'+(item.intervalDays||'')+'" min="1"></div>'
-    +'<div><label class="maint-label">Biaya per service</label><input type="number" class="maint-input" id="md-cost" value="'+(item.cost||0)+'" min="0"></div>'
+    +'<div><label class="maint-label">Biaya per service</label><input type="text" inputmode="numeric" class="maint-input" id="md-cost" value="'+(item.cost||0)+'" oninput="autoFormatRp(this)"></div>'
     +'<div><label class="maint-label">Wallet default</label><select class="maint-input" id="md-wallet">'+walletOpts+'</select></div>'
     +'</div>'
     +'<div><label class="maint-label">Catatan</label><input class="maint-input" id="md-note" value="'+escHtml(item.note||'')+'"></div>'
@@ -12091,7 +12126,7 @@ function openMaintDetail(itemId){
     +'<div style="font-size:11px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">✅ Catat Maintenance Selesai</div>'
     +'<div class="maint-form-grid-3">'
     +'<div><label class="maint-label">Tanggal Selesai</label><input type="date" class="maint-input" id="md-done-date" value="'+todayStr+'"></div>'
-    +'<div><label class="maint-label">Biaya (Rp)</label><input type="number" class="maint-input" id="md-done-cost" placeholder="0" value="'+(item.cost||0)+'" min="0"></div>'
+    +'<div><label class="maint-label">Biaya (Rp)</label><input type="text" inputmode="numeric" class="maint-input" id="md-done-cost" placeholder="0" value="'+(item.cost||0)+'" oninput="autoFormatRp(this)"></div>'
     +'<div><label class="maint-label">Dari Wallet</label><select class="maint-input" id="md-done-wallet">'+walletOptsLog+'</select></div>'
     +'</div>'
     +'<div style="margin-bottom:8px"><label class="maint-label">Catatan</label><input class="maint-input" id="md-done-note" placeholder="Opsional..."></div>'
@@ -12899,7 +12934,7 @@ function renderFinTransactions(fw){
     +'</div>'
     +'<div class="fin-form-group">'
     +'<div class="fin-form-label">Jumlah (Rp)</div>'
-    +'<input type="number" class="fin-input" id="fin-tx-amount" placeholder="0" min="0" onkeydown="if(event.key===\'Enter\')addFinTx()">'
+    +'<input type="text" inputmode="numeric" class="fin-input" id="fin-tx-amount" placeholder="0" onkeydown="if(event.key===\'Enter\')addFinTx()" oninput="autoFormatRp(this)">'
     +'</div>'
     +'<div class="fin-form-group">'
     +'<div class="fin-form-label">Kategori</div>'
@@ -13021,15 +13056,21 @@ function renderFinWallets(fw){
   html+='<div class="wallet-manager"><div class="wallet-list">';
   finWallets.forEach(function(w){
     var isDefault=(w.id===defaultShoppingWalletId);
-    html+='<div class="wallet-item" style="'+(isDefault?'border-color:var(--blue);background:rgba(59,130,246,0.04);':'')+'">'
+    html+='<div class="wallet-item" style="flex-wrap:wrap;gap:8px;'+(isDefault?'border-color:var(--blue);background:rgba(59,130,246,0.04);':'')+'">'
       +'<div class="wallet-icon">'+w.icon+'</div>'
-      +'<div class="wallet-info"><div class="wallet-name">'+w.name+(isDefault?' <span style="background:#eff6ff;color:var(--blue);font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;border:1px solid #bfdbfe;vertical-align:middle">⭐ DEFAULT</span>':'')+'</div></div>'
-      +'<div class="wallet-bal">'+fmtRp(w.balance)+'</div>'
-      +(isDefault
-        ? '<button onclick="setDefaultShoppingWallet(\'\')" style="border:none;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 8px;font-size:10px;cursor:pointer;color:var(--blue);font-weight:600;white-space:nowrap">✕ Hapus Default</button>'
-        : '<button onclick="setDefaultShoppingWallet(\''+w.id+'\')" style="border:none;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;cursor:pointer;color:var(--muted);white-space:nowrap">⭐ Set Default</button>')
-      +'<button onclick="editWalletBalance(\''+w.id+'\')" style="border:none;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:var(--muted)">✏️ Edit</button>'
-      +'<button onclick="deleteWallet(\''+w.id+'\')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:14px;padding:2px 5px">×</button>'
+      +'<div class="wallet-info" style="flex:1;min-width:0">'
+        +'<div class="wallet-name" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">'
+          +'<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+w.name+'</span>'
+          +(isDefault?'<span style="background:#eff6ff;color:var(--blue);font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;border:1px solid #bfdbfe;flex-shrink:0">⭐ DEFAULT</span>':'')+'</div>'
+        +'<div style="font-size:13px;font-weight:700;color:var(--text);margin-top:2px">'+fmtRp(w.balance)+'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;align-items:center;flex-shrink:0">'
+        +(isDefault
+          ? '<button onclick="setDefaultShoppingWallet(\'\')" style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:6px;padding:5px 8px;font-size:10px;cursor:pointer;color:var(--blue);font-weight:600;white-space:nowrap">✖ Default</button>'
+          : '<button onclick="setDefaultShoppingWallet(\''+w.id+'\')" style="border:1px solid var(--border);background:var(--bg);border-radius:6px;padding:5px 8px;font-size:10px;cursor:pointer;color:var(--muted);white-space:nowrap">⭐ Default</button>')
+        +'<button onclick="editWalletBalance(\''+w.id+'\')" style="border:1px solid var(--border);background:var(--card);border-radius:6px;padding:5px 8px;font-size:11px;cursor:pointer;color:var(--muted)">✏️</button>'
+        +'<button onclick="deleteWallet(\''+w.id+'\')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:16px;padding:2px 4px;line-height:1">×</button>'
+      +'</div>'
       +'</div>';
   });
   html+='</div>';
@@ -13039,7 +13080,7 @@ function renderFinWallets(fw){
     +'<div class="fin-form-row">'
     +'<div class="fin-form-group"><div class="fin-form-label">Nama</div><input class="fin-input" id="new-wallet-name" placeholder="BCA, Gopay..." onkeydown="if(event.key===\'Enter\')addWallet()"></div>'
     +'<div class="fin-form-group" style="max-width:80px"><div class="fin-form-label">Icon</div><input class="fin-input" id="new-wallet-icon" placeholder="💵" value="💳" style="text-align:center;font-size:18px"></div>'
-    +'<div class="fin-form-group"><div class="fin-form-label">Saldo Awal (Rp)</div><input type="number" class="fin-input" id="new-wallet-bal" placeholder="0" min="0" onkeydown="if(event.key===\'Enter\')addWallet()"></div>'
+    +'<div class="fin-form-group"><div class="fin-form-label">Saldo Awal (Rp)</div><input type="text" inputmode="numeric" class="fin-input" id="new-wallet-bal" placeholder="0" onkeydown="if(event.key===\'Enter\')addWallet()" oninput="autoFormatRp(this)"></div>'
     +'<button class="btn-fin-add" onclick="addWallet()">+ Tambah</button>'
     +'</div></div>';
 
@@ -13049,7 +13090,7 @@ function renderFinWallets(fw){
     +'<div class="fin-form-row">'
     +'<div class="fin-form-group"><div class="fin-form-label">Dari</div><select class="fin-input" id="transfer-from"><option value="">Pilih...</option>'+finWallets.map(function(w){return'<option value="'+w.id+'">'+w.icon+' '+w.name+'</option>';}).join('')+'</select></div>'
     +'<div class="fin-form-group"><div class="fin-form-label">Ke</div><select class="fin-input" id="transfer-to"><option value="">Pilih...</option>'+finWallets.map(function(w){return'<option value="'+w.id+'">'+w.icon+' '+w.name+'</option>';}).join('')+'</select></div>'
-    +'<div class="fin-form-group"><div class="fin-form-label">Jumlah (Rp)</div><input type="number" class="fin-input" id="transfer-amount" placeholder="0" min="0"></div>'
+    +'<div class="fin-form-group"><div class="fin-form-label">Jumlah (Rp)</div><input type="text" inputmode="numeric" class="fin-input" id="transfer-amount" placeholder="0" oninput="autoFormatRp(this)"></div>'
     +'<button class="btn-fin-add amber" onclick="doTransfer()">Transfer</button>'
     +'</div></div>';
 
@@ -13086,7 +13127,7 @@ function editWalletBalance(id){
     +'<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px">Nama Dompet</div>'
     +'<input id="ew-name" value="'+w.name+'" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font-size:14px;font-family:DM Sans,sans-serif;outline:none"></div>'
     +'<div style="margin-bottom:20px"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px">Saldo (Rp)</div>'
-    +'<input id="ew-bal" type="number" value="'+w.balance+'" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font-size:14px;font-family:DM Sans,sans-serif;outline:none;font-family:DM Mono,monospace"></div>'
+    +'<input id="ew-bal" type="text" inputmode="numeric" value="'+w.balance.toLocaleString('id-ID')+'" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font-size:14px;font-family:DM Sans,sans-serif;outline:none;font-family:DM Mono,monospace" oninput="autoFormatRp(this)"></div>'
     +'<div style="display:flex;gap:8px">'
     +'<button onclick="document.getElementById(\'editWalletModal\').remove()" style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:9px;background:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">Batal</button>'
     +'<button onclick="saveEditWallet(\''+id+'\')" style="flex:2;padding:10px;border:none;border-radius:9px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">💾 Simpan</button>'
@@ -13099,7 +13140,7 @@ function saveEditWallet(id){
   var w=getWalletById(id);if(!w)return;
   var icon=document.getElementById('ew-icon').value.trim()||w.icon;
   var name=document.getElementById('ew-name').value.trim();
-  var bal=parseFloat(document.getElementById('ew-bal').value);
+  var bal=getRawVal(document.getElementById('ew-bal'));
   if(!name){showToast('Nama dompet tidak boleh kosong!');return;}
   if(isNaN(bal)){showToast('Saldo tidak valid!');return;}
   w.icon=icon;w.name=name;w.balance=bal;
@@ -13142,8 +13183,8 @@ function renderFinWishlist(fw){
         +'<div class="fin-add-title">🎯 Tambah Item Wishlist</div>'
         +'<div class="fin-form-row">'
         +'<div class="fin-form-group"><div class="fin-form-label">Nama Item</div><input class="fin-input" id="wish-name" placeholder="iPhone, Laptop, dll" onkeydown="if(event.key===\'Enter\')addWishItem()"></div>'
-        +'<div class="fin-form-group"><div class="fin-form-label">Target Harga (Rp)</div><input type="number" class="fin-input" id="wish-target" placeholder="0" min="0"></div>'
-        +'<div class="fin-form-group"><div class="fin-form-label">Dana Awal (Rp)</div><input type="number" class="fin-input" id="wish-saved" placeholder="0" min="0"></div>'
+        +'<div class="fin-form-group"><div class="fin-form-label">Target Harga (Rp)</div><input type="text" inputmode="numeric" class="fin-input" id="wish-target" placeholder="0" oninput="autoFormatRp(this)"></div>'
+        +'<div class="fin-form-group"><div class="fin-form-label">Dana Awal (Rp)</div><input type="text" inputmode="numeric" class="fin-input" id="wish-saved" placeholder="0" oninput="autoFormatRp(this)"></div>'
         +'<div class="fin-form-group"><div class="fin-form-label">Catatan</div><input class="fin-input" id="wish-note" placeholder="Opsional"></div>'
         +'<button class="btn-fin-add" onclick="addWishItem()">+ Tambah</button>'
         +'</div></div>'
@@ -13451,7 +13492,7 @@ function renderFinTagihan(fw){
     +'<div class="fin-add-title">🧾 Tambah Tagihan Rutin</div>'
     +'<div class="fin-form-row">'
     +'<div class="fin-form-group"><div class="fin-form-label">Nama Tagihan</div><input class="fin-input" id="tag-name" placeholder="cth: Listrik, WiFi, Netflix..."></div>'
-    +'<div class="fin-form-group" style="max-width:130px"><div class="fin-form-label">Jumlah (Rp)</div><input type="number" class="fin-input" id="tag-amount" placeholder="0" min="0"></div>'
+    +'<div class="fin-form-group" style="max-width:130px"><div class="fin-form-label">Jumlah (Rp)</div><input type="text" inputmode="numeric" class="fin-input" id="tag-amount" placeholder="0" oninput="autoFormatRp(this)"></div>'
     +'<div class="fin-form-group" style="max-width:140px"><div class="fin-form-label">Jatuh Tempo (tanggal)</div><input type="number" class="fin-input" id="tag-dueday" placeholder="1-31 (tgl tiap bulan)" min="1" max="31" title="Masukkan tanggal jatuh tempo setiap bulan, misal 5 = tiap tgl 5"></div>'
     +'<div class="fin-form-group"><div class="fin-form-label">Wallet Default</div><select class="fin-input" id="tag-wallet">'+walletOpts+'</select></div>'
     +'<div class="fin-form-group"><div class="fin-form-label">Catatan</div><input class="fin-input" id="tag-note" placeholder="Opsional"></div>'
@@ -13551,7 +13592,7 @@ function renderFinHutang(fw){
     +'<div class="fin-form-row">'
     +'<div class="fin-form-group"><div class="fin-form-label">Tipe</div><select class="fin-input" id="hut-type"><option value="hutang">🔴 Hutang (saya yang pinjam)</option><option value="piutang">🟢 Piutang (saya yang meminjamkan)</option></select></div>'
     +'<div class="fin-form-group"><div class="fin-form-label">Nama / Keterangan</div><input class="fin-input" id="hut-name" placeholder="cth: Pinjam ke Budi, KPR Bank..."></div>'
-    +'<div class="fin-form-group" style="max-width:150px"><div class="fin-form-label">Jumlah Awal (Rp)</div><input type="number" class="fin-input" id="hut-amount" placeholder="0" min="0"></div>'
+    +'<div class="fin-form-group" style="max-width:150px"><div class="fin-form-label">Jumlah Awal (Rp)</div><input type="text" inputmode="numeric" class="fin-input" id="hut-amount" placeholder="0" oninput="autoFormatRp(this)"></div>'
     +'<div class="fin-form-group"><div class="fin-form-label">Wallet (opsional)</div><select class="fin-input" id="hut-wallet">'+walletOpts+'</select></div>'
     +'<div class="fin-form-group"><div class="fin-form-label">Catatan</div><input class="fin-input" id="hut-note" placeholder="Opsional"></div>'
     +'<button onclick="addHutang()" class="btn-fin-add red" style="align-self:flex-end">+ Tambah</button>'
@@ -13650,7 +13691,7 @@ function openHutangTx(id,txType){
     modal.innerHTML='<div style="background:var(--card);border-radius:14px;padding:24px;width:420px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,0.22)">'
       +'<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">'
       +'<span id="htx-title"></span><button onclick="closeHutangTx()" style="border:none;background:none;cursor:pointer;font-size:18px;color:var(--muted)">✕</button></div>'
-      +'<div class="modal-field"><div class="modal-label">Jumlah (Rp)</div><input type="number" class="modal-input" id="htx-amount" placeholder="0" min="0"></div>'
+      +'<div class="modal-field"><div class="modal-label">Jumlah (Rp)</div><input type="text" inputmode="numeric" class="modal-input" id="htx-amount" placeholder="0" oninput="autoFormatRp(this)"></div>'
       +'<div class="modal-field"><div class="modal-label">Wallet</div><select class="modal-input" id="htx-wallet"></select></div>'
       +'<div class="modal-field"><div class="modal-label">Tanggal</div><input type="date" class="modal-input" id="htx-date" value="'+todayStr+'"></div>'
       +'<div class="modal-field"><div class="modal-label">Catatan</div><input class="modal-input" id="htx-note" placeholder="Opsional"></div>'
@@ -13762,7 +13803,7 @@ function editHutangTx(hutangId,txIdx){
     modal.innerHTML='<div style="background:var(--card);border-radius:14px;padding:24px;width:420px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,0.22)">'
       +'<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">'
       +'<span id="htx-title"></span><button onclick="closeHutangTx()" style="border:none;background:none;cursor:pointer;font-size:18px;color:var(--muted)">✕</button></div>'
-      +'<div class="modal-field"><div class="modal-label">Jumlah (Rp)</div><input type="number" class="modal-input" id="htx-amount" placeholder="0" min="0"></div>'
+      +'<div class="modal-field"><div class="modal-label">Jumlah (Rp)</div><input type="text" inputmode="numeric" class="modal-input" id="htx-amount" placeholder="0" oninput="autoFormatRp(this)"></div>'
       +'<div class="modal-field"><div class="modal-label">Wallet</div><select class="modal-input" id="htx-wallet"></select></div>'
       +'<div class="modal-field"><div class="modal-label">Tanggal</div><input type="date" class="modal-input" id="htx-date" value="'+todayStr+'"></div>'
       +'<div class="modal-field"><div class="modal-label">Catatan</div><input class="modal-input" id="htx-note" placeholder="Opsional"></div>'
@@ -14115,8 +14156,10 @@ function toggleStep(id,idx){
         t.done=false;
         t.doneDate=null;
         t.stepsDone=0;
-        // FIX: hapus history effDate supaya task tidak dianggap selesai setelah reschedule
-        if(t.history){var hi=t.history.indexOf(effDate);if(hi>=0)t.history.splice(hi,1);}
+        // FIX: JANGAN hapus history — dibutuhkan agar task muncul di tab Selesai hari ini.
+        // Pastikan todayStr tercatat di history (bukan effDate yg mungkin = kemarin)
+        if(!t.history)t.history=[];
+        if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);
         t.myday=(nd===todayStr);
       }
     }
@@ -14135,14 +14178,18 @@ function toggleStep(id,idx){
     t.stepsDone=0;
   }
   if(!t.history)t.history=[];
+  // Deteksi: apakah task ini baru saja selesai lalu di-reschedule (repeat)?
+  // Tandanya: t.done=false tapi _wasStepDone=true dan t._prevDue ada (sudah di-reschedule)
+  var _justRescheduled=(wasDone&&!t.done&&t.repeat&&t._prevDue!==undefined)||
+                       (wasDone&&!t.done&&t.repeat&&t.history&&t.history.indexOf(todayStr)>=0);
   if(t.type==='Habit'){
     var hd=(t.doneDate&&t.doneDate<todayStr)?t.doneDate:todayStr;
-    if(t.done){if(t.history.indexOf(hd)<0)t.history.push(hd);}
-    else{[todayStr,hd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
+    if(t.done||_justRescheduled){if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);}
+    else if(!t.done&&!_justRescheduled){[todayStr,hd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
   } else {
     var thd=t.doneDate||todayStr;
-    if(t.done){if(t.history.indexOf(thd)<0)t.history.push(thd);}
-    else{[todayStr,thd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
+    if(t.done||_justRescheduled){if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);}
+    else if(!t.done&&!_justRescheduled){[todayStr,thd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
   }
   showToast(t.done?'Semua langkah selesai! ✅':t.stepsDone+'/'+t.steps+' langkah ✓');
   checkAchievements();saveData(true);render();
@@ -15075,7 +15122,36 @@ function toggleTheme(){
   if(shopOverlay&&shopOverlay.classList.contains('show'))renderShop();
   saveData(true);
 }
+// ── Dynamic toast position ──
+function _updateToastPosition(){
+  var isMobile=window.innerWidth<=700;
+  var isSidebar=document.body.classList.contains('mobile-nav-sidebar');
+  // Cek bottom nav height
+  var bn=document.getElementById('bottomNav');
+  var bnH=(!isMobile||isSidebar||!bn)?0:(bn.offsetHeight||72);
+  // Safe area
+  var sa=0;
+  try{
+    var saStr=getComputedStyle(document.documentElement).getPropertyValue('--sai-bottom')||'0px';
+    sa=parseInt(saStr)||0;
+  }catch(e){}
+  // Kalau keyboard terbuka (visualViewport jauh lebih kecil dari window)
+  var vv=window.visualViewport;
+  var keyboardOpen=vv&&(window.innerHeight-vv.height)>150;
+  var gap=isMobile?16:24;
+  var base=keyboardOpen?gap:(bnH>0?bnH+gap:gap);
+  var r=document.documentElement;
+  r.style.setProperty('--toast-bottom', base+'px');
+  r.style.setProperty('--xp-toast-bottom', (base+46)+'px');
+  r.style.setProperty('--gold-toast-bottom', (base+92)+'px');
+}
+// Jalankan saat resize, orientasi berubah, dan keyboard muncul
+window.addEventListener('resize',_updateToastPosition);
+if(window.visualViewport) window.visualViewport.addEventListener('resize',_updateToastPosition);
+document.addEventListener('DOMContentLoaded',_updateToastPosition);
+
 function showToast(msg){
+  _updateToastPosition();
   var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._to);t._to=setTimeout(function(){t.classList.remove('show');},2500);
 }
@@ -16084,7 +16160,7 @@ function submitMobileMaintAdd(){
   var catId=catSel?catSel.value:'';
   var lastDate=document.getElementById('mmaint-last').value||todayStr;
   var intervalDays=parseInt(document.getElementById('mmaint-interval').value)||0;
-  var cost=parseFloat(document.getElementById('mmaint-cost').value)||0;
+  var cost=getRawVal(document.getElementById('mmaint-cost'))||0;
   var note=document.getElementById('mmaint-note').value.trim();
   if(!name){showToast('⚠️ Nama item wajib diisi');return;}
   if(!intervalDays){showToast('⚠️ Interval hari wajib diisi');return;}
@@ -18826,7 +18902,23 @@ function checkWeeklyReviewPopup(){
   var now=new Date();
   // Show on Monday (day=1) if not seen today
   if(now.getDay()===1&&weeklyReviewLastSeen!==todayStr){
-    setTimeout(function(){openWeeklyReview();},2000);
+    // Wait until tour AND onboarding are fully done before showing weekly review
+    function _isReadyForWeeklyReview(){
+      if(_tourActive) return false;
+      var gamiEl=document.getElementById('gamiOnboarding');
+      if(gamiEl&&gamiEl.style.display!=='none'&&gamiEl.style.display!=='') return false;
+      var navEl=document.getElementById('navOnboarding');
+      if(navEl&&navEl.style.display!=='none'&&navEl.style.display!=='') return false;
+      return true;
+    }
+    var _wrPoll=setInterval(function(){
+      if(_isReadyForWeeklyReview()){
+        clearInterval(_wrPoll);
+        setTimeout(function(){openWeeklyReview();},800);
+      }
+    },300);
+    // Safety: show after max 30 detik meskipun kondisi belum terpenuhi
+    setTimeout(function(){clearInterval(_wrPoll);if(!document.getElementById('wrOverlay').classList.contains('show'))openWeeklyReview();},30000);
   }
 }
 
@@ -21651,7 +21743,7 @@ setTimeout(function(){ bossInit(); }, 700);
         <input type="text" id="sim-name" placeholder="Nama barang..." style="width:100%;border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--card);outline:none;box-sizing:border-box" onkeydown="if(event.key==='Enter')addShoppingItem()">
       </div>
       <div style="flex:1">
-        <input type="number" id="sim-price" placeholder="Harga Rp" min="0" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--card);outline:none;box-sizing:border-box" onkeydown="if(event.key==='Enter')addShoppingItem()">
+        <input type="text" inputmode="numeric" id="sim-price" placeholder="Harga Rp" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--card);outline:none;box-sizing:border-box" oninput="autoFormatRp(this)" onkeydown="if(event.key==='Enter')addShoppingItem()">
       </div>
       <button onclick="addShoppingItem()" style="padding:7px 14px;border:none;border-radius:7px;background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;flex-shrink:0">+ Tambah</button>
     </div>
@@ -21964,18 +22056,93 @@ setTimeout(function(){ bossInit(); }, 700);
             onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
         </div>
 
-        <!-- Pesan -->
-        <div style="margin-bottom:10px">
+        <!-- Pesan (Rich Text Editor) -->
+        <div id="devAnnMsgSection" style="margin-bottom:10px;transition:opacity 0.2s">
           <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Isi Pesan <span style="color:rgba(255,80,80,0.6)">*</span></div>
-          <textarea id="devAnnMessage" placeholder="Tulis isi pengumuman di sini. Bisa pakai baris baru untuk paragraf." maxlength="500" rows="4"
-            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;resize:vertical;transition:border-color 0.2s;line-height:1.6"
-            onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'" oninput="devAnnCountChars(this)"></textarea>
-          <div style="text-align:right;font-size:10px;color:rgba(255,255,255,0.2);margin-top:3px"><span id="devAnnCharCount">0</span>/500</div>
+          <!-- Toolbar -->
+          <div id="devAnnToolbar" style="display:flex;flex-wrap:wrap;gap:4px;padding:7px 8px;background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.1);border-bottom:none;border-radius:10px 10px 0 0">
+            <!-- Format teks -->
+            <button title="Bold" onclick="devAnnExec('bold')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;font-weight:900;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s" onmousedown="event.preventDefault()"><b>B</b></button>
+            <button title="Italic" onclick="devAnnExec('italic')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;font-family:serif;transition:all 0.15s" onmousedown="event.preventDefault()"><i>I</i></button>
+            <button title="Underline" onclick="devAnnExec('underline')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;text-decoration:underline" onmousedown="event.preventDefault()">U</button>
+            <button title="Strikethrough" onclick="devAnnExec('strikethrough')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;text-decoration:line-through" onmousedown="event.preventDefault()">S</button>
+            <!-- Separator -->
+            <div style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></div>
+            <!-- Alignment -->
+            <button title="Rata Kiri" onclick="devAnnExec('justifyLeft')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">≡←</button>
+            <button title="Tengah" onclick="devAnnExec('justifyCenter')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">≡</button>
+            <button title="Rata Kanan" onclick="devAnnExec('justifyRight')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">≡→</button>
+            <button title="Rata Kiri-Kanan" onclick="devAnnExec('justifyFull')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">≡≡</button>
+            <!-- Separator -->
+            <div style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></div>
+            <!-- List -->
+            <button title="Bullet List" onclick="devAnnExec('insertUnorderedList')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">• —</button>
+            <button title="Numbered List" onclick="devAnnExec('insertOrderedList')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">1. —</button>
+            <!-- Separator -->
+            <div style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></div>
+            <!-- Font size -->
+            <select onchange="devAnnExec('fontSize',this.value);this.value=''" style="padding:3px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;outline:none" title="Ukuran Font">
+              <option value="" disabled selected style="background:#1c1917">Ukuran</option>
+              <option value="1" style="background:#1c1917">Kecil</option>
+              <option value="3" style="background:#1c1917">Normal</option>
+              <option value="4" style="background:#1c1917">Besar</option>
+              <option value="5" style="background:#1c1917">XL</option>
+            </select>
+            <!-- Clear format -->
+            <button title="Hapus format" onclick="devAnnExec('removeFormat')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:rgba(255,80,80,0.7);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s" onmousedown="event.preventDefault()">✕ fmt</button>
+          </div>
+          <!-- Contenteditable area -->
+          <div id="devAnnMessage" contenteditable="true" data-placeholder="Tulis isi pengumuman di sini..."
+            oninput="devAnnCountChars(this)"
+            style="min-height:110px;max-height:260px;overflow-y:auto;width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-top:none;border-radius:0 0 10px 10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;line-height:1.65;transition:border-color 0.2s;word-break:break-word"
+            onfocus="this.parentElement.querySelector('#devAnnToolbar').style.borderColor='rgba(217,119,6,0.5)';this.style.borderColor='rgba(217,119,6,0.5)'"
+            onblur="this.parentElement.querySelector('#devAnnToolbar').style.borderColor='rgba(255,255,255,0.1)';this.style.borderColor='rgba(255,255,255,0.1)'"></div>
+          <style>
+            #devAnnMessage:empty:before{content:attr(data-placeholder);color:rgba(255,255,255,0.2);pointer-events:none}
+            #devAnnMessage ul,#devAnnMessage ol{padding-left:18px;margin:4px 0}
+            #devAnnMessage li{margin:2px 0}
+            #devAnnToolbar button:hover{background:rgba(255,255,255,0.12)!important}
+          </style>
+          <div style="text-align:right;font-size:10px;color:rgba(255,255,255,0.2);margin-top:3px"><span id="devAnnCharCount">0</span>/1000 karakter</div>
         </div>
 
         <!-- Gambar Iklan (opsional) -->
         <div style="margin-bottom:12px">
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">🖼 Gambar Iklan <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none;letter-spacing:0">(opsional, max 500KB)</span></div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🖼 Gambar Iklan <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none;letter-spacing:0">(opsional · auto-compress &gt;900KB)</span></div>
+
+          <!-- Mode selector -->
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <button onclick="_devAnnSetImgMode('thumbnail',this)" id="devAnnImgModeBtn-thumbnail"
+              style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid rgba(217,119,6,0.7);background:rgba(217,119,6,0.12);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+              🖼 Thumbnail
+            </button>
+            <button onclick="_devAnnSetImgMode('fullimage',this)" id="devAnnImgModeBtn-fullimage"
+              style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+              🖼 Full Gambar
+            </button>
+          </div>
+          <input type="hidden" id="devAnnImgMode" value="thumbnail">
+
+          <!-- Orientation selector (hanya muncul di mode fullimage) -->
+          <div id="devAnnOrientWrap" style="display:none;align-items:center;gap:6px;margin-bottom:8px">
+            <span style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap">Orientasi:</span>
+            <button onclick="_devAnnSetOrient('portrait',this)" id="devAnnOrientBtn-portrait"
+              style="flex:1;padding:5px 10px;border-radius:8px;border:1.5px solid rgba(217,119,6,0.7);background:rgba(217,119,6,0.12);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+              📱 Portrait
+            </button>
+            <button onclick="_devAnnSetOrient('landscape',this)" id="devAnnOrientBtn-landscape"
+              style="flex:1;padding:5px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+              🖥 Landscape
+            </button>
+          </div>
+          <input type="hidden" id="devAnnImgOrient" value="portrait">
+
+          <!-- Guide ukuran -->
+          <div id="devAnnImgGuide" style="display:block;font-size:10px;color:rgba(255,255,255,0.3);background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:8px 10px;margin-bottom:8px;line-height:1.6">
+            📐 <b>Thumbnail</b> — Gambar kecil di bawah teks. Disarankan lebar minimal <b>600px</b>, rasio bebas (maks tinggi 220px).
+          </div>
+
+          <!-- Drop zone upload -->
           <div id="devAnnImgZone"
             onclick="document.getElementById('devAnnImgInput').click()"
             ondragover="event.preventDefault();this.style.borderColor='rgba(217,119,6,0.6)';this.style.background='rgba(217,119,6,0.08)'"
@@ -21985,7 +22152,7 @@ setTimeout(function(){ bossInit(); }, 700);
             <div id="devAnnImgPlaceholder" style="display:flex;flex-direction:column;align-items:center;gap:4px">
               <span style="font-size:22px">🖼</span>
               <span style="font-size:11px;color:rgba(255,255,255,0.3);font-weight:600">Klik atau drag & drop gambar</span>
-              <span style="font-size:10px;color:rgba(255,255,255,0.15)">JPG, PNG, GIF, WebP</span>
+              <span style="font-size:10px;color:rgba(255,255,255,0.15)">JPG, PNG, GIF, WebP · Tanpa batas ukuran (auto-compress)</span>
             </div>
             <img id="devAnnImgPreview" src="" alt="" style="display:none;max-height:120px;max-width:100%;border-radius:8px;object-fit:cover">
             <button id="devAnnImgRemove" onclick="event.stopPropagation();devAnnRemoveImg()" style="display:none;position:absolute;top:6px;right:6px;border:none;background:rgba(239,68,68,0.8);color:#fff;border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;font-weight:700;line-height:1;padding:0">✕</button>
@@ -22000,6 +22167,40 @@ setTimeout(function(){ bossInit(); }, 700);
           <input id="devAnnLink" type="url" placeholder="https://contoh.com/promo"
             style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 13px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
             onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+        </div>
+
+        <!-- ── Tombol Custom (opsional) ── -->
+        <div style="margin-bottom:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:10px 12px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+            <input type="checkbox" id="devAnnCustomBtnEnabled" onchange="_devAnnToggleCustomBtn(this.checked)"
+              style="width:15px;height:15px;accent-color:#d97706;cursor:pointer">
+            <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.5px">🔘 Tombol Custom (opsional)</span>
+          </label>
+          <div id="devAnnCustomBtnDetails" style="display:none;margin-top:10px">
+            <!-- Teks tombol -->
+            <div style="margin-bottom:8px">
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Teks Tombol <span style="color:rgba(255,80,80,0.6)">*</span></div>
+              <input id="devAnnCustomBtnText" type="text" placeholder="Contoh: Lihat Promo, Download, Daftar Sekarang..." maxlength="40"
+                style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
+                onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+            </div>
+            <!-- Aksi tombol -->
+            <div style="margin-bottom:8px">
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Fungsi Tombol</div>
+              <select id="devAnnCustomBtnAction" onchange="_devAnnToggleCustomBtnAction(this.value)"
+                style="width:100%;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;color:#fff;padding:9px 10px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:auto">
+                <option value="link" style="background:#1c1917">🔗 Buka Link (+ tutup popup)</option>
+                <option value="close" style="background:#1c1917">✕ Tutup Popup saja</option>
+              </select>
+            </div>
+            <!-- URL (muncul jika action = link) -->
+            <div id="devAnnCustomBtnUrlWrap">
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">URL Tujuan <span style="color:rgba(255,80,80,0.6)">*</span></div>
+              <input id="devAnnCustomBtnUrl" type="url" placeholder="https://contoh.com/halaman-promo"
+                style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
+                onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+            </div>
+          </div>
         </div>
 
         <!-- Mode + Expiry row -->
@@ -22049,9 +22250,32 @@ setTimeout(function(){ bossInit(); }, 700);
       <!-- User Info -->
       <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
         <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">👤 Info User Aktif</div>
-        <div id="devUserInfo" style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.9;font-family:monospace">—</div>
-        <button onclick="devRefreshUserInfo()" style="margin-top:10px;width:100%;padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.45);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">↻ Refresh Info</button>
+        <button onclick="devShowAllUsers()" style="width:100%;padding:10px;border:1px solid rgba(99,102,241,0.4);border-radius:10px;background:rgba(99,102,241,0.1);color:#a5b4fc;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:7px">👥 Lihat Semua User Aktif</button>
       </div>
+
+  <!-- ══ MODAL: SEMUA USER AKTIF ══ -->
+  <div id="devAllUsersModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center" onclick="if(event.target===this)devCloseAllUsersModal()">
+    <div style="background:#1c1917;border:1px solid rgba(99,102,241,0.3);border-radius:20px;padding:20px;width:90%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+      <!-- Header modal -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;border-radius:10px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);display:flex;align-items:center;justify-content:center;font-size:17px">👥</div>
+          <div>
+            <div style="font-size:14px;font-weight:800;color:#a5b4fc">Semua User Aktif</div>
+            <div id="devAllUsersCount" style="font-size:10px;color:rgba(255,255,255,0.3)">Memuat...</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="devLoadAllUsers()" style="padding:5px 11px;border:1px solid rgba(99,102,241,0.3);border-radius:8px;background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">↻ Refresh</button>
+          <button onclick="devCloseAllUsersModal()" style="width:28px;height:28px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;line-height:1">✕</button>
+        </div>
+      </div>
+      <!-- Daftar user -->
+      <div id="devAllUsersList" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-right:2px">
+        <div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">⏳ Memuat data user...</div>
+      </div>
+    </div>
+  </div>
 
       <!-- Debug Actions -->
       <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
@@ -22115,12 +22339,24 @@ setTimeout(function(){ bossInit(); }, 700);
         <div id="devBossInfo" style="font-size:10px;font-family:monospace;color:rgba(167,139,250,0.5);background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;min-height:36px">— Boss status akan tampil di sini —</div>
       </div>
 
+      <!-- Shop & Tema Info -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">🎨 Shop & Tema</div>
+        <!-- Info aktif -->
+        <div id="devShopInfo" style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);line-height:1.9;background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;margin-bottom:10px">— Klik Refresh untuk lihat status —</div>
+        <button onclick="devRefreshShopInfo()" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:10px">↻ Refresh Status Shop</button>
+        <!-- Actions -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <button onclick="devResetShopPurchases()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.07);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;grid-column:span 2">🗑️ Reset Semua Pembelian Shop</button>
+        </div>
+      </div>
+
       <!-- Level reset -->
       <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:16px;padding:14px">
         <div style="font-size:10px;font-weight:800;color:rgba(248,113,113,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">⚠️ Reset / Danger Zone</div>
-        <div style="display:flex;gap:7px">
-          <button onclick="devResetGami()" style="flex:1;padding:9px;border:1px solid rgba(239,68,68,0.35);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔁 Reset XP/Gold/Level</button>
-          <button onclick="devUnlockAllAchv()" style="flex:1;padding:9px;border:1px solid rgba(251,191,36,0.3);border-radius:9px;background:rgba(251,191,36,0.07);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🏆 Unlock Semua Achv</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <button onclick="devResetGami()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.35);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔁 Reset XP/Gold/Level</button>
+          <button onclick="devResetAllGami()" style="padding:9px 6px;border:1.5px solid rgba(239,68,68,0.5);border-radius:9px;background:rgba(239,68,68,0.12);color:#fca5a5;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">💣 Reset SEMUA Gami</button>
         </div>
       </div>
     </div><!-- /tab-gami -->
@@ -22583,10 +22819,7 @@ setTimeout(function(){ bossInit(); }, 700);
   }
 
   /* SQA bar padding matches task-scroll */
-  /* Toast position override for sidebar mode (no bottom nav) */
-  body.mobile-nav-sidebar .toast{bottom:24px}
-  body.mobile-nav-sidebar .xp-toast{bottom:70px}
-  body.mobile-nav-sidebar .gold-toast{bottom:116px}
+  /* Toast position override for sidebar mode (no bottom nav) — handled by JS updateToastPosition() */
 
   body.mobile-nav-sidebar #sidebarQuickAdd{
     padding:0 12px;
@@ -23607,7 +23840,8 @@ if(typeof switchView === 'function'){
   // ID-ID input nominal keuangan statis (di-render sekali)
   var STATIC_IDS=['mfin-amount','wm-tx-amount','new-wallet-bal','transfer-amount',
     'wish-target','wish-saved','tag-amount','hut-amount','sqPrice',
-    'maint-add-cost','md-done-cost','md-cost','sim-price'];
+    'maint-add-cost','md-done-cost','md-cost','sim-price',
+    'fin-tx-amount','mmaint-cost','det-price','ew-bal','bsm-amount','sim-price'];
 
   function applyAutoFmt(el){
     if(!el||el._rpFmtApplied)return;
@@ -23651,8 +23885,10 @@ if(typeof switchView === 'function'){
             if(el)applyAutoFmt(el);
           });
           // Juga tangkap input dinamis dari modal hutang
-          var dynInputs=node.querySelectorAll&&node.querySelectorAll('input#htx-amount');
-          if(dynInputs)dynInputs.forEach(function(el){applyAutoFmt(el);});
+          ['htx-amount','fin-tx-amount','ew-bal','det-price'].forEach(function(did){
+            var dynInputs=node.querySelectorAll&&node.querySelectorAll('input#'+did);
+            if(dynInputs)dynInputs.forEach(function(el){applyAutoFmt(el);});
+          });
         });
       });
     });
@@ -24149,11 +24385,11 @@ var _annSessionDismissed = {};
 // FIX #3: annStartListener dipanggil dari initApp (setelah fbDb siap), bukan dari onAuthStateChanged
 // FIX #5: Guest mendapat pengumuman via one-time fetch (tanpa Firestore listener & tanpa readIds)
 function annStartListener(){
-  if(!fbDb) return; // fbDb null = pure offline, tidak ada pengumuman
   // Berhenti listener lama kalau ada (FIX #1 support)
   if(_annUnsubscribe){ _annUnsubscribe(); _annUnsubscribe=null; }
 
   if(fbUser && !fbUser._isGuest){
+    if(!fbDb) return; // fbDb null = pure offline, tidak ada pengumuman untuk user Google
     // ── Login Google: real-time listener seperti sebelumnya ──
     _annUnsubscribe = fbDb.collection('announcements')
       .where('active','==',true)
@@ -24163,15 +24399,33 @@ function annStartListener(){
         _annProcessAndShow(anns);
       }, function(err){ console.warn('Announcement listener error:', err); });
   } else if(fbUser && fbUser._isGuest){
-    // FIX #5 (revised): Guest — one-time fetch pakai Firestore (fbDb sudah tersedia karena
-    // Firebase SDK load sebelum loginAsGuest dipanggil). _isOffline hanya berarti data app
-    // disimpan lokal, bukan berarti fbDb tidak bisa dipakai untuk baca pengumuman.
-    // Firestore enablePersistence juga memungkinkan baca cache saat betul-betul offline.
-    fbDb.collection('announcements').where('active','==',true).get().then(function(snapshot){
-      var anns = [];
-      snapshot.forEach(function(doc){ anns.push(Object.assign({id:doc.id}, doc.data())); });
-      _annProcessAndShowGuest(anns);
-    }).catch(function(err){ console.warn('Guest announcement fetch error:', err); });
+    // FIX #5 (revised): Guest — one-time fetch pakai Firestore.
+    // fbDb bisa saja belum tersedia saat loginAsGuest() dipanggil karena Firebase SDK
+    // masih loading. Retry polling sampai fbDb siap (max 15 detik).
+    if(fbDb){
+      fbDb.collection('announcements').where('active','==',true).get().then(function(snapshot){
+        var anns = [];
+        snapshot.forEach(function(doc){ anns.push(Object.assign({id:doc.id}, doc.data())); });
+        _annProcessAndShowGuest(anns);
+      }).catch(function(err){ console.warn('Guest announcement fetch error:', err); });
+    } else {
+      // fbDb belum siap — polling sampai tersedia
+      var _annGuestRetries = 0;
+      var _annGuestPoll = setInterval(function(){
+        _annGuestRetries++;
+        if(fbDb){
+          clearInterval(_annGuestPoll);
+          fbDb.collection('announcements').where('active','==',true).get().then(function(snapshot){
+            var anns = [];
+            snapshot.forEach(function(doc){ anns.push(Object.assign({id:doc.id}, doc.data())); });
+            _annProcessAndShowGuest(anns);
+          }).catch(function(err){ console.warn('Guest announcement fetch error:', err); });
+        } else if(_annGuestRetries >= 50){ // max ~15 detik (50 x 300ms)
+          clearInterval(_annGuestPoll);
+          console.warn('annStartListener: fbDb tidak tersedia setelah 15 detik, guest announcement dilewati.');
+        }
+      }, 300);
+    }
   }
 }
 
@@ -24262,11 +24516,31 @@ function _annShowPopup(ann){
   var dismissMap = { warning:'⚠️ Oke, Mengerti', success:'✅ Mantap!', info:'✓ Oke, Mengerti!', danger:'🚨 Oke, Dipahami', promo:'🎁 Klaim Sekarang' };
   var styleKey = ann.style || 'info';
   var card = document.getElementById('annCard');
+  var imgMode = ann.imageMode || 'thumbnail'; // 'thumbnail' | 'fullimage'
+  var isFullImage = imgMode === 'fullimage' && ann.imageBase64;
 
   card.setAttribute('data-ann-style', styleKey);
+  // Mode fullimage: sembunyikan header, icon, body teks
+  var headerEl = document.getElementById('annPopupHeader');
+  var bodyEl   = document.getElementById('annPopupBody');
+  if(isFullImage){
+    card.classList.add('ann-fullimage-mode');
+  } else {
+    card.classList.remove('ann-fullimage-mode');
+  }
+  if(headerEl) headerEl.style.display = isFullImage ? 'none' : '';
+  if(bodyEl)   bodyEl.style.display   = isFullImage ? 'none' : '';
+
   document.getElementById('annIcon').textContent = iconMap[styleKey] || '📢';
   document.getElementById('annTitle').textContent = ann.title || 'Pengumuman';
-  document.getElementById('annMessage').textContent = ann.message || '';
+  // Render HTML (rich text dari editor)
+  var msgEl = document.getElementById('annMessage');
+  var rawMsg = ann.message || '';
+  if(/<[a-z][\s\S]*>/i.test(rawMsg)){
+    msgEl.innerHTML = rawMsg;
+  } else {
+    msgEl.innerHTML = rawMsg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  }
   document.getElementById('annDismissBtn').textContent = dismissMap[styleKey] || '✓ Oke, Mengerti!';
 
   var timeBadge = document.getElementById('annTimeBadge');
@@ -24291,18 +24565,79 @@ function _annShowPopup(ann){
     if(ann.imageBase64){
       imgEl.src = ann.imageBase64;
       imgWrap.style.display = 'block';
-      // Simpan link ke dataset agar annImageClick() bisa baca
       imgWrap.dataset.link = ann.imageLink || '';
+      // Styling berdasarkan mode & orientasi
+      var orient = ann.imageOrient || 'portrait';
+      if(isFullImage){
+        imgWrap.style.margin = '0';
+        imgWrap.style.borderRadius = '0';
+        imgWrap.style.overflow = 'hidden';
+        if(orient === 'portrait'){
+          imgEl.style.maxHeight = '';
+          imgEl.style.height = 'auto';
+          imgEl.style.width = '100%';
+          imgEl.style.objectFit = 'cover';
+          imgEl.style.aspectRatio = '';
+        } else {
+          // landscape
+          imgEl.style.maxHeight = '';
+          imgEl.style.height = 'auto';
+          imgEl.style.width = '100%';
+          imgEl.style.objectFit = 'cover';
+          imgEl.style.aspectRatio = '16/9';
+        }
+        // Card: hapus padding, border-radius atas, overflow
+        card.style.paddingTop = '0';
+        card.style.overflow = 'hidden';
+      } else {
+        imgWrap.style.margin = '';
+        imgWrap.style.borderRadius = '14px';
+        imgEl.style.maxHeight = '220px';
+        imgEl.style.height = '';
+        imgEl.style.width = '100%';
+        imgEl.style.objectFit = 'cover';
+        imgEl.style.aspectRatio = '';
+        card.style.paddingTop = '';
+        card.style.overflow = '';
+      }
       if(imgHint) imgHint.style.display = ann.imageLink ? 'block' : 'none';
     } else {
       imgWrap.style.display = 'none';
       imgEl.src = '';
       imgWrap.dataset.link = '';
       if(imgHint) imgHint.style.display = 'none';
+      card.style.paddingTop = '';
+      card.style.overflow = '';
     }
   }
 
-  // FIX #7: Click-outside overlay juga dismiss (konsisten dengan modal lain)
+  // Custom button
+  var cbWrap = document.getElementById('annCustomBtnWrap');
+  if(cbWrap){
+    if(ann.customBtnEnabled && ann.customBtnText){
+      cbWrap.style.display = 'block';
+      var cbBtn = document.getElementById('annCustomBtn');
+      if(cbBtn){
+        cbBtn.textContent = ann.customBtnText;
+        if(ann.customBtnAction === 'close'){
+          cbBtn.onclick = function(){ _annDismiss(ann); };
+        } else {
+          cbBtn.onclick = function(){
+            if(ann.customBtnUrl) window.open(ann.customBtnUrl, '_blank', 'noopener');
+            _annDismiss(ann);
+          };
+        }
+      }
+    } else {
+      cbWrap.style.display = 'none';
+    }
+  }
+
+  // Full-image mode: tambahkan tombol X di atas gambar
+  var fxClose = document.getElementById('annFullImgClose');
+  if(fxClose) fxClose.style.display = isFullImage ? 'flex' : 'none';
+
+  // FIX #7: Click-outside overlay juga dismiss
   overlay.onclick = function(e){ if(e.target === overlay) _annDismiss(ann); };
   document.getElementById('annDismissBtn').onclick = function(){ _annDismiss(ann); };
   overlay.style.display = 'flex';
@@ -24315,6 +24650,51 @@ function annImageClick(){
   if(!imgWrap) return;
   var link = imgWrap.dataset.link;
   if(link) window.open(link, '_blank', 'noopener');
+}
+
+// Toggle custom button section di admin panel
+function _devAnnToggleCustomBtn(enabled){
+  var wrap = document.getElementById('devAnnCustomBtnDetails');
+  if(wrap) wrap.style.display = enabled ? 'block' : 'none';
+}
+
+// Toggle URL field berdasarkan action pilihan
+function _devAnnToggleCustomBtnAction(action){
+  var urlWrap = document.getElementById('devAnnCustomBtnUrlWrap');
+  if(urlWrap) urlWrap.style.display = (action === 'link') ? 'block' : 'none';
+}
+
+// Toggle guide ukuran & update preview gambar ketika mode/orient berubah
+function _devAnnImgModeChanged(){
+  var modeEl = document.getElementById('devAnnImgMode');
+  var orientEl = document.getElementById('devAnnImgOrient');
+  var guideEl = document.getElementById('devAnnImgGuide');
+  var orientWrap = document.getElementById('devAnnOrientWrap');
+  var msgSectionEl = document.getElementById('devAnnMsgSection');
+  var imgMode = modeEl ? modeEl.value : 'thumbnail';
+  var orient = orientEl ? orientEl.value : 'portrait';
+  // Sembunyikan field pesan jika full image
+  if(msgSectionEl) msgSectionEl.style.opacity = imgMode === 'fullimage' ? '0.4' : '1';
+  // Tampilkan orient selector hanya jika fullimage
+  if(orientWrap) orientWrap.style.display = imgMode === 'fullimage' ? 'flex' : 'none';
+  _devAnnUpdateGuide(imgMode, orient, guideEl);
+  // Update preview jika ada gambar
+  if(_devAnnImgBase64){
+    var preview = document.getElementById('devAnnImgPreview');
+    _devAnnUpdatePreviewStyle(imgMode, orient, preview);
+  }
+}
+
+function _devAnnUpdateGuide(imgMode, orient, guideEl){
+  if(!guideEl) return;
+  var guides = {
+    'thumbnail': '📐 <b>Thumbnail</b> — Gambar kecil di bawah teks. Ukuran bebas, disarankan lebar minimal <b>600px</b>, rasio apapun (akan di-crop maks 220px tinggi).',
+    'fullimage-portrait': '📐 <b>Full Gambar · Portrait</b> — Gambar memenuhi lebar kartu.<br>• <b>Mobile</b>: 750 × 1100px (rasio ~2:3) — ideal untuk HP vertikal<br>• <b>Desktop</b>: 800 × 1000px (rasio 4:5) — tetap proporsional<br>• Gambar akan di-scale otomatis sesuai lebar layar.',
+    'fullimage-landscape': '📐 <b>Full Gambar · Landscape</b> — Gambar lebar 16:9, cocok untuk banner promo.<br>• <b>Mobile</b>: 1280 × 720px (rasio 16:9) — nyaman di HP horizontal<br>• <b>Desktop</b>: 1280 × 720px — ideal untuk monitor lebar<br>• Tidak perlu padding, gambar langsung penuh.'
+  };
+  var key = imgMode === 'fullimage' ? 'fullimage-' + orient : 'thumbnail';
+  guideEl.innerHTML = guides[key] || '';
+  guideEl.style.display = 'block';
 }
 
 function _relativeTime(date){
@@ -24391,32 +24771,82 @@ function devSelectStyle(style, btn){
   btn.style.color       = sc.color;
 }
 
-// ── Image upload untuk dev panel ──
+// ── Image mode toggle helper ──
+function _devAnnSetImgMode(mode, btn){
+  document.getElementById('devAnnImgMode').value = mode;
+  var modes = ['thumbnail','fullimage'];
+  modes.forEach(function(m){
+    var b = document.getElementById('devAnnImgModeBtn-'+m);
+    if(!b) return;
+    if(m === mode){
+      b.style.borderColor='rgba(217,119,6,0.7)'; b.style.background='rgba(217,119,6,0.12)'; b.style.color='#fbbf24';
+    } else {
+      b.style.borderColor='rgba(255,255,255,0.1)'; b.style.background='rgba(255,255,255,0.04)'; b.style.color='rgba(255,255,255,0.4)';
+    }
+  });
+  _devAnnImgModeChanged();
+}
+
+function _devAnnSetOrient(orient, btn){
+  document.getElementById('devAnnImgOrient').value = orient;
+  ['portrait','landscape'].forEach(function(o){
+    var b = document.getElementById('devAnnOrientBtn-'+o);
+    if(!b) return;
+    if(o === orient){
+      b.style.borderColor='rgba(217,119,6,0.7)'; b.style.background='rgba(217,119,6,0.12)'; b.style.color='#fbbf24';
+    } else {
+      b.style.borderColor='rgba(255,255,255,0.1)'; b.style.background='rgba(255,255,255,0.04)'; b.style.color='rgba(255,255,255,0.4)';
+    }
+  });
+  _devAnnImgModeChanged();
+}
+
+
 var _devAnnImgBase64 = null; // base64 string gambar yang dipilih
 
 function devAnnHandleImg(file){
   if(!file) return;
   if(!file.type.startsWith('image/')){ showToast('⚠️ File harus berupa gambar!'); return; }
-  if(file.size > 500 * 1024){
-    showToast('⚠️ Gambar terlalu besar! Max 500KB.');
-    var info = document.getElementById('devAnnImgInfo');
-    if(info) info.textContent = '❌ ' + (file.size/1024).toFixed(0) + 'KB — max 500KB';
-    return;
-  }
+  // Auto-compress jika lebih dari ~900KB agar aman disimpan di Firestore
+  var MAX_BYTES = 900 * 1024;
   var reader = new FileReader();
   reader.onload = function(e){
-    _devAnnImgBase64 = e.target.result; // data:image/...;base64,...
-    // Tampilkan preview
-    var preview = document.getElementById('devAnnImgPreview');
-    var placeholder = document.getElementById('devAnnImgPlaceholder');
-    var removeBtn = document.getElementById('devAnnImgRemove');
-    var info = document.getElementById('devAnnImgInfo');
-    var linkWrap = document.getElementById('devAnnLinkWrap');
-    if(preview){ preview.src = _devAnnImgBase64; preview.style.display = 'block'; }
-    if(placeholder) placeholder.style.display = 'none';
-    if(removeBtn) removeBtn.style.display = 'block';
-    if(info) info.textContent = '✅ ' + file.name + ' (' + (file.size/1024).toFixed(0) + 'KB)';
-    if(linkWrap) linkWrap.style.display = 'block';
+    var originalB64 = e.target.result;
+    var originalKB = (file.size/1024).toFixed(0);
+    function _applyImg(b64, compressedKB){
+      _devAnnImgBase64 = b64;
+      var preview = document.getElementById('devAnnImgPreview');
+      var placeholder = document.getElementById('devAnnImgPlaceholder');
+      var removeBtn = document.getElementById('devAnnImgRemove');
+      var info = document.getElementById('devAnnImgInfo');
+      var linkWrap = document.getElementById('devAnnLinkWrap');
+      var modeEl = document.getElementById('devAnnImgMode');
+      var imgMode = modeEl ? modeEl.value : 'thumbnail';
+      var orientEl = document.getElementById('devAnnImgOrient');
+      var orient = orientEl ? orientEl.value : 'portrait';
+      _devAnnUpdatePreviewStyle(imgMode, orient, preview);
+      if(placeholder) placeholder.style.display = 'none';
+      if(removeBtn) removeBtn.style.display = 'block';
+      var sizeLabel = compressedKB ? '✅ ' + file.name + ' (' + originalKB + 'KB → dikompres ~' + compressedKB + 'KB)' : '✅ ' + file.name + ' (' + originalKB + 'KB)';
+      if(info) info.textContent = sizeLabel;
+      if(linkWrap) linkWrap.style.display = 'block';
+    }
+    if(file.size <= MAX_BYTES){ _applyImg(originalB64, null); return; }
+    // Kompres via canvas
+    var img2 = new Image();
+    img2.onload = function(){
+      var canvas = document.createElement('canvas');
+      var maxW = 1200, maxH = 1200;
+      var w = img2.width, h = img2.height;
+      var scale = Math.min(maxW/w, maxH/h, 1);
+      canvas.width = Math.round(w*scale); canvas.height = Math.round(h*scale);
+      canvas.getContext('2d').drawImage(img2, 0, 0, canvas.width, canvas.height);
+      var b64 = canvas.toDataURL('image/jpeg', 0.82);
+      var approxKB = Math.round(b64.length * 0.75 / 1024);
+      _applyImg(b64, approxKB);
+      showToast('📐 Gambar dikompres otomatis (' + originalKB + 'KB → ~' + approxKB + 'KB)');
+    };
+    img2.src = originalB64;
   };
   reader.readAsDataURL(file);
 }
@@ -24429,7 +24859,7 @@ function devAnnRemoveImg(){
   var info = document.getElementById('devAnnImgInfo');
   var linkWrap = document.getElementById('devAnnLinkWrap');
   var input = document.getElementById('devAnnImgInput');
-  if(preview){ preview.src=''; preview.style.display='none'; }
+  if(preview){ preview.src=''; preview.style.display='none'; preview.style.maxHeight=''; preview.style.height=''; preview.style.aspectRatio=''; preview.style.objectFit='cover'; }
   if(placeholder) placeholder.style.display='flex';
   if(removeBtn) removeBtn.style.display='none';
   if(info) info.textContent='';
@@ -24437,20 +24867,64 @@ function devAnnRemoveImg(){
   if(input) input.value='';
 }
 
+// Helper: update preview style sesuai mode & orientasi gambar
+function _devAnnUpdatePreviewStyle(imgMode, orient, previewEl){
+  if(!previewEl) return;
+  if(imgMode === 'fullimage'){
+    if(orient === 'portrait'){
+      previewEl.style.maxHeight = '340px';
+      previewEl.style.height = '340px';
+      previewEl.style.aspectRatio = '';
+      previewEl.style.width = '100%';
+      previewEl.style.objectFit = 'cover';
+    } else {
+      previewEl.style.maxHeight = '200px';
+      previewEl.style.height = '200px';
+      previewEl.style.aspectRatio = '16/9';
+      previewEl.style.width = '100%';
+      previewEl.style.objectFit = 'cover';
+    }
+  } else {
+    previewEl.style.maxHeight = '120px';
+    previewEl.style.height = '';
+    previewEl.style.aspectRatio = '';
+    previewEl.style.width = '100%';
+    previewEl.style.objectFit = 'cover';
+  }
+  previewEl.style.display = 'block';
+}
+
+function devAnnExec(cmd, val){
+  document.getElementById('devAnnMessage').focus();
+  document.execCommand(cmd, false, val || null);
+}
 function devAnnCountChars(el){
   var cnt = document.getElementById('devAnnCharCount');
-  if(cnt) cnt.textContent = el.value.length;
+  if(cnt) cnt.textContent = (el.innerText || el.textContent || '').length;
 }
 
 function devAnnPreview(){
   var title   = document.getElementById('devAnnTitle').value.trim() || 'Preview Judul';
-  var message = document.getElementById('devAnnMessage').value.trim() || 'Ini adalah preview pesan pengumuman.';
+  var msgEl   = document.getElementById('devAnnMessage');
+  var message = msgEl.innerHTML.trim() || '<em>Ini adalah preview pesan pengumuman.</em>';
   var linkEl  = document.getElementById('devAnnLink');
+  var modeEl  = document.getElementById('devAnnImgMode');
+  var orientEl= document.getElementById('devAnnImgOrient');
+  var cbEnEl  = document.getElementById('devAnnCustomBtnEnabled');
+  var cbTxtEl = document.getElementById('devAnnCustomBtnText');
+  var cbUrlEl = document.getElementById('devAnnCustomBtnUrl');
+  var cbActEl = document.getElementById('devAnnCustomBtnAction');
   var ann = {
     id:'__preview__', title:title, message:message,
     style:_devAnnSelectedStyle||'info', displayMode:'always', createdAt:null,
     imageBase64: _devAnnImgBase64 || null,
-    imageLink:   (linkEl && linkEl.value.trim()) || null
+    imageLink:   (linkEl && linkEl.value.trim()) || null,
+    imageMode:   (modeEl && modeEl.value) || 'thumbnail',
+    imageOrient: (orientEl && orientEl.value) || 'portrait',
+    customBtnEnabled: cbEnEl ? cbEnEl.checked : false,
+    customBtnText:    (cbTxtEl && cbTxtEl.value.trim()) || 'Selengkapnya',
+    customBtnUrl:     (cbUrlEl && cbUrlEl.value.trim()) || '',
+    customBtnAction:  (cbActEl && cbActEl.value) || 'link'
   };
   // Reset _annShowing agar preview bisa tampil kapanpun
   _annShowing = false;
@@ -24473,7 +24947,7 @@ function devSwitchTab(tab){
       btn.style.color = 'rgba(255,255,255,0.4)';
     }
   });
-  if(tab === 'debug') devRefreshUserInfo();
+  // Info user ditampilkan via modal saat tombol diklik
 }
 
 // ── openDevAnnPanel kept for backward compat ──
@@ -24513,11 +24987,22 @@ function _devAnnLoadList(){
 function devAnnSubmit(){
   if(!isDeveloper() || !fbDb) return;
   var title     = document.getElementById('devAnnTitle').value.trim();
-  var message   = document.getElementById('devAnnMessage').value.trim();
+  var msgEl     = document.getElementById('devAnnMessage');
+  var message   = msgEl.innerHTML.trim();
+  var plainText = (msgEl.innerText || msgEl.textContent || '').trim();
   var mode      = document.getElementById('devAnnMode').value;
   var expiryVal = document.getElementById('devAnnExpiry').value;
   var linkVal   = (document.getElementById('devAnnLink') && document.getElementById('devAnnLink').value.trim()) || '';
-  if(!title || !message){ showToast('⚠️ Judul dan pesan harus diisi!'); return; }
+  var imgModeVal= (document.getElementById('devAnnImgMode') && document.getElementById('devAnnImgMode').value) || 'thumbnail';
+  var orientVal = (document.getElementById('devAnnImgOrient') && document.getElementById('devAnnImgOrient').value) || 'portrait';
+  var cbEnabled = document.getElementById('devAnnCustomBtnEnabled') ? document.getElementById('devAnnCustomBtnEnabled').checked : false;
+  var cbText    = (document.getElementById('devAnnCustomBtnText') && document.getElementById('devAnnCustomBtnText').value.trim()) || '';
+  var cbUrl     = (document.getElementById('devAnnCustomBtnUrl') && document.getElementById('devAnnCustomBtnUrl').value.trim()) || '';
+  var cbAction  = (document.getElementById('devAnnCustomBtnAction') && document.getElementById('devAnnCustomBtnAction').value) || 'link';
+  // Mode fullimage: boleh tanpa teks
+  var isFullImage = imgModeVal === 'fullimage' && _devAnnImgBase64;
+  if(!title){ showToast('⚠️ Judul harus diisi!'); return; }
+  if(!isFullImage && !plainText){ showToast('⚠️ Pesan harus diisi (atau pilih mode Full Gambar dengan gambar ter-upload)!'); return; }
   var data = {
     title:title, message:message, style:_devAnnSelectedStyle||'info',
     displayMode:mode, active:true,
@@ -24525,19 +25010,27 @@ function devAnnSubmit(){
     createdBy:fbUser.uid,
     expiresAt:expiryVal ? firebase.firestore.Timestamp.fromDate(new Date(expiryVal)) : null,
     imageBase64: _devAnnImgBase64 || null,
-    imageLink:   linkVal || null
+    imageLink:   linkVal || null,
+    imageMode:   imgModeVal,
+    imageOrient: orientVal,
+    customBtnEnabled: cbEnabled,
+    customBtnText:    cbEnabled ? cbText : null,
+    customBtnUrl:     (cbEnabled && cbAction === 'link') ? cbUrl : null,
+    customBtnAction:  cbEnabled ? cbAction : null
   };
   var btn = document.getElementById('devAnnSubmitBtn');
   btn.disabled=true; btn.textContent='⏳ Menyimpan...';
   fbDb.collection('announcements').add(data).then(function(){
     showToast('✅ Pengumuman dikirim ke semua user!');
     document.getElementById('devAnnTitle').value='';
-    document.getElementById('devAnnMessage').value='';
+    msgEl.innerHTML='';
     document.getElementById('devAnnExpiry').value='';
     var cnt = document.getElementById('devAnnCharCount'); if(cnt) cnt.textContent='0';
-    // Reset gambar
     devAnnRemoveImg();
     var linkEl = document.getElementById('devAnnLink'); if(linkEl) linkEl.value='';
+    var cbTxtEl = document.getElementById('devAnnCustomBtnText'); if(cbTxtEl) cbTxtEl.value='';
+    var cbUrlEl = document.getElementById('devAnnCustomBtnUrl'); if(cbUrlEl) cbUrlEl.value='';
+    var cbEnEl = document.getElementById('devAnnCustomBtnEnabled'); if(cbEnEl){ cbEnEl.checked=false; _devAnnToggleCustomBtn(false); }
     btn.disabled=false; btn.textContent='📢 Kirim Pengumuman';
     _devAnnLoadList();
   }).catch(function(e){
@@ -24573,15 +25066,153 @@ function _devLog(msg, type){
 }
 
 function devRefreshUserInfo(){
-  var el = document.getElementById('devUserInfo'); if(!el) return;
-  var info = '';
-  if(fbUser){
-    info += '🆔 UID: <span style="color:#60a5fa">'+fbUser.uid+'</span>\n';
-    info += '📧 Email: '+(fbUser.email||'—')+'\n';
-    info += '👤 Name: '+(fbUser.displayName||'—')+'\n';
-    info += '🌐 Guest: '+(fbUser._isGuest?'<span style="color:#fbbf24">Ya</span>':'<span style="color:#4ade80">Tidak</span>');
-  } else { info = '<span style="color:#f87171">Tidak ada user login</span>'; }
-  el.innerHTML = info;
+  // Legacy — tidak dipakai lagi, digantikan devShowAllUsers()
+}
+
+// ════════════════════════════════════════════
+// PRESENCE SYSTEM — deteksi user online
+// ════════════════════════════════════════════
+
+function _presenceUpdate(user){
+  if(!fbDb || !user || user._isGuest || user._isOffline) return;
+  try {
+    fbDb.collection('presence').doc(user.uid).set({
+      email:       user.email       || '',
+      displayName: user.displayName || '',
+      lastSeen:    firebase.firestore.FieldValue.serverTimestamp(),
+      isGuest:     false
+    }, { merge: true });
+  } catch(e){}
+}
+
+function _presenceStartHeartbeat(user){
+  if(!user || user._isGuest || user._isOffline) return;
+  // Stop heartbeat lama kalau ada
+  if(_presenceTimer){ clearInterval(_presenceTimer); _presenceTimer = null; }
+  // Update lastSeen setiap 2 menit
+  _presenceTimer = setInterval(function(){
+    if(!fbDb || !fbUser || fbUser._isGuest) return;
+    try {
+      fbDb.collection('presence').doc(fbUser.uid).set({
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } catch(e){}
+  }, 2 * 60 * 1000);
+  // Update juga saat tab kembali aktif
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible' && fbDb && fbUser && !fbUser._isGuest){
+      try {
+        fbDb.collection('presence').doc(fbUser.uid).set({
+          lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch(e){}
+    }
+  });
+}
+
+function devShowAllUsers(){
+  var modal = document.getElementById('devAllUsersModal');
+  if(!modal) return;
+  modal.style.display = 'flex';
+  devLoadAllUsers();
+}
+
+function devCloseAllUsersModal(){
+  var modal = document.getElementById('devAllUsersModal');
+  if(modal) modal.style.display = 'none';
+}
+
+function devLoadAllUsers(){
+  var listEl  = document.getElementById('devAllUsersList');
+  var countEl = document.getElementById('devAllUsersCount');
+  if(!listEl) return;
+
+  listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">⏳ Memuat data presence...</div>';
+  if(countEl) countEl.textContent = 'Memuat...';
+
+  if(!fbDb){
+    listEl.innerHTML = '<div style="text-align:center;color:#f87171;font-size:12px;padding:20px 0">❌ Firestore belum tersambung</div>';
+    return;
+  }
+
+  fbDb.collection('presence').get().then(function(snap){
+    if(snap.empty){
+      listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">Belum ada data presence</div>';
+      if(countEl) countEl.textContent = '0 user';
+      return;
+    }
+
+    var now       = Date.now();
+    var onlineMs  = 5 * 60 * 1000;  // online = lastSeen dalam 5 menit terakhir
+    var online    = [];
+    var offline   = [];
+
+    snap.forEach(function(doc){
+      var d        = doc.data();
+      var email    = d.email || '—';
+      var name     = d.displayName || '';
+      var isGuest  = d.isGuest || false;
+      var lastSeen = d.lastSeen ? d.lastSeen.toDate() : null;
+      var diffMs   = lastSeen ? (now - lastSeen.getTime()) : Infinity;
+      var isOnline = diffMs <= onlineMs;
+
+      var entry = { email: email, name: name, isGuest: isGuest, lastSeen: lastSeen, diffMs: diffMs, isOnline: isOnline };
+      if(isOnline) online.push(entry); else offline.push(entry);
+    });
+
+    // Sort: online terbaru dulu, offline terbaru dulu
+    online.sort(function(a,b){ return a.diffMs - b.diffMs; });
+    offline.sort(function(a,b){ return a.diffMs - b.diffMs; });
+
+    function fmtAgo(ms){
+      if(!isFinite(ms)) return 'tidak diketahui';
+      var s = Math.floor(ms/1000);
+      if(s < 60)  return s+'d lalu';
+      var m = Math.floor(s/60);
+      if(m < 60)  return m+'m lalu';
+      var h = Math.floor(m/60);
+      if(h < 24)  return h+'j lalu';
+      return Math.floor(h/24)+'h lalu';
+    }
+
+    function buildCard(u){
+      var showName = u.name && u.name !== u.email;
+      return '<div style="background:rgba(255,255,255,0.03);border:1px solid '+(u.isOnline?'rgba(74,222,128,0.2)':'rgba(255,255,255,0.07)')+';border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:11px">'
+        + '<div style="position:relative;flex-shrink:0">'
+        +   '<div style="width:36px;height:36px;border-radius:50%;background:'+(u.isOnline?'rgba(74,222,128,0.12)':'rgba(255,255,255,0.05)')+';border:1px solid '+(u.isOnline?'rgba(74,222,128,0.3)':'rgba(255,255,255,0.1)')+';display:flex;align-items:center;justify-content:center;font-size:16px">'+(u.isGuest?'🎭':'👤')+'</div>'
+        +   '<div style="position:absolute;bottom:0;right:0;width:11px;height:11px;border-radius:50%;background:'+(u.isOnline?'#4ade80':'#6b7280')+';border:2px solid #1c1917"></div>'
+        + '</div>'
+        + '<div style="flex:1;min-width:0">'
+        +   '<div style="font-size:12px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📧 '+u.email+'</div>'
+        +   (showName ? '<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:1px">👤 '+u.name+'</div>' : '')
+        +   '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">'
+        +     '<span style="font-size:10px;font-weight:700;color:'+(u.isOnline?'#4ade80':'#9ca3af')+';background:'+(u.isOnline?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)')+';border:1px solid '+(u.isOnline?'rgba(74,222,128,0.25)':'rgba(255,255,255,0.1)')+';border-radius:20px;padding:1px 8px">'+(u.isOnline?'🟢 Online':'⚫ Offline')+'</span>'
+        +     '<span style="font-size:10px;color:rgba(255,255,255,0.25)">'+fmtAgo(u.diffMs)+'</span>'
+        +     (u.isGuest ? '<span style="font-size:10px;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:20px;padding:1px 7px">Guest</span>' : '')
+        +   '</div>'
+        + '</div>'
+        + '</div>';
+    }
+
+    var html = '';
+    if(online.length){
+      html += '<div style="font-size:9px;font-weight:800;color:rgba(74,222,128,0.6);text-transform:uppercase;letter-spacing:0.6px;margin:4px 2px 6px">🟢 Online sekarang ('+online.length+')</div>';
+      online.forEach(function(u){ html += buildCard(u); });
+    }
+    if(offline.length){
+      html += '<div style="font-size:9px;font-weight:800;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.6px;margin:'+(online.length?'14px':'4px')+' 2px 6px">⚫ Offline ('+offline.length+')</div>';
+      offline.forEach(function(u){ html += buildCard(u); });
+    }
+
+    listEl.innerHTML = html;
+    var totalOnline = online.length;
+    if(countEl) countEl.textContent = totalOnline + ' online · ' + (online.length+offline.length) + ' total user';
+    _devLog('Presence loaded: '+totalOnline+' online, '+offline.length+' offline','ok');
+
+  }).catch(function(e){
+    listEl.innerHTML = '<div style="text-align:center;color:#f87171;font-size:12px;padding:20px 0">❌ Error: '+e.message+'</div>';
+    _devLog('Error load presence: '+e.message,'err');
+  });
 }
 
 function devClearLog(){ var el=document.getElementById('devConsoleLog'); if(el) el.innerHTML='<span style="color:rgba(255,255,255,0.2)">// Log cleared.</span>'; }
@@ -24683,14 +25314,178 @@ function devUnlockAllAchv(){
   else { _devLog('unlockAllAchievements tidak ditemukan','warn'); showToast('⚠️ Function tidak ada'); }
 }
 
+function devResetAchievements(){
+  if(!confirm('Reset semua achievements? Tidak bisa di-undo!')) return;
+  if(typeof achievements !== 'undefined'){
+    Object.keys(achievements).forEach(function(k){ achievements[k].unlocked = false; achievements[k].progress = 0; });
+    if(typeof saveData==='function') saveData();
+    if(typeof renderAchievements==='function') renderAchievements();
+    showToast('🔁 Achievements reset!');
+    _devLog('Achievements reset','warn');
+  } else { _devLog('achievements object tidak ditemukan','err'); }
+}
+
+// ── SHOP & TEMA FUNCTIONS ──
+
+function devRefreshShopInfo(){
+  var el = document.getElementById('devShopInfo'); if(!el) return;
+  var themeName = '—', effectName = '—';
+  // cari nama tema aktif
+  if(typeof SHOP_THEMES !== 'undefined'){
+    var t = SHOP_THEMES.find(function(x){ return x.id === activeTheme; });
+    if(t) themeName = t.icon + ' ' + t.name;
+  }
+  if(typeof SHOP_EFFECTS !== 'undefined'){
+    var e = SHOP_EFFECTS.find(function(x){ return x.id === activeEffect; });
+    if(e) effectName = e.icon + ' ' + e.name;
+    else if(!activeEffect) effectName = '✨ Default';
+  }
+  var purchases = typeof shopPurchases !== 'undefined' ? shopPurchases.length : 0;
+  var html = '';
+  html += '🎨 Tema aktif: <span style="color:#a78bfa">' + themeName + '</span>\n';
+  html += '✨ Efek aktif: <span style="color:#a5b4fc">' + effectName + '</span>\n';
+  html += '🛍️ Item dibeli: <span style="color:#fbbf24">' + purchases + ' item</span>\n';
+  if(typeof shopPurchases !== 'undefined' && shopPurchases.length){
+    shopPurchases.forEach(function(p){
+      html += '  → <span style="color:rgba(255,255,255,0.35)">' + (p.name||p.id) + '</span>\n';
+    });
+  }
+  el.innerHTML = html;
+  _devLog('Shop info refreshed','info');
+}
+
+function devUnlockAllThemes(){
+  if(!confirm('Unlock semua tema tanpa bayar Gold?')) return;
+  if(typeof SHOP_THEMES === 'undefined' || typeof shopPurchases === 'undefined'){ showToast('⚠️ Shop data tidak ditemukan'); return; }
+  var added = 0;
+  SHOP_THEMES.forEach(function(item){
+    if(item.builtin) return;
+    var alreadyOwned = shopPurchases.some(function(p){ return p.id === item.id; });
+    if(!alreadyOwned){
+      shopPurchases.push({ id: item.id, name: item.name, type: 'theme', cost: 0, date: new Date().toISOString() });
+      added++;
+    }
+  });
+  if(typeof saveData==='function') saveData();
+  if(typeof renderShop==='function') renderShop();
+  showToast('🎨 ' + added + ' tema di-unlock!');
+  _devLog('Unlocked ' + added + ' themes', 'ok');
+  devRefreshShopInfo();
+}
+
+function devUnlockAllEffects(){
+  if(!confirm('Unlock semua efek animasi tanpa bayar Gold?')) return;
+  if(typeof SHOP_EFFECTS === 'undefined' || typeof shopPurchases === 'undefined'){ showToast('⚠️ Shop data tidak ditemukan'); return; }
+  var added = 0;
+  SHOP_EFFECTS.forEach(function(item){
+    if(item.builtin) return;
+    var alreadyOwned = shopPurchases.some(function(p){ return p.id === item.id; });
+    if(!alreadyOwned){
+      shopPurchases.push({ id: item.id, name: item.name, type: 'effect', cost: 0, date: new Date().toISOString() });
+      added++;
+    }
+  });
+  if(typeof saveData==='function') saveData();
+  if(typeof renderShop==='function') renderShop();
+  showToast('✨ ' + added + ' efek di-unlock!');
+  _devLog('Unlocked ' + added + ' effects', 'ok');
+  devRefreshShopInfo();
+}
+
+function devResetTheme(){
+  if(!confirm('Reset tema ke Dark Mode?')) return;
+  activeTheme = 'theme-dark';
+  tempThemeExpiry = 0;
+  tempThemePrev = '';
+  if(typeof applyTheme==='function') applyTheme('theme-dark');
+  if(typeof saveData==='function') saveData();
+  showToast('🌙 Tema direset ke Dark Mode');
+  _devLog('Theme reset to dark', 'warn');
+  devRefreshShopInfo();
+}
+
+function devResetEffect(){
+  if(!confirm('Reset efek ke Default (tidak ada efek)?')) return;
+  activeEffect = '';
+  if(typeof stopEffect==='function') stopEffect();
+  if(typeof saveData==='function') saveData();
+  showToast('✨ Efek direset ke Default');
+  _devLog('Effect reset to default', 'warn');
+  devRefreshShopInfo();
+}
+
+function devResetShopPurchases(){
+  if(!confirm('Reset SEMUA pembelian shop? Item akan hilang, Gold tidak dikembalikan!')) return;
+  shopPurchases = [];
+  activeTheme = 'theme-dark';
+  activeEffect = '';
+  tempThemeExpiry = 0;
+  tempThemePrev = '';
+  if(typeof applyTheme==='function') applyTheme('theme-dark');
+  if(typeof stopEffect==='function') stopEffect();
+  if(typeof saveData==='function') saveData();
+  if(typeof renderShop==='function') renderShop();
+  showToast('🗑️ Semua pembelian shop direset!');
+  _devLog('All shop purchases reset', 'warn');
+  devRefreshShopInfo();
+}
+
+function devResetAllGami(){
+  if(!confirm('⚠️ Reset SEMUA gamifikasi: XP, Gold, Level, Achievements, Shop, Tema, Efek?')) return;
+  if(!confirm('Konfirmasi lagi — ini tidak bisa di-undo!')) return;
+  // Reset gami stats
+  if(typeof resetGamification==='function') resetGamification();
+  // Reset achievements
+  if(typeof achievements !== 'undefined'){
+    Object.keys(achievements).forEach(function(k){ achievements[k].unlocked = false; achievements[k].progress = 0; });
+  }
+  // Reset shop
+  shopPurchases = [];
+  activeTheme = 'theme-dark';
+  activeEffect = '';
+  tempThemeExpiry = 0;
+  tempThemePrev = '';
+  if(typeof applyTheme==='function') applyTheme('theme-dark');
+  if(typeof stopEffect==='function') stopEffect();
+  if(typeof saveData==='function') saveData();
+  if(typeof renderShop==='function') renderShop();
+  if(typeof renderAchievements==='function') renderAchievements();
+  showToast('💣 Semua gamifikasi direset total!');
+  _devLog('FULL GAMI RESET complete', 'warn');
+  devRefreshShopInfo();
+}
+
 // ── DATA TAB ──
+// Helper: ambil data dari localStorage chitask_v6_data
+function _getLocalData(){
+  try{ var raw=localStorage.getItem('chitask_v6_data'); return raw?JSON.parse(raw):null; }catch(e){ return null; }
+}
+// Helper: download JSON blob
+function _downloadJson(data, filename){
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=filename+'_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+}
 function _devExport(collectionName, filename){
-  if(!fbDb||!fbUser||fbUser._isGuest){ showToast('Butuh login Firebase'); return; }
+  // ── Fallback localStorage untuk guest/offline ──
+  if(!fbDb||!fbUser||fbUser._isGuest||fbUser._isOffline){
+    var ld=_getLocalData();
+    if(!ld){ showToast('Tidak ada data lokal'); _devLog('No local data found','err'); return; }
+    var data=[];
+    if(collectionName==='tasks'){ data=(ld.tasks||[]).filter(function(t){return !t.type||t.type!=='Habit';}); }
+    else if(collectionName==='habits'){ data=(ld.tasks||[]).filter(function(t){return t.type==='Habit';}); }
+    else if(collectionName==='transactions'){ data=ld.finTransactions||[]; }
+    else if(collectionName==='wallets'){ data=ld.finWallets||[]; }
+    else if(collectionName==='journals'){ data=ld.journalEntries||[]; }
+    else{ data=ld[collectionName]||[]; }
+    _downloadJson(data, filename);
+    showToast('📦 '+filename+' exported! ('+data.length+' items) [lokal]');
+    _devLog('Exported '+data.length+' items from localStorage['+collectionName+']','ok');
+    return;
+  }
   fbDb.collection('users').doc(fbUser.uid).collection(collectionName).get().then(function(snap){
     var data=[]; snap.forEach(function(doc){ data.push(Object.assign({_id:doc.id},doc.data())); });
-    var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=filename+'_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+    _downloadJson(data, filename);
     showToast('📦 '+filename+' exported! ('+data.length+' items)');
     _devLog('Exported '+data.length+' docs from '+collectionName,'ok');
   }).catch(function(e){ _devLog('Export error: '+e.message,'err'); showToast('Error: '+e.message); });
@@ -24699,7 +25494,28 @@ function devExportTasks(){ _devExport('tasks','chitask_tasks'); }
 function devExportHabits(){ _devExport('habits','chitask_habits'); }
 function devExportFinance(){ _devExport('transactions','chitask_finance'); }
 function devExportAll(){
-  if(!fbDb||!fbUser||fbUser._isGuest){ showToast('Butuh login Firebase'); return; }
+  // ── Fallback localStorage untuk guest/offline ──
+  if(!fbDb||!fbUser||fbUser._isGuest||fbUser._isOffline){
+    var ld=_getLocalData();
+    if(!ld){ showToast('Tidak ada data lokal'); _devLog('No local data found','err'); return; }
+    var allData={
+      tasks:(ld.tasks||[]).filter(function(t){return !t.type||t.type!=='Habit';}),
+      habits:(ld.tasks||[]).filter(function(t){return t.type==='Habit';}),
+      transactions:ld.finTransactions||[],
+      wallets:ld.finWallets||[],
+      journals:ld.journalEntries||[],
+      maintItems:ld.maintItems||[],
+      finTagihan:ld.finTagihan||[],
+      finHutang:ld.finHutang||[],
+      finWishlist:ld.finWishlist||[],
+      finBudgets:ld.finBudgets||{},
+      _exportedAt:new Date().toISOString(),
+      _source:'localStorage'
+    };
+    _downloadJson(allData,'chitask_fullexport');
+    showToast('📦 Full export berhasil! [lokal]'); _devLog('Full export from localStorage complete','ok');
+    return;
+  }
   var cols=['tasks','habits','transactions','wallets','journals']; var allData={}; var pending=cols.length;
   cols.forEach(function(col){
     fbDb.collection('users').doc(fbUser.uid).collection(col).get().then(function(snap){
@@ -24707,9 +25523,7 @@ function devExportAll(){
       snap.forEach(function(doc){ allData[col].push(Object.assign({_id:doc.id},doc.data())); });
       if(--pending===0){
         allData._exportedAt=new Date().toISOString(); allData._uid=fbUser.uid;
-        var blob=new Blob([JSON.stringify(allData,null,2)],{type:'application/json'});
-        var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-        a.download='chitask_fullexport_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+        _downloadJson(allData,'chitask_fullexport');
         showToast('📦 Full export berhasil!'); _devLog('Full export complete','ok');
       }
     }).catch(function(){ pending--; });
@@ -24741,7 +25555,7 @@ function devWipeUserData(){
 /* ── Ann Modal ── */
 #annOverlay { display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:20px;box-sizing:border-box }
 #annCard {
-  width:100%;max-width:420px;
+  width:100%;max-width:440px;
   background:linear-gradient(145deg,rgba(15,15,25,0.97) 0%,rgba(20,20,35,0.98) 100%);
   border:1px solid rgba(255,255,255,0.08);
   border-radius:28px;
@@ -24774,14 +25588,21 @@ function devWipeUserData(){
   background:radial-gradient(circle,var(--ann-glow,rgba(59,130,246,0.18)) 0%,transparent 70%);
   pointer-events:none;
 }
-/* Icon badge */
+/* Icon badge — kecil, centered */
 .ann-icon-wrap {
-  width:56px;height:56px;border-radius:18px;
-  background:linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02));
+  width:44px;height:44px;border-radius:14px;
+  background:linear-gradient(135deg,var(--ann-clr,#3b82f6)22,rgba(255,255,255,0.04));
   border:1px solid rgba(255,255,255,0.1);
   display:flex;align-items:center;justify-content:center;
-  font-size:28px;flex-shrink:0;
-  box-shadow:0 4px 16px rgba(0,0,0,0.3);
+  font-size:20px;flex-shrink:0;
+  box-shadow:0 4px 14px rgba(0,0,0,0.25);
+  margin:0 auto 10px;
+}
+/* Header centered */
+#annHeader {
+  text-align:center;
+  padding:24px 24px 0;
+  position:relative;z-index:1;
 }
 /* Dismiss btn */
 #annDismissBtn {
@@ -24805,6 +25626,28 @@ function devWipeUserData(){
 #annImageWrap img { transition: transform 0.3s ease; }
 #annImageWrap:hover img { transform: scale(1.01); }
 
+/* Full image mode — card flush tanpa padding atas */
+#annCard.ann-fullimage-mode {
+  padding: 0 !important;
+  border-radius: 22px;
+  overflow: hidden;
+}
+#annCard.ann-fullimage-mode #annImageWrap {
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+#annCard.ann-fullimage-mode #annImage {
+  border-radius: 0 !important;
+  max-height: none !important;
+}
+
+/* Custom button */
+#annCustomBtn:hover { background: rgba(255,255,255,0.16) !important; }
+#annCustomBtn:active { transform: scale(0.98); }
+
+/* Full image close button */
+#annFullImgClose:hover { background: rgba(0,0,0,0.75) !important; }
+
 /* Tag chip */
 .ann-tag {
   display:inline-flex;align-items:center;gap:4px;
@@ -24812,6 +25655,11 @@ function devWipeUserData(){
   background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
   color:rgba(255,255,255,0.5);text-transform:uppercase;
 }
+/* Message content editable styles */
+#annMessage b, #annMessage strong { font-weight:800;color:#fff }
+#annMessage i, #annMessage em { font-style:italic }
+#annMessage u { text-decoration:underline }
+#annMessage s { text-decoration:line-through;opacity:0.6 }
 </style>
 
 <div id="annOverlay">
@@ -24820,46 +25668,51 @@ function devWipeUserData(){
     <div id="annGlowBar"></div>
     <div id="annAmbient"></div>
 
+    <!-- Tombol X khusus mode Full Gambar (di atas gambar) -->
+    <button id="annFullImgClose" onclick="document.getElementById('annDismissBtn').click()" style="display:none;position:absolute;top:10px;right:10px;z-index:10;border:none;background:rgba(0,0,0,0.5);backdrop-filter:blur(6px);border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:14px;color:#fff;align-items:center;justify-content:center;transition:background 0.15s">✕</button>
+
+    <!-- Header centered -->
+    <div id="annPopupHeader" style="padding:24px 20px 14px;position:relative;z-index:1;text-align:center">
+      <!-- Close X absolute top-right -->
+      <button id="annCloseX" onclick="document.getElementById('annDismissBtn').click()" style="position:absolute;top:14px;right:14px;border:none;background:rgba(255,255,255,0.06);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:12px;color:rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;transition:background 0.15s">✕</button>
+      <!-- Icon kecil centered -->
+      <div class="ann-icon-wrap">
+        <span id="annIcon">📢</span>
+      </div>
+      <!-- Badge + time -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:9px">
+        <span class="ann-tag">📣 Pengumuman</span>
+        <span id="annTimeBadge" style="font-size:10px;color:rgba(255,255,255,0.25);font-weight:600"></span>
+      </div>
+      <!-- Title centered -->
+      <div id="annTitle" style="font-size:19px;font-weight:900;color:#fff;line-height:1.25;letter-spacing:-0.4px;text-align:center">Pengumuman</div>
+    </div>
+
     <!-- Body -->
-    <div style="padding:28px 24px 0;position:relative;z-index:1">
-      <!-- Top row: icon + meta -->
-      <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px">
-        <div class="ann-icon-wrap">
-          <span id="annIcon" style="font-size:28px;line-height:1">📢</span>
-        </div>
-        <div style="flex:1;min-width:0">
-          <!-- App badge -->
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <span class="ann-tag">📣 Pengumuman</span>
-            <span id="annTimeBadge" style="font-size:10px;color:rgba(255,255,255,0.25);font-weight:600"></span>
-          </div>
-          <div id="annTitle" style="font-size:18px;font-weight:900;color:#fff;line-height:1.25;letter-spacing:-0.3px;margin-bottom:0">Pengumuman</div>
-        </div>
-        <!-- Close X -->
-        <button id="annCloseX" onclick="document.getElementById('annDismissBtn').click()" style="border:none;background:rgba(255,255,255,0.06);border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:13px;color:rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.15s">✕</button>
+    <div id="annPopupBody" style="padding:0 18px 0;position:relative;z-index:1">
+      <!-- Message body — lebih lebar -->
+      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px 18px;margin-bottom:16px">
+        <div id="annMessage" style="font-size:14px;color:rgba(255,255,255,0.82);line-height:1.75"></div>
       </div>
 
-      <!-- Message body -->
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px 18px;margin-bottom:20px">
-        <div id="annMessage" style="font-size:14px;color:rgba(255,255,255,0.82);line-height:1.7;white-space:pre-wrap"></div>
-      </div>
-
-      <!-- Gambar iklan (tampil jika ada) -->
-      <div id="annImageWrap" style="display:none;margin-bottom:20px;border-radius:14px;overflow:hidden;position:relative;cursor:pointer" onclick="annImageClick()">
+      <!-- Gambar iklan thumbnail (tampil jika ada & mode thumbnail) -->
+      <div id="annImageWrap" style="display:none;margin-bottom:16px;border-radius:14px;overflow:hidden;position:relative;cursor:pointer" onclick="annImageClick()">
         <img id="annImage" src="" alt="" style="width:100%;max-height:220px;object-fit:cover;display:block;border-radius:14px">
         <div id="annImageLinkHint" style="display:none;position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none">🔗 Buka Link</div>
       </div>
 
       <!-- Divider -->
-      <div style="height:1px;background:rgba(255,255,255,0.06);margin-bottom:20px"></div>
+      <div style="height:1px;background:rgba(255,255,255,0.06);margin-bottom:16px"></div>
     </div>
 
     <!-- Footer actions -->
-    <div style="padding:0 24px 24px;position:relative;z-index:1">
-      <button id="annDismissBtn">
-        ✓ Oke, Mengerti!
-      </button>
-      <div style="text-align:center;margin-top:12px">
+    <div style="padding:0 18px 20px;position:relative;z-index:1">
+      <!-- Custom button (opsional) -->
+      <div id="annCustomBtnWrap" style="display:none;margin-bottom:10px">
+        <button id="annCustomBtn" style="width:100%;padding:13px 18px;border:none;background:rgba(255,255,255,0.1);border-radius:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;letter-spacing:0.2px;transition:background 0.15s;backdrop-filter:blur(4px)">Selengkapnya</button>
+      </div>
+      <button id="annDismissBtn">✓ Oke, Mengerti!</button>
+      <div style="text-align:center;margin-top:10px">
         <span id="annFooterNote" style="font-size:11px;color:rgba(255,255,255,0.2)">ChiTask · Pesan dari developer</span>
       </div>
     </div>
