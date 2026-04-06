@@ -2792,11 +2792,13 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 .ach-desc{font-size:9px;color:var(--muted);margin-top:2px}
 
 /* Toast & overlay */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(200%);background:#1c1917;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;z-index:9990;transition:transform 0.35s cubic-bezier(.34,1.56,.64,1),bottom 0.15s ease;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:88vw;text-align:center;pointer-events:none;will-change:transform}
-.toast.show{transform:translateX(-50%) translateY(0);pointer-events:auto}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(200%);opacity:0;visibility:hidden;background:#1c1917;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;z-index:9990;transition:transform 0.35s cubic-bezier(.34,1.56,.64,1),opacity 0.25s ease,bottom 0.15s ease;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:88vw;text-align:center;pointer-events:none;will-change:transform}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1;visibility:visible;pointer-events:auto}
 @media(max-width:700px){
-  .toast{bottom:var(--toast-bottom,calc(72px + env(safe-area-inset-bottom,0)));white-space:normal;font-size:12px;padding:9px 16px}
+  .toast{bottom:var(--toast-bottom,calc(80px + env(safe-area-inset-bottom,0)));white-space:normal;font-size:12px;padding:9px 16px}
 }
+body.mobile-nav-sidebar .toast{bottom:var(--toast-bottom,calc(24px + env(safe-area-inset-bottom,0)))}
+@media(min-width:701px){.toast{bottom:24px}}
 .xp-toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%) translateY(200%);background:linear-gradient(135deg,var(--accent),#fbbf24);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;z-index:9991;transition:transform 0.3s cubic-bezier(.34,1.56,.64,1),opacity 0.3s ease;white-space:nowrap;box-shadow:0 4px 16px rgba(217,119,6,0.4);pointer-events:none;opacity:0}
 .xp-toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 @media(max-width:700px){.xp-toast{bottom:var(--xp-toast-bottom,calc(118px + env(safe-area-inset-bottom,0)))}}
@@ -6473,6 +6475,51 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
 <!-- Google Identity Services dihapus — diganti Cloudflare Worker -->
 </head>
 <body>
+<script>
+// ══ EARLY PWA INSTALL PROMPT CAPTURE ══════════════════════════════════
+// HARUS dipasang SEBELUM Firebase & semua script async load.
+// beforeinstallprompt di Chrome Android bisa tembak dalam ~1-3 detik
+// setelah halaman load — jauh sebelum initApp() / setupPWA() jalan.
+// Kalau listener baru dipasang di setupPWA(), event sudah kelewat → prompt hilang.
+(function() {
+  window._earlyCapturedInstallPrompt = null;
+  window._pwaDebugLog = [];
+  function pwaLog(msg) {
+    var t = new Date().toISOString().substr(11,8);
+    window._pwaDebugLog.push('['+t+'] '+msg);
+    console.log('[PWA] '+msg);
+  }
+  window._pwaLog = pwaLog;
+  pwaLog('Early listener dipasang');
+
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    window._earlyCapturedInstallPrompt = e;
+    window._installPrompt = e;
+    pwaLog('✅ beforeinstallprompt TERTANGKAP!');
+    if (window.innerWidth <= 700) {
+      setTimeout(function() {
+        if (typeof showInstallBanner === 'function') {
+          showInstallBanner(e);
+        }
+      }, 3000);
+    }
+  });
+
+  window.addEventListener('appinstalled', function() {
+    pwaLog('✅ appinstalled event tembak');
+  });
+  // Sembunyikan tombol install jika sudah ter-install (standalone mode)
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+    document.addEventListener('DOMContentLoaded', function() {
+      var navInstall = document.getElementById('nav-install');
+      if (navInstall) navInstall.style.display = 'none';
+      var sdiInstall = document.getElementById('sdi-install-btn');
+      if (sdiInstall) sdiInstall.style.display = 'none';
+    });
+  }
+})();
+</script>
 <!-- Shop Confirm Modal -->
 <div class="shop-confirm-overlay" id="shopConfirmOverlay">
   <div class="shop-confirm-box">
@@ -15425,9 +15472,10 @@ function toggleTheme(){
 function _updateToastPosition(){
   var isMobile=window.innerWidth<=700;
   var isSidebar=document.body.classList.contains('mobile-nav-sidebar');
-  // Cek bottom nav height
+  // Cek bottom nav height — fallback 64px kalau offsetHeight belum tersedia
   var bn=document.getElementById('bottomNav');
-  var bnH=(!isMobile||isSidebar||!bn)?0:(bn.offsetHeight||72);
+  var bnVisible=isMobile&&!isSidebar&&bn&&getComputedStyle(bn).display!=='none';
+  var bnH=bnVisible?(bn.offsetHeight||64):0;
   // Safe area
   var sa=0;
   try{
@@ -15437,7 +15485,7 @@ function _updateToastPosition(){
   // Kalau keyboard terbuka (visualViewport jauh lebih kecil dari window)
   var vv=window.visualViewport;
   var keyboardOpen=vv&&(window.innerHeight-vv.height)>150;
-  var gap=isMobile?16:24;
+  var gap=isMobile?12:24;
   var base=keyboardOpen?gap:(bnH>0?bnH+gap:gap);
   var r=document.documentElement;
   r.style.setProperty('--toast-bottom', base+'px');
@@ -15447,11 +15495,20 @@ function _updateToastPosition(){
 // Jalankan saat resize, orientasi berubah, dan keyboard muncul
 window.addEventListener('resize',_updateToastPosition);
 if(window.visualViewport) window.visualViewport.addEventListener('resize',_updateToastPosition);
-document.addEventListener('DOMContentLoaded',_updateToastPosition);
+// DOMContentLoaded + delay 200ms agar bottom nav sudah ter-render
+document.addEventListener('DOMContentLoaded',function(){
+  _updateToastPosition();
+  setTimeout(_updateToastPosition,200);
+});
 
 function showToast(msg){
   _updateToastPosition();
-  var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  var t=document.getElementById('toast');
+  t.textContent=msg;
+  t.classList.remove('show');
+  // force reflow agar posisi bottom ter-apply sebelum animasi muncul
+  void t.offsetWidth;
+  t.classList.add('show');
   clearTimeout(t._to);t._to=setTimeout(function(){t.classList.remove('show');},2500);
 }
 
@@ -15486,23 +15543,23 @@ function setupPWA(){
   }
 
   // Prompt install PWA
-  var _deferredInstallPrompt = null;
-  window.addEventListener('beforeinstallprompt', function(e){
-    e.preventDefault();
-    _deferredInstallPrompt = e;
-    // Aktifkan tombol install jika ada di nav
-    var btns = document.querySelectorAll('[data-pwa-install]');
-    btns.forEach(function(b){ b.style.display = ''; });
-  });
+  // CATATAN: listener beforeinstallprompt sudah dipasang lebih awal (early capture di <body>)
+  // Di sini cukup expose _triggerPWAInstall dan sync banner jika prompt sudah tertangkap.
   window._triggerPWAInstall = function(){
-    if(_deferredInstallPrompt){
-      _deferredInstallPrompt.prompt();
-      _deferredInstallPrompt.userChoice.then(function(r){
+    var prompt = window._earlyCapturedInstallPrompt || window._installPrompt;
+    if(prompt){
+      prompt.prompt();
+      prompt.userChoice.then(function(r){
         if(r.outcome === 'accepted') showToast('✅ ChiTask berhasil diinstall!');
-        _deferredInstallPrompt = null;
+        window._earlyCapturedInstallPrompt = null;
+        window._installPrompt = null;
       });
     }
   };
+  // Jika prompt sudah tertangkap sebelum setupPWA jalan, tampilkan banner sekarang
+  if(window._earlyCapturedInstallPrompt && window.innerWidth <= 700 && !document.getElementById('installBanner')){
+    showInstallBanner(window._earlyCapturedInstallPrompt);
+  }
 
   // LEGACY BLOCK — tidak dipakai lagi, dipertahankan untuk struktur
   if(false){
@@ -15590,15 +15647,8 @@ function setupPWA(){
     }
   } // end if(false)
 
-  // Add to homescreen prompt
-  var deferredPrompt=null;
-  window.addEventListener('beforeinstallprompt',function(e){
-    e.preventDefault();deferredPrompt=e;
-    // Show install banner after 3 sec if on mobile
-    if(window.innerWidth<=700){
-      setTimeout(function(){showInstallBanner(deferredPrompt);},3000);
-    }
-  });
+  // Add to homescreen prompt — listener sudah dipasang lebih awal (early capture di <body>)
+  // Tidak perlu daftar ulang di sini; cukup gunakan window._earlyCapturedInstallPrompt
 }
 
 function showInstallBanner(prompt){
@@ -15613,8 +15663,91 @@ function showInstallBanner(prompt){
   document.body.appendChild(banner);
   window._installPrompt=prompt;
 }
+function _showPWADiagModal(lines){
+  var existing = document.getElementById('_pwaDiagModal');
+  if(existing) existing.remove();
+  var overlay = document.createElement('div');
+  overlay.id = '_pwaDiagModal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#1c1917;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:360px;width:100%;max-height:80vh;overflow-y:auto';
+  var html = '<div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:14px">🔍 PWA Install Diagnosis</div>';
+  lines.forEach(function(l){
+    var color = l.startsWith('❌') ? '#f87171' : l.startsWith('✅') ? '#4ade80' : '#fbbf24';
+    html += '<div style="font-size:12px;color:'+color+';margin-bottom:8px;line-height:1.5">'+l+'</div>';
+  });
+  html += '<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:12px;margin-bottom:14px">Log: '+(window._pwaDebugLog||[]).join(' → ')+'</div>';
+  html += '<button onclick="document.getElementById(\'_pwaDiagModal\').remove()" style="width:100%;background:var(--accent,#f59e0b);border:none;border-radius:8px;color:#fff;padding:10px;font-size:13px;font-weight:700;cursor:pointer">Tutup</button>';
+  box.innerHTML = html;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
 function installApp(){
-  if(window._installPrompt){window._installPrompt.prompt();document.getElementById('installBanner')&&document.getElementById('installBanner').remove();}
+  var log = window._pwaLog || function(m){console.log('[PWA] '+m);};
+  var p = window._earlyCapturedInstallPrompt || window._installPrompt;
+  log('installApp() dipanggil — prompt ada: ' + (p ? 'YA' : 'TIDAK'));
+  if(p){
+    log('Memanggil p.prompt()...');
+    p.prompt();
+    p.userChoice.then(function(r){
+      log('userChoice: ' + r.outcome);
+      if(r.outcome==='accepted') showToast('✅ ChiTask berhasil diinstall!');
+      window._earlyCapturedInstallPrompt = null;
+      window._installPrompt = null;
+    });
+    var b = document.getElementById('installBanner');
+    if(b) b.remove();
+  } else {
+    log('❌ Tidak ada prompt — browser belum tembak beforeinstallprompt');
+    // Diagnosa otomatis
+    var diag = [];
+    // 1. Cek SW
+    if (!('serviceWorker' in navigator)) {
+      diag.push('❌ Service Worker tidak didukung browser ini');
+    } else {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        if (regs.length === 0) {
+          log('❌ DIAGNOSA: Tidak ada SW yang terdaftar!');
+          _showPWADiagModal(['❌ Service Worker belum terdaftar — /sw.js gagal load?']);
+        } else {
+          log('✅ SW terdaftar: ' + regs.map(function(r){return r.scope;}).join(', '));
+          // 2. Cek manifest
+          fetch('/manifest.json').then(function(r){
+            if (!r.ok) {
+              log('❌ DIAGNOSA: /manifest.json tidak ditemukan! Status: ' + r.status);
+              _showPWADiagModal(['❌ /manifest.json tidak ditemukan (HTTP '+r.status+')']);
+            } else {
+              return r.json().then(function(m){
+                var issues = [];
+                if (!m.name && !m.short_name) issues.push('❌ manifest: tidak ada name/short_name');
+                if (!m.icons || m.icons.length === 0) issues.push('❌ manifest: tidak ada icons');
+                else {
+                  var has192 = m.icons.some(function(i){return i.sizes && i.sizes.indexOf('192')>=0;});
+                  var has512 = m.icons.some(function(i){return i.sizes && i.sizes.indexOf('512')>=0;});
+                  if (!has192) issues.push('❌ manifest: tidak ada icon 192x192');
+                  if (!has512) issues.push('❌ manifest: tidak ada icon 512x512');
+                }
+                if (!m.start_url) issues.push('❌ manifest: tidak ada start_url');
+                if (m.display !== 'standalone' && m.display !== 'fullscreen' && m.display !== 'minimal-ui') issues.push('❌ manifest: display harus standalone/fullscreen/minimal-ui, saat ini: '+m.display);
+                if (issues.length === 0) {
+                  issues.push('✅ SW OK, manifest OK');
+                  issues.push('⚠️ Kemungkinan: app sudah pernah di-dismiss → Chrome blacklist 3 bulan.');
+                  issues.push('Coba: Settings → Apps → ChiTask → Uninstall, atau clear site data Chrome, lalu buka ulang.');
+                }
+                log('DIAGNOSA manifest: ' + issues.join(' | '));
+                _showPWADiagModal(issues);
+              });
+            }
+          }).catch(function(e){
+            log('❌ DIAGNOSA: Gagal fetch manifest.json — ' + e.message);
+            _showPWADiagModal(['❌ Gagal fetch /manifest.json: ' + e.message]);
+          });
+        }
+      });
+      return;
+    }
+    if (diag.length) _showPWADiagModal(diag);
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -22289,10 +22422,10 @@ setTimeout(function(){ bossInit(); }, 700);
       <span>Export Data ke JSON</span>
     </button>
     <!-- Import Button -->
-    <button onclick="document.getElementById('backupImportFileInput').click()" style="width:100%;padding:12px;border:1.5px solid rgba(99,102,241,0.35);border-radius:12px;background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s">
+    <label for="backupImportFileInput" style="width:100%;padding:12px;border:1.5px solid rgba(99,102,241,0.35);border-radius:12px;background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s;box-sizing:border-box">
       <span style="font-size:16px">⬆️</span>
       <span>Import Data dari JSON</span>
-    </button>
+    </label>
     <input type="file" id="backupImportFileInput" accept=".json,application/json" style="display:none" onchange="backupImportJSON(this)">
     <!-- Status message -->
     <div id="backupStatusMsg" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;font-size:12px;font-weight:600;text-align:center"></div>
@@ -24169,6 +24302,14 @@ function sholatAutoInject() {
               existing.myday = true;
               changed = true;
             }
+            // Reset fallback: done dari hari lalu tanpa _nextDue (processRepeatReset belum jalan)
+            if (existing.done && !existing._nextDue && existing.doneDate && existing.doneDate < todayStr) {
+              existing.done     = false;
+              existing.doneDate = null;
+              existing.due      = todayStr;
+              existing.myday    = true;
+              changed = true;
+            }
             updateReminder(existing, newTime);
           } else {
             buatTask(taskName, newTime);
@@ -24177,6 +24318,15 @@ function sholatAutoInject() {
       } else {
         // ── Sholat lain: buat kalau belum ada, update reminder
         if (existing) {
+          // Reset fallback: done dari hari lalu tanpa _nextDue (processRepeatReset belum jalan)
+          if (existing.done && !existing._nextDue && existing.doneDate && existing.doneDate < todayStr) {
+            existing.done     = false;
+            existing.doneDate = null;
+            existing.due      = todayStr;
+            existing.myday    = true;
+            if (existing.subtasks && existing.subtasks.length) existing.subtasks.forEach(function(s){s.done=false;});
+            changed = true;
+          }
           updateReminder(existing, newTime);
         } else {
           buatTask(taskName, newTime);
@@ -24191,9 +24341,20 @@ function sholatAutoInject() {
 
     if (isJumat) {
       if (jumatTask) {
-        jumatTask.myday    = true;
-        jumatTask.done     = false;
-        jumatTask.due      = todayStr;
+        // Kalau sudah done hari ini & punya _nextDue → biarkan, repeat flow sudah jalan
+        // Kalau done dari minggu lalu tanpa _nextDue → reset manual (fallback processRepeatReset)
+        if (jumatTask.done && !jumatTask._nextDue && jumatTask.doneDate && jumatTask.doneDate < todayStr) {
+          jumatTask.done     = false;
+          jumatTask.doneDate = null;
+          jumatTask.due      = todayStr;
+          jumatTask.myday    = true;
+          if (jumatTask.subtasks && jumatTask.subtasks.length) jumatTask.subtasks.forEach(function(s){s.done=false;});
+          changed = true;
+        } else if (!jumatTask.done) {
+          jumatTask.myday = true;
+          jumatTask.due   = todayStr;
+          changed = true;
+        }
         updateReminder(jumatTask, jumatTime);
       } else {
         buatTask(jumatName, jumatTime, 'Mingguan');
@@ -24598,6 +24759,48 @@ function annImageClick(){
   if(!imgWrap) return;
   var link = imgWrap.dataset.link;
   if(link) window.open(link, '_blank', 'noopener');
+}
+
+// ── Toggle custom button section di new dpContent-ann UI ──
+var _dpAnnCustomBtnActive = false;
+function dpAnnToggleCustomBtn(){
+  _dpAnnCustomBtnActive = !_dpAnnCustomBtnActive;
+  var details = document.getElementById('dpAnnCustomBtnDetails');
+  var hint    = document.getElementById('dpAnnCustomBtnHint');
+  var bg      = document.getElementById('dpAnnCustomBtnToggleBg');
+  var dot     = document.getElementById('dpAnnCustomBtnToggleDot');
+  var lbl     = document.getElementById('dpAnnCustomBtnToggleLabel');
+  if(details) details.style.display = _dpAnnCustomBtnActive ? 'block' : 'none';
+  if(hint)    hint.style.display    = _dpAnnCustomBtnActive ? 'none'  : 'block';
+  if(bg)   bg.style.background   = _dpAnnCustomBtnActive ? 'rgba(34,197,94,0.6)' : 'rgba(255,255,255,0.1)';
+  if(dot)  dot.style.transform   = _dpAnnCustomBtnActive ? 'translateX(16px)' : 'translateX(0)';
+  if(dot)  dot.style.background  = _dpAnnCustomBtnActive ? '#fff' : 'rgba(255,255,255,0.35)';
+  if(lbl)  lbl.textContent       = _dpAnnCustomBtnActive ? 'Aktif' : 'Nonaktif';
+  if(lbl)  lbl.style.color       = _dpAnnCustomBtnActive ? '#4ade80' : 'rgba(255,255,255,0.35)';
+  // Default aksi = close saat pertama aktif
+  if(_dpAnnCustomBtnActive) dpAnnSetCustomBtnAction('close', document.getElementById('dpAnnCBAction-close'));
+}
+
+// ── Pilih aksi tombol: 'close' atau 'link' ──
+var _dpAnnCustomBtnAction = 'close';
+function dpAnnSetCustomBtnAction(action, btn){
+  _dpAnnCustomBtnAction = action;
+  var urlWrap = document.getElementById('dpAnnCustomBtnUrlWrap');
+  if(urlWrap) urlWrap.style.display = (action === 'link') ? 'block' : 'none';
+  // Update visual tombol
+  ['close','link'].forEach(function(a){
+    var b = document.getElementById('dpAnnCBAction-'+a);
+    if(!b) return;
+    if(a === action){
+      b.style.borderColor = 'rgba(34,197,94,0.6)';
+      b.style.background  = 'rgba(34,197,94,0.15)';
+      b.style.color       = '#4ade80';
+    } else {
+      b.style.borderColor = 'rgba(255,255,255,0.1)';
+      b.style.background  = 'rgba(255,255,255,0.04)';
+      b.style.color       = 'rgba(255,255,255,0.35)';
+    }
+  });
 }
 
 // Toggle custom button section di admin panel
@@ -25093,6 +25296,9 @@ function dpAnnPreview(){
     : (_dpAnnImgLandscape || _dpAnnImgPortrait);
   var imgMode   = hasImg ? 'fullimage' : 'none';
   var imgOrient = (_dpAnnImgLandscape && !isMobile) ? 'landscape' : 'portrait';
+  var imgLinkEl = document.getElementById('dpAnnImageLink');
+  var cbTxtEl   = document.getElementById('dpAnnCustomBtnText');
+  var cbUrlEl   = document.getElementById('dpAnnCustomBtnUrl');
   var ann = {
     id:'__preview__', title:title, message:msg||'', style:style,
     displayMode:'always', createdAt:null,
@@ -25100,7 +25306,12 @@ function dpAnnPreview(){
     imageMode:   imgSrc ? imgMode : 'thumbnail',
     imageOrient: imgOrient,
     imagePortrait:  _dpAnnImgPortrait  || null,
-    imageLandscape: _dpAnnImgLandscape || null
+    imageLandscape: _dpAnnImgLandscape || null,
+    imageLink: (imgLinkEl && imgLinkEl.value.trim()) || null,
+    customBtnEnabled: _dpAnnCustomBtnActive,
+    customBtnText:    (_dpAnnCustomBtnActive && cbTxtEl) ? cbTxtEl.value.trim() : null,
+    customBtnAction:  _dpAnnCustomBtnActive ? _dpAnnCustomBtnAction : null,
+    customBtnUrl:     (_dpAnnCustomBtnActive && _dpAnnCustomBtnAction==='link' && cbUrlEl) ? cbUrlEl.value.trim() : null
   };
   var overlayEl = document.getElementById('annOverlay');
   if(overlayEl) overlayEl.style.zIndex='10000';
@@ -25129,6 +25340,14 @@ function dpAnnSubmit(){
   }
   var btn = document.getElementById('dpAnnSubmitBtn');
   if(btn){ btn.disabled=true; btn.textContent='⏳ Menyimpan...'; }
+  var imgLinkEl = document.getElementById('dpAnnImageLink');
+  var imgLink   = imgLinkEl ? imgLinkEl.value.trim() : '';
+  var cbTxtEl   = document.getElementById('dpAnnCustomBtnText');
+  var cbUrlEl   = document.getElementById('dpAnnCustomBtnUrl');
+  var cbText    = (cbTxtEl && cbTxtEl.value.trim()) || '';
+  var cbUrl     = (cbUrlEl && cbUrlEl.value.trim()) || '';
+  if(_dpAnnCustomBtnActive && !cbText){ showToast('⚠️ Isi teks tombol dulu!'); return; }
+  if(_dpAnnCustomBtnActive && _dpAnnCustomBtnAction === 'link' && !cbUrl){ showToast('⚠️ Isi URL tombol dulu!'); return; }
   var data = {
     title: title, message: msg, style: style,
     displayMode: mode, active: true,
@@ -25141,7 +25360,14 @@ function dpAnnSubmit(){
     // Compat: imageBase64 = portrait atau landscape (fallback)
     imageBase64: (_dpAnnImgPortrait || _dpAnnImgLandscape) || null,
     imageMode:   hasImg ? 'fullimage' : 'thumbnail',
-    imageOrient: _dpAnnImgLandscape ? 'landscape' : 'portrait'
+    imageOrient: _dpAnnImgLandscape ? 'landscape' : 'portrait',
+    // Link gambar (klik gambar → buka URL)
+    imageLink: imgLink || null,
+    // Tombol custom di bawah gambar
+    customBtnEnabled: _dpAnnCustomBtnActive,
+    customBtnText:    (_dpAnnCustomBtnActive && cbText) ? cbText : null,
+    customBtnAction:  _dpAnnCustomBtnActive ? _dpAnnCustomBtnAction : null,
+    customBtnUrl:     (_dpAnnCustomBtnActive && _dpAnnCustomBtnAction === 'link' && cbUrl) ? cbUrl : null
   };
   fbDb.collection('announcements').add(data).then(function(){
     showToast('📢 Pengumuman dikirim ke semua user!');
@@ -25149,6 +25375,10 @@ function dpAnnSubmit(){
     document.getElementById('dpAnnMessage').innerHTML='';
     dpAnnRemoveImg('portrait');
     dpAnnRemoveImg('landscape');
+    var imgLinkClr = document.getElementById('dpAnnImageLink'); if(imgLinkClr) imgLinkClr.value='';
+    var cbTxtClr = document.getElementById('dpAnnCustomBtnText'); if(cbTxtClr) cbTxtClr.value='';
+    var cbUrlClr = document.getElementById('dpAnnCustomBtnUrl'); if(cbUrlClr) cbUrlClr.value='';
+    if(_dpAnnCustomBtnActive){ _dpAnnCustomBtnActive=false; dpAnnToggleCustomBtn(); }
     if(btn){ btn.disabled=false; btn.textContent='📢 Kirim Pengumuman'; }
     dpAnnLoadList();
   }).catch(function(e){
@@ -25643,8 +25873,9 @@ function _devLoadGuestUsers(listEl, countEl){
       // Hindari duplikat self
       if(selfIsGuest && isOnline && diffMs < 30000) return;
       var deviceId = d.deviceId || doc.id;
+      var guestLabel = (d.displayName && d.displayName !== 'Tamu') ? d.displayName : ('Guest #'+deviceId.substring(0,8));
       var entry = {
-        email: d.deviceId ? ('Guest #'+deviceId.substring(0,8)) : '🎭 Guest',
+        email: guestLabel,
         name: d.ua ? d.ua.substring(0,50) : '',
         isGuest: true,
         diffMs: diffMs,
@@ -25693,7 +25924,9 @@ function _devRenderUserList(listEl, countEl, online, offline, typeIcon){
   }
 
   function buildCard(u){
-    var showName = u.name && u.name !== u.email;
+    var subtitle = u.isGuest
+      ? (u.deviceId ? '<span style="font-family:monospace">'+u.deviceId.substring(0,16)+'…</span>' : '')
+      : (u.name && u.name !== u.email ? u.name : '');
     var icon = u.isGuest ? '🎭' : '👤';
     return '<div style="background:rgba(255,255,255,0.03);border:1px solid '+(u.isOnline?'rgba(74,222,128,0.2)':'rgba(255,255,255,0.07)')+';border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:11px">'
       + '<div style="position:relative;flex-shrink:0">'
@@ -25702,7 +25935,7 @@ function _devRenderUserList(listEl, countEl, online, offline, typeIcon){
       + '</div>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="font-size:12px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(u.isGuest?'🎭 ':'📧 ')+u.email+'</div>'
-      +   (showName ? '<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+u.name+'</div>' : '')
+      +   (subtitle ? '<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+subtitle+'</div>' : '')
       +   '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">'
       +     '<span style="font-size:10px;font-weight:700;color:'+(u.isOnline?'#4ade80':'#9ca3af')+';background:'+(u.isOnline?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)')+';border:1px solid '+(u.isOnline?'rgba(74,222,128,0.25)':'rgba(255,255,255,0.1)')+';border-radius:20px;padding:1px 8px">'+(u.isOnline?'🟢 Online':'⚫ Offline')+'</span>'
       +     '<span style="font-size:10px;color:rgba(255,255,255,0.25)">'+fmtAgo(u.diffMs)+'</span>'
@@ -26511,6 +26744,71 @@ function devWipeUserData(){
         </div>
         <!-- /GAMBAR IKLAN -->
 
+        <!-- ══ LINK GAMBAR ══ -->
+        <div style="margin-bottom:12px;background:rgba(99,102,241,0.05);border:1.5px solid rgba(99,102,241,0.15);border-radius:12px;padding:12px 13px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
+            <span style="font-size:14px">🔗</span>
+            <span style="font-size:10px;font-weight:800;color:rgba(99,102,241,0.8);text-transform:uppercase;letter-spacing:0.5px">Link Gambar</span>
+            <span style="font-size:9px;color:rgba(255,255,255,0.2);font-weight:400;text-transform:none">— saat gambar diklik</span>
+          </div>
+          <input id="dpAnnImageLink" type="url" placeholder="https://contoh.com/halaman (kosongkan jika tidak perlu)"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none"
+            onfocus="this.style.borderColor='rgba(99,102,241,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+          <div style="font-size:9px;color:rgba(255,255,255,0.2);margin-top:5px;line-height:1.5">Jika diisi, gambar bisa diklik → buka link di tab baru. Fungsi default gambar (hanya tampil) tetap terjaga jika dikosongkan.</div>
+        </div>
+
+        <!-- ══ TOMBOL CUSTOM ══ -->
+        <div style="margin-bottom:14px;background:rgba(34,197,94,0.05);border:1.5px solid rgba(34,197,94,0.15);border-radius:12px;padding:12px 13px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:14px">🔘</span>
+              <span style="font-size:10px;font-weight:800;color:rgba(34,197,94,0.8);text-transform:uppercase;letter-spacing:0.5px">Tombol di Bawah Gambar</span>
+            </div>
+            <!-- Toggle switch -->
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer">
+              <span style="font-size:10px;color:rgba(255,255,255,0.35);font-weight:600" id="dpAnnCustomBtnToggleLabel">Nonaktif</span>
+              <div onclick="dpAnnToggleCustomBtn()" id="dpAnnCustomBtnToggleBg"
+                style="width:36px;height:20px;border-radius:20px;background:rgba(255,255,255,0.1);position:relative;cursor:pointer;transition:background 0.2s;border:1.5px solid rgba(255,255,255,0.1)">
+                <div id="dpAnnCustomBtnToggleDot" style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.35);transition:transform 0.2s,background 0.2s"></div>
+              </div>
+            </label>
+          </div>
+
+          <!-- Detail (muncul jika aktif) -->
+          <div id="dpAnnCustomBtnDetails" style="display:none">
+            <div style="margin-bottom:9px">
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Teks Tombol <span style="color:rgba(255,80,80,0.6)">*</span></div>
+              <input id="dpAnnCustomBtnText" type="text" placeholder="Contoh: Klaim Sekarang 🎁" maxlength="40"
+                style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none"
+                onfocus="this.style.borderColor='rgba(34,197,94,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+            </div>
+            <div style="margin-bottom:9px">
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Aksi Tombol</div>
+              <div style="display:flex;gap:6px">
+                <button id="dpAnnCBAction-close" onclick="dpAnnSetCustomBtnAction('close',this)"
+                  style="flex:1;padding:8px 6px;border-radius:8px;border:1.5px solid rgba(34,197,94,0.5);background:rgba(34,197,94,0.15);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+                  ✕ Tutup Saja
+                </button>
+                <button id="dpAnnCBAction-link" onclick="dpAnnSetCustomBtnAction('link',this)"
+                  style="flex:1;padding:8px 6px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+                  🔗 Buka Link + Tutup
+                </button>
+              </div>
+            </div>
+            <!-- URL (muncul jika aksi = link) -->
+            <div id="dpAnnCustomBtnUrlWrap" style="display:none">
+              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">URL Tujuan <span style="color:rgba(255,80,80,0.6)">*</span></div>
+              <input id="dpAnnCustomBtnUrl" type="url" placeholder="https://contoh.com/promo"
+                style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none"
+                onfocus="this.style.borderColor='rgba(34,197,94,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+              <div style="font-size:9px;color:rgba(255,255,255,0.2);margin-top:4px">Dibuka di tab baru lalu popup otomatis tertutup.</div>
+            </div>
+          </div>
+
+          <div style="font-size:9px;color:rgba(255,255,255,0.2);margin-top:6px;line-height:1.5" id="dpAnnCustomBtnHint">Aktifkan untuk menambah tombol aksi di bawah gambar (contoh: "Klaim Sekarang"). Fungsi default tanpa tombol tetap terjaga jika dinonaktifkan.</div>
+        </div>
+        <!-- /TOMBOL CUSTOM -->
+
         <div style="display:flex;gap:8px">
           <button onclick="dpAnnPreview()" style="flex:1;padding:11px;border:1.5px solid rgba(217,119,6,0.4);border-radius:10px;background:rgba(217,119,6,0.08);color:#f59e0b;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Preview</button>
           <button id="dpAnnSubmitBtn" onclick="dpAnnSubmit()"  style="flex:2;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 14px rgba(217,119,6,0.35)">📢 Kirim Pengumuman</button>
@@ -26831,7 +27129,13 @@ function backupExportJSON() {
 // ─── IMPORT: baca file JSON dan pulihkan ke localStorage ───
 function backupImportJSON(input) {
   var file = input.files && input.files[0];
-  if (!file) return;
+  if (!file) {
+    input.value = '';
+    return;
+  }
+
+  // Simpan nama file sebelum reset
+  var fileName = file.name;
 
   var reader = new FileReader();
   reader.onload = function(e) {
@@ -26840,6 +27144,7 @@ function backupImportJSON(input) {
       var data = JSON.parse(raw);
 
       if (!data || typeof data !== 'object') {
+        input.value = '';
         backupShowStatus('❌ File tidak valid — bukan format backup ChiTask.', 'error');
         return;
       }
@@ -26847,12 +27152,13 @@ function backupImportJSON(input) {
       var confirmed = confirm(
         '⚠️ Import akan MENIMPA data lokal saat ini.\n\n' +
         'Pastikan kamu sudah membackup data yang ada.\n\n' +
-        'Lanjutkan import dari file: ' + file.name + '?'
+        'Lanjutkan import dari file: ' + fileName + '?'
       );
-      if (!confirmed) {
-        input.value = '';
-        return;
-      }
+
+      // Reset input sebelum apapun agar bisa dipilih ulang
+      input.value = '';
+
+      if (!confirmed) return;
 
       var restored = 0;
       var skipped = ['_meta'];
@@ -26867,7 +27173,6 @@ function backupImportJSON(input) {
         } catch(e) {}
       });
 
-      input.value = '';
       backupShowStatus('✅ Import berhasil! ' + restored + ' item dipulihkan. Halaman akan dimuat ulang...', 'success');
 
       setTimeout(function() {
@@ -26875,10 +27180,16 @@ function backupImportJSON(input) {
       }, 2000);
 
     } catch(err) {
-      backupShowStatus('❌ Gagal membaca file: ' + err.message, 'error');
       input.value = '';
+      backupShowStatus('❌ Gagal membaca file: ' + err.message, 'error');
     }
   };
+
+  reader.onerror = function() {
+    input.value = '';
+    backupShowStatus('❌ Gagal membaca file.', 'error');
+  };
+
   reader.readAsText(file);
 }
 
