@@ -1,26 +1,32 @@
 # ── Build settings ───────────────────────────────────────────────
 [build]
-  publish = "."                         # folder root (index.html ada di sini)
-  functions = "netlify/functions"       # folder functions
+  publish = "."
+  functions = "netlify/functions"
+
 # ── Node bundler untuk semua functions ───────────────────────────
 [functions]
   node_bundler = "esbuild"
+
 # ── Scheduled Function: cek reminder tiap menit ──────────────────
 [functions."send-reminders"]
   schedule = "* * * * *"
-# ── Headers: izinkan SW scope di root ────────────────────────────
+
+# ── Headers ──────────────────────────────────────────────────────
 [[headers]]
   for = "/sw.js"
   [headers.values]
     Service-Worker-Allowed = "/"
     Cache-Control = "no-cache"
+
 [[headers]]
   for = "/manifest.json"
   [headers.values]
     Content-Type = "application/manifest+json"
     Cache-Control = "no-cache"
+
 [[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"  # ← tambah ini
