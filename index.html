@@ -944,11 +944,15 @@ document.addEventListener('DOMContentLoaded', function(){ applyLang(getLang()); 
 var fbAuth = null, fbDb = null, fbUser = null;
 var _fbSyncTimer = null, _fbInitialized = false;
 var _offlineMode = false;
-var _presenceTimer = null; // heartbeat timer untuk presence system
+// Guard: true setelah initApp() selesai load data dari cloud/localStorage
+// Selama false, fbSaveData TIDAK boleh push ke Firestore (mencegah overwrite dengan data kosong)
+var _appReady = false;
+
 
 // ── Offline fallback: masuk pakai data localStorage ──
 function _enterOfflineMode() {
   _offlineMode = true;
+  _appReady = false; // reset, akan di-set true kembali di dalam init()
   var savedData = null;
   try { savedData = localStorage.getItem('chitask_v6_data'); } catch(e) {}
   if (savedData) {
@@ -1047,10 +1051,6 @@ function _startFirebase() {
         // ── FCM: Subscribe push notification setelah login ────
         _fcmSubscribe(user.uid);
 
-        // ── PRESENCE: Tandai user online & mulai heartbeat ──
-        _presenceUpdate(user);
-        _presenceStartHeartbeat(user);
-
         // Simpan info user ke localStorage untuk offline mode nanti
         try {
           var existing = JSON.parse(localStorage.getItem('chitask_v6_data') || '{}');
@@ -1063,10 +1063,16 @@ function _startFirebase() {
         _gcalInitForUser(user);
 
         if (!_fbInitialized) {
+          // Reset _appReady untuk user login baru — akan di-set true di akhir init()
+          _appReady = false;
+          window._initAppRunning = false;
           // ✅ FIX 2: timeout dibuat SEBELUM _fbInitialized = true
           var _fbInitTimeout = setTimeout(function() {
             if (!_fbInitialized) {
               _fbInitialized = true;
+              // Timeout path: Firestore tidak merespons dalam 4 detik
+              // initApp() akan load dari localStorage. Setelah selesai,
+              // _appReady di-set true di dalam init() sendiri.
               if (typeof initApp === 'function') initApp();
             }
           }, 4000);
@@ -1096,6 +1102,31 @@ function _startFirebase() {
               if (cloudData.formTourDone) {
                 try { localStorage.setItem('chitask_formtour_done', '1'); } catch(e) {}
               }
+            }
+            // ── Cegah double-init race condition ──
+            // Kalau timeout sudah trigger initApp() duluan DAN cloud data ternyata
+            // berbeda, kita harus reload state dari cloud tanpa re-call initApp().
+            if (window._initAppRunning || _appReady) {
+              // initApp() sudah jalan — jika cloud punya data lebih baru, reload halaman
+              // supaya state memory konsisten dengan Firestore (cara paling aman)
+              if (cloudData && cloudData.tasks && cloudData.tasks.length > 0) {
+                var localTs = null;
+                var cloudTs = cloudData.lastSaved || null;
+                try {
+                  var loc = localStorage.getItem('chitask_v6_data');
+                  if (loc) { var lp = JSON.parse(loc); localTs = lp.lastSaved || null; }
+                } catch(e) {}
+                // Kalau cloud lebih baru dari local yang sedang berjalan → reload
+                if (!localTs || (cloudTs && cloudTs > localTs)) {
+                  console.warn('[ChiTask] Cloud data lebih baru dari local — reload untuk sinkronisasi');
+                  // Tandai bahwa ini reload karena cloud sync, bukan user action
+                  try { sessionStorage.setItem('chitask_cloud_reload', '1'); } catch(e) {}
+                  location.reload();
+                  return;
+                }
+              }
+              if (typeof tourCheckAndStart === 'function') tourCheckAndStart();
+              return;
             }
             if (typeof initApp === 'function') initApp();
             if (typeof tourCheckAndStart === 'function') tourCheckAndStart();
@@ -1157,6 +1188,13 @@ function fbSaveData(payload) {
   try { localStorage.setItem('chitask_v6_data', payload); } catch(e) {}
   // Kalau offline mode, skip Firestore
   if (_offlineMode || !fbUser || fbUser._isOffline || !fbDb) return;
+  // ── GUARD: jangan push ke Firestore sebelum app selesai load data awal ──
+  // Mencegah race condition: initApp() jalan sebelum cloud data balik,
+  // lalu saveData() overwrite Firestore dengan data kosong/localStorage lama.
+  if (!_appReady) {
+    console.warn('[ChiTask] fbSaveData blocked — app belum ready (cloud load belum selesai)');
+    return;
+  }
   clearTimeout(_fbSyncTimer);
   _fbSyncTimer = setTimeout(function() {
     var data;
@@ -1222,6 +1260,8 @@ function loginAsGuest() {
 
 function logout() {
   if (!confirm(t('confirm_logout'))) return;
+  // Reset appReady agar login berikutnya tidak langsung push ke Firestore
+  _appReady = false;
   // FIX #1: Hentikan Firestore listener sebelum logout agar tidak jadi zombie listener
   if (typeof annStopListener === 'function') annStopListener();
   if (fbAuth) fbAuth.signOut();
@@ -8530,6 +8570,12 @@ function calcStreak(t){
 // INIT — dipanggil oleh Firebase auth setelah login
 // ══════════════════════════════════════════════
 function initApp(){
+  // Guard: jangan init ulang kalau sudah pernah jalan (cegah double-init dari race condition)
+  if (window._initAppRunning) {
+    console.warn('[ChiTask] initApp() dipanggil saat masih running — diabaikan');
+    return;
+  }
+  window._initAppRunning = true;
 function init(){
   var saved=loadData();
   if(saved&&saved.tasks&&saved.tasks.length>0){
@@ -8693,6 +8739,9 @@ function init(){
     }
   }, 45 * 60 * 1000);
 
+  // ── Tandai app sudah siap: baru boleh push ke Firestore setelah ini ──
+  _appReady = true;
+
   // FIX Bug 3: Di mobile, browser sering suspend tab sehingga setInterval tidak jalan.
   // visibilitychange memastikan repeat di-check ulang saat app dibuka dari background.
   document.addEventListener('visibilitychange',function(){
@@ -8714,6 +8763,8 @@ function init(){
   });
 } // end inner init()
   init();
+  // Reset flag setelah selesai, agar bisa re-init saat reload halaman
+  window._initAppRunning = false;
 } // end initApp()
 
 
@@ -25073,42 +25124,6 @@ function devRefreshUserInfo(){
 // PRESENCE SYSTEM — deteksi user online
 // ════════════════════════════════════════════
 
-function _presenceUpdate(user){
-  if(!fbDb || !user || user._isGuest || user._isOffline) return;
-  try {
-    fbDb.collection('presence').doc(user.uid).set({
-      email:       user.email       || '',
-      displayName: user.displayName || '',
-      lastSeen:    firebase.firestore.FieldValue.serverTimestamp(),
-      isGuest:     false
-    }, { merge: true });
-  } catch(e){}
-}
-
-function _presenceStartHeartbeat(user){
-  if(!user || user._isGuest || user._isOffline) return;
-  // Stop heartbeat lama kalau ada
-  if(_presenceTimer){ clearInterval(_presenceTimer); _presenceTimer = null; }
-  // Update lastSeen setiap 2 menit
-  _presenceTimer = setInterval(function(){
-    if(!fbDb || !fbUser || fbUser._isGuest) return;
-    try {
-      fbDb.collection('presence').doc(fbUser.uid).set({
-        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    } catch(e){}
-  }, 2 * 60 * 1000);
-  // Update juga saat tab kembali aktif
-  document.addEventListener('visibilitychange', function(){
-    if(document.visibilityState === 'visible' && fbDb && fbUser && !fbUser._isGuest){
-      try {
-        fbDb.collection('presence').doc(fbUser.uid).set({
-          lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-      } catch(e){}
-    }
-  });
-}
 
 function devShowAllUsers(){
   var modal = document.getElementById('devAllUsersModal');
