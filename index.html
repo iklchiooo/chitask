@@ -24421,8 +24421,11 @@ function _annShowPopup(ann){
   } else {
     _resolvedImgSrcEarly = ann.imageUrl || ann.imageBase64 || null;
   }
-  var isFullImage = (imgMode === 'fullimage' && _resolvedImgSrcEarly)
-    || (!!(ann.imagePortrait || ann.imageLandscape) && !!_resolvedImgSrcEarly);
+  // Sistem baru (portrait/landscape) → selalu full image
+  // Sistem lama (imageBase64/imageUrl) → hanya kalau imageMode === 'fullimage'
+  var isFullImage = !!_resolvedImgSrcEarly && (
+    !!(ann.imagePortrait || ann.imageLandscape) || imgMode === 'fullimage'
+  );
 
   card.setAttribute('data-ann-style', styleKey);
   // Mode fullimage: sembunyikan header, icon, body teks
@@ -24433,8 +24436,10 @@ function _annShowPopup(ann){
   } else {
     card.classList.remove('ann-fullimage-mode');
   }
-  if(headerEl) headerEl.style.display = isFullImage ? 'none' : '';
-  if(bodyEl)   bodyEl.style.display   = isFullImage ? 'none' : '';
+  var footerEl = document.getElementById('annPopupFooter');
+  if(headerEl)  headerEl.style.display  = isFullImage ? 'none' : '';
+  if(bodyEl)    bodyEl.style.display    = isFullImage ? 'none' : '';
+  if(footerEl)  footerEl.style.display  = isFullImage ? 'none' : '';
 
   document.getElementById('annIcon').textContent = iconMap[styleKey] || '📢';
   document.getElementById('annTitle').textContent = ann.title || 'Pengumuman';
@@ -24509,7 +24514,7 @@ function _annShowPopup(ann){
         card.style.paddingTop = '0';
         card.style.overflow = 'hidden';
       } else {
-        imgWrap.style.margin = '';
+        imgWrap.style.margin = '0 0 16px 0';
         imgWrap.style.borderRadius = '14px';
         imgEl.style.maxHeight = '220px';
         imgEl.style.height = '';
@@ -26117,10 +26122,17 @@ function devWipeUserData(){
 #annCard.ann-fullimage-mode #annImageWrap {
   margin: 0 !important;
   border-radius: 0 !important;
+  display: block !important;
 }
 #annCard.ann-fullimage-mode #annImage {
   border-radius: 0 !important;
   max-height: none !important;
+  width: 100% !important;
+  display: block !important;
+}
+/* Full image: tombol X float di atas gambar, dismiss & footer tersembunyi via JS */
+#annCard.ann-fullimage-mode #annFullImgClose {
+  display: flex !important;
 }
 
 /* Custom button */
@@ -26170,6 +26182,12 @@ function devWipeUserData(){
       <div id="annTitle" style="font-size:19px;font-weight:900;color:#fff;line-height:1.25;letter-spacing:-0.4px;text-align:center">Pengumuman</div>
     </div>
 
+    <!-- Gambar iklan — di luar body agar tidak ikut hilang saat full image mode -->
+    <div id="annImageWrap" style="display:none;margin:0 18px 0;border-radius:14px;overflow:hidden;position:relative;cursor:pointer" onclick="annImageClick()">
+      <img id="annImage" src="" alt="" style="width:100%;max-height:220px;object-fit:cover;display:block;border-radius:14px">
+      <div id="annImageLinkHint" style="display:none;position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none">🔗 Buka Link</div>
+    </div>
+
     <!-- Body -->
     <div id="annPopupBody" style="padding:0 18px 0;position:relative;z-index:1">
       <!-- Message body — lebih lebar -->
@@ -26177,18 +26195,12 @@ function devWipeUserData(){
         <div id="annMessage" style="font-size:14px;color:rgba(255,255,255,0.82);line-height:1.75"></div>
       </div>
 
-      <!-- Gambar iklan thumbnail (tampil jika ada & mode thumbnail) -->
-      <div id="annImageWrap" style="display:none;margin-bottom:16px;border-radius:14px;overflow:hidden;position:relative;cursor:pointer" onclick="annImageClick()">
-        <img id="annImage" src="" alt="" style="width:100%;max-height:220px;object-fit:cover;display:block;border-radius:14px">
-        <div id="annImageLinkHint" style="display:none;position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none">🔗 Buka Link</div>
-      </div>
-
       <!-- Divider -->
       <div style="height:1px;background:rgba(255,255,255,0.06);margin-bottom:16px"></div>
     </div>
 
     <!-- Footer actions -->
-    <div style="padding:0 18px 20px;position:relative;z-index:1">
+    <div id="annPopupFooter" style="padding:0 18px 20px;position:relative;z-index:1">
       <!-- Custom button (opsional) -->
       <div id="annCustomBtnWrap" style="display:none;margin-bottom:10px">
         <button id="annCustomBtn" style="width:100%;padding:13px 18px;border:none;background:rgba(255,255,255,0.1);border-radius:14px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;letter-spacing:0.2px;transition:background 0.15s;backdrop-filter:blur(4px)">Selengkapnya</button>
