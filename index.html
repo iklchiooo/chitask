@@ -24748,8 +24748,25 @@ function dpSwitch(tab){
 }
 
 // ── Announce (bridge to existing functions) ──
+// Bridge: devAnn* functions membaca elemen dengan id dpAnn* di panel ini
+// getElementById di-patch agar devAnnTitle → dpAnnTitle, dst.
+(function(){
+  var _idMap = {
+    devAnnTitle:   'dpAnnTitle',
+    devAnnMessage: 'dpAnnMessage',
+    devAnnMode:    'dpAnnMode',
+    devAnnExpiry:  'dpAnnExpiry',
+    devAnnCharCount: 'dpAnnCharCount'
+  };
+  var _orig = document.getElementById.bind(document);
+  document.getElementById = function(id){
+    return _orig(_idMap[id] || id);
+  };
+})();
+var _devAnnSelectedStyle = 'info'; // diset oleh dpSelectStyle
 function dpAnnExec(cmd, val){ document.execCommand(cmd, false, val||null); }
 function dpSelectStyle(style, el){
+  _devAnnSelectedStyle = style;
   document.querySelectorAll('.dp-style-chip').forEach(function(b){ b.style.borderColor='rgba(255,255,255,0.12)'; b.style.background='rgba(255,255,255,0.05)'; b.style.color='rgba(255,255,255,0.4)'; b.classList.remove('dp-style-active'); });
   el.classList.add('dp-style-active');
   var colors = {info:{b:'#3b82f6',bg:'rgba(59,130,246,0.15)',c:'#60a5fa'}, success:{b:'#22c55e',bg:'rgba(34,197,94,0.15)',c:'#4ade80'}, warning:{b:'#f59e0b',bg:'rgba(245,158,11,0.15)',c:'#fbbf24'}, danger:{b:'#ef4444',bg:'rgba(239,68,68,0.15)',c:'#f87171'}, promo:{b:'#a855f7',bg:'rgba(168,85,247,0.15)',c:'#c084fc'}};
@@ -25929,7 +25946,7 @@ function devWipeUserData(){
         </div>
         <div style="margin-bottom:10px">
           <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Judul <span style="color:rgba(255,80,80,0.6)">*</span></div>
-          <input id="dpAnnTitle" type="text" placeholder="Contoh: Update Versi 2.1 🎉" maxlength="80"
+          <input id="dpAnnTitle" data-alias="devAnnTitle" type="text" placeholder="Contoh: Update Versi 2.1 🎉" maxlength="80"
             style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none"
             onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
         </div>
@@ -25962,9 +25979,77 @@ function devWipeUserData(){
             <input id="dpAnnExpiry" type="datetime-local" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 10px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;color-scheme:dark">
           </div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button onclick="dpAnnPreview()" style="flex:1;padding:11px;border:1.5px solid rgba(217,119,6,0.4);border-radius:10px;background:rgba(217,119,6,0.08);color:#f59e0b;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Preview</button>
-          <button onclick="dpAnnSubmit()"  style="flex:2;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 14px rgba(217,119,6,0.35)">📢 Kirim Pengumuman</button>
+
+        <!-- ── Gambar Iklan ── -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🖼 Gambar Iklan <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none">(opsional)</span></div>
+
+          <!-- Mode Gambar -->
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <button id="devAnnImgModeBtn-thumbnail"  onclick="_devAnnSetImgMode('thumbnail')"  style="flex:1;padding:6px 4px;border-radius:8px;border:1.5px solid rgba(217,119,6,0.5);background:rgba(217,119,6,0.12);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🖼 Thumbnail</button>
+            <button id="devAnnImgModeBtn-fullimage-portrait"  onclick="_devAnnSetImgMode('fullimage-portrait')"  style="flex:1;padding:6px 4px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📱 Portrait</button>
+            <button id="devAnnImgModeBtn-fullimage-landscape" onclick="_devAnnSetImgMode('fullimage-landscape')" style="flex:1;padding:6px 4px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🖥 Landscape</button>
+          </div>
+          <input type="hidden" id="devAnnImgMode" value="thumbnail">
+          <input type="hidden" id="devAnnImgOrient" value="portrait">
+
+          <!-- Panduan ukuran -->
+          <div id="devAnnImgGuide" style="font-size:10px;color:rgba(255,255,255,0.3);background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 10px;margin-bottom:8px;line-height:1.6">
+            📐 <b>Thumbnail</b> — Gambar kecil di atas teks. Ukuran bebas, maks ~400KB.
+          </div>
+
+          <!-- Drop zone / upload area -->
+          <div id="devAnnImgDropzone" onclick="document.getElementById('devAnnImgInput').click()"
+            ondragover="event.preventDefault();this.style.borderColor='rgba(217,119,6,0.7)'"
+            ondragleave="this.style.borderColor='rgba(255,255,255,0.1)'"
+            ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.1)';devAnnHandleImg(event.dataTransfer.files[0])"
+            style="position:relative;border:1.5px dashed rgba(255,255,255,0.1);border-radius:10px;overflow:hidden;cursor:pointer;min-height:80px;transition:border-color 0.2s">
+            <!-- Placeholder -->
+            <div id="devAnnImgPlaceholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;gap:5px">
+              <div style="font-size:22px">🖼</div>
+              <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4)">Klik atau drag gambar ke sini</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.2)">JPG, PNG, WEBP · Auto-kompres aman untuk Firestore</div>
+            </div>
+            <!-- Preview gambar -->
+            <img id="devAnnImgPreview" src="" alt="" style="display:none;width:100%;object-fit:cover;border-radius:10px">
+          </div>
+          <input type="file" id="devAnnImgInput" accept="image/*" style="display:none" onchange="devAnnHandleImg(this.files[0])">
+
+          <!-- Info ukuran + tombol hapus -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;min-height:20px">
+            <div id="devAnnImgInfo" style="font-size:10px;color:rgba(255,255,255,0.35);flex:1"></div>
+            <button id="devAnnImgRemove" onclick="devAnnRemoveImg()" style="display:none;padding:3px 9px;border:1px solid rgba(239,68,68,0.3);border-radius:6px;background:rgba(239,68,68,0.07);color:#f87171;font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Hapus</button>
+          </div>
+
+          <!-- Link gambar (tampil setelah gambar diupload) -->
+          <div id="devAnnLinkWrap" style="display:none;margin-top:8px">
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">🔗 Link saat gambar diklik <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none">(opsional)</span></div>
+            <input id="devAnnLink" type="url" placeholder="https://..." style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 11px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none" onfocus="this.style.borderColor='rgba(217,119,6,0.4)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+          </div>
+        </div>
+
+        <!-- ── Custom Button ── -->
+        <div style="margin-bottom:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.5)">🔘 Tombol Custom</div>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="devAnnCustomBtnEnabled" onchange="_devAnnToggleCustomBtn(this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:#d97706">
+              <span style="font-size:10px;color:rgba(255,255,255,0.35)">Aktifkan</span>
+            </label>
+          </div>
+          <div id="devAnnCustomBtnFields" style="display:none;display:flex;flex-direction:column;gap:7px">
+            <input id="devAnnCustomBtnText" type="text" placeholder="Label tombol, cth: Lihat Promo 🎁" maxlength="40"
+              style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 11px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none">
+            <select id="devAnnCustomBtnAction" onchange="_devAnnToggleCustomBtn(document.getElementById('devAnnCustomBtnEnabled').checked)"
+              style="width:100%;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;padding:8px 10px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:auto">
+              <option value="link"  style="background:#1c1917">🔗 Buka Link</option>
+              <option value="close" style="background:#1c1917">✕ Tutup saja</option>
+            </select>
+            <input id="devAnnCustomBtnUrl" type="url" placeholder="https://..." style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 11px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none">
+          </div>
+        </div>
+          <button onclick="devAnnPreview()" style="flex:1;padding:11px;border:1.5px solid rgba(217,119,6,0.4);border-radius:10px;background:rgba(217,119,6,0.08);color:#f59e0b;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Preview</button>
+          <button id="devAnnSubmitBtn" onclick="devAnnSubmit()"  style="flex:2;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 14px rgba(217,119,6,0.35)">📢 Kirim Pengumuman</button>
         </div>
       </div>
       <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:14px">
