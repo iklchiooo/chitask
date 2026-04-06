@@ -16,7 +16,7 @@ var _STRINGS = {
     login_sub: 'Task Manager · Keuangan · Maintenance<br>Data tersimpan aman di cloud ☁️',
     login_google: 'Masuk dengan Google',
     login_guest: 'Coba dulu tanpa login',
-    login_guest_note: 'Data tersimpan di cloud ☁️ — <b>bisa akses dari perangkat lain</b> dengan anonymous login yang sama. Upgrade ke Google untuk sinkronisasi penuh.',
+    login_guest_note: 'Data disimpan di perangkat ini saja &mdash; <b>tidak bisa sync</b> ke perangkat lain. Bisa upgrade ke akun Google kapan saja.',
     // ── Sidebar nav sections ──
     nav_sec_task: '📋 Task',
     nav_sec_fin: '💰 Keuangan',
@@ -122,6 +122,12 @@ var _STRINGS = {
     placeholder_task_mobile: 'Nama task atau habit...',
     btn_add_task: '+ Tambah',
     btn_add_task_mobile: '＋ Tambah Task',
+    // ── Guest username modal ──
+    guest_username_title: 'Halo! Siapa namamu? 👋',
+    guest_username_sub: 'Nama ini akan ditampilkan di sidebar. Bisa diganti kapan saja.',
+    guest_username_placeholder: 'Masukkan namamu...',
+    guest_username_btn: '✓ Mulai Pakai ChiTask',
+    guest_username_skip: 'Lewati (pakai "Tamu")',
     // ── Tour ──
     tour_step_badge: 'Langkah {0} dari {1}',
     tour_skip: 'Lewati tutorial',
@@ -145,12 +151,6 @@ var _STRINGS = {
     btn_close: 'Tutup',
     btn_apply_nav: '✓ Simpan Setting',
     settings_hint: 'Bisa diubah kapan saja di ⚙️ Settings',
-    // ── Guest username modal ──
-    guest_username_title: 'Halo! Siapa namamu? 👋',
-    guest_username_sub: 'Nama ini akan ditampilkan di sidebar. Bisa diganti kapan saja.',
-    guest_username_placeholder: 'Masukkan namamu...',
-    guest_username_btn: '✓ Mulai Pakai ChiTask',
-    guest_username_skip: 'Lewati (pakai "Tamu")',
     // ── Sync / save ──
     saved: '✓ Tersimpan',
     sync_activate: '☁️ Aktifkan sync → Masuk dengan Google',
@@ -339,7 +339,7 @@ var _STRINGS = {
     login_sub: 'Task Manager · Finance · Maintenance<br>Your data is safely stored in the cloud ☁️',
     login_google: 'Sign in with Google',
     login_guest: 'Try without signing in',
-    login_guest_note: 'Data is saved in the cloud ☁️ — <b>accessible from other devices</b> using the same anonymous login. Upgrade to Google for full sync.',
+    login_guest_note: 'Data is saved on this device only &mdash; <b>no cloud sync</b>. You can upgrade to a Google account anytime.',
     nav_sec_task: '📋 Tasks',
     nav_sec_fin: '💰 Finance',
     nav_sec_maint: '🔧 Maintenance',
@@ -459,14 +459,14 @@ var _STRINGS = {
     btn_close: 'Close',
     btn_apply_nav: '✓ Save Settings',
     settings_hint: 'Can be changed anytime in ⚙️ Settings',
+    saved: '✓ Saved',
+    sync_activate: '☁️ Enable sync → Sign in with Google',
     // ── Guest username modal ──
     guest_username_title: 'Hello! What\'s your name? 👋',
     guest_username_sub: 'This name will be shown in the sidebar. You can change it anytime.',
     guest_username_placeholder: 'Enter your name...',
     guest_username_btn: '✓ Start Using ChiTask',
     guest_username_skip: 'Skip (use "Guest")',
-    saved: '✓ Saved',
-    sync_activate: '☁️ Enable sync → Sign in with Google',
     confirm_logout: 'Are you sure you want to log out?',
     btn_logout: 'Logout',
     // ── Mobile sidebar mode badge ──
@@ -1061,21 +1061,16 @@ function _startFirebase() {
 
     fbAuth.onAuthStateChanged(function(user) {
       if (user) {
-        // Jika ini anonymous user (dari loginAsGuest), fbUser sudah di-set
-        // oleh _proceedAsGuest() dengan flag _isGuest. Jangan overwrite.
-        // Guard: anonymous user dari loginAsGuest — cek flag (race) ATAU fbUser._isGuest (normal)
+        // Guard: anonymous user dari loginAsGuest — jangan overwrite fbUser
         if (user.isAnonymous && (_guestLoginInProgress || (fbUser && fbUser._isGuest))) {
           if (fbUser) fbUser.uid = user.uid;
           return; // skip flow Google login
         }
-        // ── Anonymous user baru (belum ada fbUser di memori = app baru buka) ──
-        // Cek apakah ada data guest di Firestore untuk uid ini
+        // Anonymous user baru (app baru buka, sudah pernah guest sebelumnya)
         if (user.isAnonymous && (!fbUser || !fbUser._isGuest)) {
-          // Load data dari localStorage dulu untuk cek username
           var _savedAnon = null;
           try { _savedAnon = JSON.parse(localStorage.getItem('chitask_v6_data') || '{}'); } catch(e) { _savedAnon = {}; }
           var _anonName = (_savedAnon && _savedAnon._userName) ? _savedAnon._userName : null;
-          // Set fbUser sebagai guest
           fbUser = {
             uid: user.uid,
             displayName: _anonName || 'Tamu',
@@ -1090,13 +1085,8 @@ function _startFirebase() {
             window._initAppRunning = false;
             _fbInitialized = true;
             fbLoadData(function(cloudData) {
-              if (cloudData) {
-                // Ambil username dari cloud jika ada
-                if (cloudData._userName) {
-                  fbUser.displayName = cloudData._userName;
-                }
-                try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {}
-              }
+              if (cloudData && cloudData._userName) fbUser.displayName = cloudData._userName;
+              if (cloudData) { try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {} }
               updateAuthUI(fbUser);
               if (typeof initApp === 'function') initApp();
             });
@@ -1294,18 +1284,18 @@ function loginGoogle() {
 
 var _guestLoginInProgress = false; // flag cegah race onAuthStateChanged vs _proceedAsGuest
 function loginAsGuest() {
-  // Cek apakah sudah ada data guest sebelumnya (sudah pernah login sebagai guest)
   var savedData = null;
   try { savedData = localStorage.getItem('chitask_v6_data'); } catch(e) {}
   var savedParsed = null;
   if (savedData) { try { savedParsed = JSON.parse(savedData); } catch(e) {} }
   var isGuestData = !savedParsed || !savedParsed._userName || savedParsed._isGuest;
-  // Kalau sudah punya username guest sebelumnya, langsung lanjut tanpa tanya lagi
-  var existingGuestName = (savedParsed && savedParsed._isGuest && savedParsed._userName && savedParsed._userName !== 'Tamu' && savedParsed._userName !== 'Guest')
+  // Kalau sudah punya username guest sebelumnya, langsung lanjut tanpa modal
+  var existingGuestName = (savedParsed && savedParsed._isGuest && savedParsed._userName
+    && savedParsed._userName !== 'Tamu' && savedParsed._userName !== 'Guest')
     ? savedParsed._userName : null;
 
   function _proceedAsGuest(anonUid, guestDisplayName) {
-    _guestLoginInProgress = false; // selesai, clear flag
+    _guestLoginInProgress = false;
     _offlineMode = false;
     var guestUser = {
       uid: anonUid || 'guest_user',
@@ -1316,25 +1306,19 @@ function loginAsGuest() {
       _isGuest: true
     };
     fbUser = guestUser;
-    // Tandai data sebagai guest dan simpan username
     var dataToSave = savedParsed || {};
     dataToSave._isGuest = true;
     dataToSave._userName = guestUser.displayName;
     try { localStorage.setItem('chitask_v6_data', JSON.stringify(dataToSave)); } catch(e) {}
-
-    // ── Simpan ke Firestore agar data guest cloud-synced ──
     if (fbDb && anonUid && anonUid !== 'guest_user') {
       fbDb.collection('users').doc(anonUid).get().then(function(doc) {
         if (doc.exists) {
-          // Data sudah ada di Firestore — load dan pakai
           var cloudData = doc.data();
           try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {}
-          // Pastikan username tersimpan
           if (!cloudData._userName || cloudData._userName === 'Tamu' || cloudData._userName === 'Guest') {
             fbDb.collection('users').doc(anonUid).update({ _userName: guestUser.displayName });
           }
         } else {
-          // User baru — set dokumen awal dengan username
           fbDb.collection('users').doc(anonUid).set(dataToSave);
         }
         updateAuthUI(guestUser);
@@ -1352,10 +1336,9 @@ function loginAsGuest() {
   function _doAnonSignIn(onSuccess) {
     if (fbAuth && typeof fbAuth.signInAnonymously === 'function') {
       fbAuth.signInAnonymously().then(function(result) {
-        var anonUid = result.user ? result.user.uid : 'guest_anon';
-        onSuccess(anonUid);
+        onSuccess(result.user ? result.user.uid : 'guest_anon');
       }).catch(function(err) {
-        console.warn('[ChiTask] Anonymous sign-in gagal, fallback offline guest:', err.message);
+        console.warn('[ChiTask] Anonymous sign-in gagal, fallback offline:', err.message);
         _guestLoginInProgress = false;
         _offlineMode = true;
         onSuccess('guest_user');
@@ -1367,14 +1350,11 @@ function loginAsGuest() {
     }
   }
 
-  // Kalau sudah punya username sebelumnya, langsung lanjut tanpa modal
-  _guestLoginInProgress = true; // set sebelum anon sign-in agar guard onAuthStateChanged aktif
+  _guestLoginInProgress = true;
   if (existingGuestName) {
     _doAnonSignIn(function(anonUid) { _proceedAsGuest(anonUid, existingGuestName); });
     return;
   }
-
-  // ── Tampilkan modal input username ──
   _showGuestUsernameModal(function(chosenName) {
     _doAnonSignIn(function(anonUid) { _proceedAsGuest(anonUid, chosenName); });
   });
@@ -1382,10 +1362,8 @@ function loginAsGuest() {
 
 // ── Modal input username untuk guest baru ──
 function _showGuestUsernameModal(onConfirm) {
-  // Hapus modal lama kalau ada
   var old = document.getElementById('guestUsernameModal');
   if (old) old.remove();
-
   var modal = document.createElement('div');
   modal.id = 'guestUsernameModal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px';
@@ -1411,15 +1389,9 @@ function _showGuestUsernameModal(onConfirm) {
       '</button>',
     '</div>'
   ].join('');
-
   document.body.appendChild(modal);
   window._guestUsernameCallback = onConfirm;
-
-  // Fokus ke input setelah animasi
-  setTimeout(function() {
-    var inp = document.getElementById('guestUsernameInput');
-    if (inp) inp.focus();
-  }, 200);
+  setTimeout(function() { var inp = document.getElementById('guestUsernameInput'); if (inp) inp.focus(); }, 200);
 }
 
 function _guestUsernameConfirm() {
@@ -1442,72 +1414,6 @@ function _guestUsernameSkip() {
     window._guestUsernameCallback(skipName);
     window._guestUsernameCallback = null;
   }
-}
-
-function logout() {
-  if (!confirm(t('confirm_logout'))) return;
-  // Reset appReady agar login berikutnya tidak langsung push ke Firestore
-  _appReady = false;
-  // FIX #1: Hentikan Firestore listener sebelum logout agar tidak jadi zombie listener
-  if (typeof annStopListener === 'function') annStopListener();
-  if (fbAuth) fbAuth.signOut();
-  // Jangan hapus data lokal untuk guest — itu satu-satunya penyimpanan mereka
-  if (!fbUser || !fbUser._isGuest) {
-    try { localStorage.removeItem('chitask_v6_data'); } catch(e) {}
-  }
-}
-
-function updateAuthUI(user) {
-  var loginEl = document.getElementById('fbLoginScreen');
-  var appEl   = document.getElementById('app');
-  var userEl  = document.getElementById('fbUserInfo');
-  if (user) {
-    if (loginEl) loginEl.style.display = 'none';
-    if (appEl)   appEl.style.display   = 'flex';
-    if (userEl) {
-      var init = (user.displayName || user.email || '?').charAt(0).toUpperCase();
-      var photo = user.photoURL
-        ? '<img src="'+user.photoURL+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0">'
-        : '<div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">'+init+'</div>';
-      if (user._isGuest) {
-        // Guest mode: show username + upgrade prompt
-        var guestName = user.displayName || 'Tamu';
-        var guestInit = guestName.charAt(0).toUpperCase();
-        userEl.innerHTML =
-          '<div style="display:flex;flex-direction:column;gap:4px;width:100%;padding:2px 0">'
-          + '<div style="display:flex;align-items:center;gap:7px">'
-          + '<div style="width:26px;height:26px;border-radius:50%;background:rgba(245,158,11,0.25);border:1.5px solid rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fbbf24;flex-shrink:0">'+guestInit+'</div>'
-          + '<span style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+guestName+'</span>'
-          + '<span style="font-size:8px;background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:auto;white-space:nowrap;flex-shrink:0">TAMU</span>'
-          + '</div>'
-          + '<button onclick="showLoginScreen()" style="width:100%;padding:5px 8px;border:1px solid rgba(245,158,11,0.4);border-radius:6px;background:rgba(245,158,11,0.1);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left">☁️ Aktifkan sync → Masuk dengan Google</button>'
-          + '</div>';
-      } else {
-        var offlineBadge = user._isOffline
-          ? '<span style="font-size:9px;background:#f59e0b;color:#fff;border-radius:4px;padding:1px 5px;margin-left:4px">OFFLINE</span>'
-          : '';
-        userEl.innerHTML = photo
-          + '<span style="font-size:11px;color:rgba(255,255,255,0.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">' + (user.displayName||user.email) + '</span>'
-          + offlineBadge
-          + '<button onclick="logout()" style="margin-left:auto;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.55);border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap">'+(t('btn_logout')||'Logout')+'</button>';
-      }
-    }
-  } else {
-    if (loginEl) loginEl.style.display = 'flex';
-    if (appEl)   appEl.style.display   = 'none';
-    if (userEl)  userEl.innerHTML = '';
-    if (typeof _stopPresenceHeartbeat === 'function') _stopPresenceHeartbeat();
-    return;
-  }
-  if (typeof _startPresenceHeartbeat === 'function') _startPresenceHeartbeat();
-}
-
-function showLoginScreen() {
-  var loginEl = document.getElementById('fbLoginScreen');
-  var appEl   = document.getElementById('app');
-  if (loginEl) loginEl.style.display = 'flex';
-  if (appEl)   appEl.style.display   = 'none';
-  if (typeof applyLang === 'function') applyLang(getLang());
 }
 
 // ── Presence writer: catat lastSeen ke Firestore untuk Google & Guest ──
@@ -1551,6 +1457,72 @@ function _startPresenceHeartbeat() {
 }
 function _stopPresenceHeartbeat() {
   clearInterval(_presenceHeartbeatTimer);
+}
+
+function logout() {
+  if (!confirm(t('confirm_logout'))) return;
+  // Reset appReady agar login berikutnya tidak langsung push ke Firestore
+  _appReady = false;
+  // FIX #1: Hentikan Firestore listener sebelum logout agar tidak jadi zombie listener
+  if (typeof annStopListener === 'function') annStopListener();
+  if (fbAuth) fbAuth.signOut();
+  // Jangan hapus data lokal untuk guest — itu satu-satunya penyimpanan mereka
+  if (!fbUser || !fbUser._isGuest) {
+    try { localStorage.removeItem('chitask_v6_data'); } catch(e) {}
+  }
+}
+
+function updateAuthUI(user) {
+  var loginEl = document.getElementById('fbLoginScreen');
+  var appEl   = document.getElementById('app');
+  var userEl  = document.getElementById('fbUserInfo');
+  if (user) {
+    if (loginEl) loginEl.style.display = 'none';
+    if (appEl)   appEl.style.display   = 'flex';
+    if (userEl) {
+      var init = (user.displayName || user.email || '?').charAt(0).toUpperCase();
+      var photo = user.photoURL
+        ? '<img src="'+user.photoURL+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0">'
+        : '<div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">'+init+'</div>';
+      if (user._isGuest) {
+        // Guest mode: tampilkan nama + upgrade prompt
+        var guestName = user.displayName || 'Tamu';
+        var guestInit = guestName.charAt(0).toUpperCase();
+        userEl.innerHTML =
+          '<div style="display:flex;flex-direction:column;gap:4px;width:100%;padding:2px 0">'
+          + '<div style="display:flex;align-items:center;gap:7px">'
+          + '<div style="width:26px;height:26px;border-radius:50%;background:rgba(245,158,11,0.25);border:1.5px solid rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fbbf24;flex-shrink:0">'+guestInit+'</div>'
+          + '<span style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+guestName+'</span>'
+          + '<span style="font-size:8px;background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:auto;white-space:nowrap;flex-shrink:0">TAMU</span>'
+          + '</div>'
+          + '<button onclick="showLoginScreen()" style="width:100%;padding:5px 8px;border:1px solid rgba(245,158,11,0.4);border-radius:6px;background:rgba(245,158,11,0.1);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left">☁️ Aktifkan sync → Masuk dengan Google</button>'
+          + '</div>';
+      } else {
+        var offlineBadge = user._isOffline
+          ? '<span style="font-size:9px;background:#f59e0b;color:#fff;border-radius:4px;padding:1px 5px;margin-left:4px">OFFLINE</span>'
+          : '';
+        userEl.innerHTML = photo
+          + '<span style="font-size:11px;color:rgba(255,255,255,0.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">' + (user.displayName||user.email) + '</span>'
+          + offlineBadge
+          + '<button onclick="logout()" style="margin-left:auto;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.55);border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap">'+(t('btn_logout')||'Logout')+'</button>';
+      }
+    }
+  } else {
+    if (loginEl) loginEl.style.display = 'flex';
+    if (appEl)   appEl.style.display   = 'none';
+    if (userEl)  userEl.innerHTML = '';
+    if (typeof _stopPresenceHeartbeat === 'function') _stopPresenceHeartbeat();
+    return;
+  }
+  if (typeof _startPresenceHeartbeat === 'function') _startPresenceHeartbeat();
+}
+
+function showLoginScreen() {
+  var loginEl = document.getElementById('fbLoginScreen');
+  var appEl   = document.getElementById('app');
+  if (loginEl) loginEl.style.display = 'flex';
+  if (appEl)   appEl.style.display   = 'none';
+  if (typeof applyLang === 'function') applyLang(getLang());
 }
 
 // ── Mulai load Firebase setelah DOM ready ──
@@ -2563,25 +2535,6 @@ function _tourUpdateDots(idx) {
 <meta name="theme-color" content="#1c1917">
 <title>ChiTask — Task Manager + Keuangan</title>
 <link rel="manifest" href="/manifest.json">
-<script>
-// ── PWA Install Prompt — daftarkan SEDINI MUNGKIN agar tidak terlewat ──
-window._installPrompt = null;
-window.addEventListener('beforeinstallprompt', function(e){
-  e.preventDefault();
-  window._installPrompt = e;
-  // Banner mobile muncul 3 detik setelah halaman siap
-  if(window.innerWidth <= 700){
-    window.addEventListener('load', function(){
-      setTimeout(function(){
-        if(typeof showInstallBanner === 'function') showInstallBanner(window._installPrompt);
-      }, 3000);
-    }, { once: true });
-  }
-  // Tampilkan tombol install di nav
-  var btns = document.querySelectorAll('[data-pwa-install]');
-  btns.forEach(function(b){ b.style.display = ''; });
-});
-</script>
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
 <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
@@ -2839,7 +2792,6 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 .ach-desc{font-size:9px;color:var(--muted);margin-top:2px}
 
 /* Toast & overlay */
-@media(min-width:701px){.modal-drag-handle{display:none}.subdrawer-handle{display:none!important}.mobile-add-handle{display:none!important}}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(200%);background:#1c1917;color:#fff;padding:10px 20px;border-radius:24px;font-size:13px;z-index:9990;transition:transform 0.35s cubic-bezier(.34,1.56,.64,1),bottom 0.15s ease;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:88vw;text-align:center;pointer-events:none;will-change:transform}
 .toast.show{transform:translateX(-50%) translateY(0);pointer-events:auto}
 @media(max-width:700px){
@@ -6556,7 +6508,7 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
 
 <!-- Mobile More Panel -->
 <div class="more-panel" id="morePanel">
-  <div class="modal-drag-handle" style="width:36px;height:4px;background:rgba(255,255,255,0.2);border-radius:2px;margin:0 auto 14px"></div>
+  <div style="width:36px;height:4px;background:rgba(255,255,255,0.2);border-radius:2px;margin:0 auto 14px"></div>
   <div class="more-panel-grid" id="morePanelGrid"></div>
 </div>
 
@@ -6940,7 +6892,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
     </button>
     <div class="fb-guest-note">
       <span class="fb-guest-note-icon">📱</span>
-      <div id="loginGuestNote">Coba dulu tanpa login - Data tersimpan di cloud ☁️ — <b>bisa akses dari perangkat lain</b> dengan anonymous login yang sama. Upgrade ke Google untuk sinkronisasi penuh.</div>
+      <div id="loginGuestNote">Coba dulu tanpa login - Data disimpan di perangkat ini saja &mdash; <b>tidak bisa sync</b> ke perangkat lain. Bisa upgrade ke akun Google kapan saja.</div>
     </div>
   </div>
 </div>
@@ -15533,13 +15485,21 @@ function setupPWA(){
     });
   }
 
-  // window._installPrompt dipakai oleh installApp() — didaftarkan di window scope
+  // Prompt install PWA
+  var _deferredInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    _deferredInstallPrompt = e;
+    // Aktifkan tombol install jika ada di nav
+    var btns = document.querySelectorAll('[data-pwa-install]');
+    btns.forEach(function(b){ b.style.display = ''; });
+  });
   window._triggerPWAInstall = function(){
-    if(window._installPrompt){
-      window._installPrompt.prompt();
-      window._installPrompt.userChoice.then(function(r){
+    if(_deferredInstallPrompt){
+      _deferredInstallPrompt.prompt();
+      _deferredInstallPrompt.userChoice.then(function(r){
         if(r.outcome === 'accepted') showToast('✅ ChiTask berhasil diinstall!');
-        window._installPrompt = null;
+        _deferredInstallPrompt = null;
       });
     }
   };
@@ -15630,17 +15590,14 @@ function setupPWA(){
     }
   } // end if(false)
 
-  // Add to homescreen prompt — satu listener terpusat, simpan ke window._installPrompt
+  // Add to homescreen prompt
+  var deferredPrompt=null;
   window.addEventListener('beforeinstallprompt',function(e){
-    e.preventDefault();
-    window._installPrompt = e;
-    // Tampilkan banner di mobile setelah 3 detik
-    if(window.innerWidth <= 700){
-      setTimeout(function(){ showInstallBanner(window._installPrompt); }, 3000);
+    e.preventDefault();deferredPrompt=e;
+    // Show install banner after 3 sec if on mobile
+    if(window.innerWidth<=700){
+      setTimeout(function(){showInstallBanner(deferredPrompt);},3000);
     }
-    // Aktifkan tombol install nav jika ada
-    var btns = document.querySelectorAll('[data-pwa-install]');
-    btns.forEach(function(b){ b.style.display = ''; });
   });
 }
 
@@ -15657,17 +15614,7 @@ function showInstallBanner(prompt){
   window._installPrompt=prompt;
 }
 function installApp(){
-  if(window._installPrompt){
-    window._installPrompt.prompt();
-    window._installPrompt.userChoice.then(function(r){
-      if(r.outcome === 'accepted') showToast('✅ ChiTask berhasil diinstall!');
-      window._installPrompt = null;
-    });
-    var b = document.getElementById('installBanner');
-    if(b) b.remove();
-  } else {
-    showToast('ℹ️ Buka di Chrome mobile & pastikan belum diinstall');
-  }
+  if(window._installPrompt){window._installPrompt.prompt();document.getElementById('installBanner')&&document.getElementById('installBanner').remove();}
 }
 
 // ══════════════════════════════════════════════
@@ -22122,7 +22069,7 @@ setTimeout(function(){ bossInit(); }, 700);
 <div id="navPrefOverlay" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);align-items:center;justify-content:center"></div>
 <div id="navPrefModal" style="display:none;position:fixed;z-index:8001;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;background:var(--sidebar,#1c1917);border-radius:24px 24px 0 0;padding:28px 20px 40px;box-shadow:0 -16px 60px rgba(0,0,0,0.6);font-family:'DM Sans',sans-serif;box-sizing:border-box;max-height:92vh;overflow-y:auto;"
   <!-- Handle bar -->
-  <div class="modal-drag-handle" style="width:40px;height:4px;background:rgba(255,255,255,0.2);border-radius:2px;margin:0 auto 24px"></div>
+  <div style="width:40px;height:4px;background:rgba(255,255,255,0.2);border-radius:2px;margin:0 auto 24px"></div>
   <!-- ── LANGUAGE SECTION ── -->
   <div style="margin-top:0;padding-top:0">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
@@ -24463,8 +24410,19 @@ function _annShowPopup(ann){
   var styleKey = ann.style || 'info';
   var card = document.getElementById('annCard');
   var imgMode = ann.imageMode || 'thumbnail'; // 'thumbnail' | 'fullimage'
-  var _hasNewImg = ann.imagePortrait || ann.imageLandscape;
-  var isFullImage = (_hasNewImg) || (imgMode === 'fullimage' && (ann.imageUrl || ann.imageBase64));
+
+  // Resolve imgSrc dulu sebelum menentukan isFullImage
+  var _isMobileViewEarly = window.innerWidth < 768;
+  var _resolvedImgSrcEarly = null;
+  if(ann.imagePortrait || ann.imageLandscape){
+    _resolvedImgSrcEarly = _isMobileViewEarly
+      ? (ann.imagePortrait || ann.imageLandscape)
+      : (ann.imageLandscape || ann.imagePortrait);
+  } else {
+    _resolvedImgSrcEarly = ann.imageUrl || ann.imageBase64 || null;
+  }
+  var isFullImage = (imgMode === 'fullimage' && _resolvedImgSrcEarly)
+    || (!!(ann.imagePortrait || ann.imageLandscape) && !!_resolvedImgSrcEarly);
 
   card.setAttribute('data-ann-style', styleKey);
   // Mode fullimage: sembunyikan header, icon, body teks
@@ -24509,28 +24467,23 @@ function _annShowPopup(ann){
   var imgEl   = document.getElementById('annImage');
   var imgHint = document.getElementById('annImageLinkHint');
   if(imgWrap && imgEl){
-    // Pilih gambar sesuai lebar layar
-    var _isMobileView = window.innerWidth < 768;
-    var imgSrc = null;
+    // Pakai hasil resolve yang sudah dihitung di atas (konsisten dengan isFullImage)
+    var _isMobileView = _isMobileViewEarly;
+    var imgSrc = _resolvedImgSrcEarly;
     var resolvedOrient = 'portrait';
     if(ann.imagePortrait || ann.imageLandscape){
       // Sistem baru: dua gambar terpisah
       if(_isMobileView){
-        imgSrc = ann.imagePortrait || ann.imageLandscape;
         resolvedOrient = ann.imagePortrait ? 'portrait' : 'landscape';
       } else {
-        imgSrc = ann.imageLandscape || ann.imagePortrait;
         resolvedOrient = ann.imageLandscape ? 'landscape' : 'portrait';
       }
     } else {
       // Fallback: sistem lama (imageBase64 / imageUrl)
-      imgSrc = ann.imageUrl || ann.imageBase64 || null;
       resolvedOrient = ann.imageOrient || 'portrait';
     }
 
-    var isFullImageResolved = imgMode === 'fullimage' && imgSrc;
-    // Recalc isFullImage based on resolved src
-    if(!imgSrc && (ann.imagePortrait || ann.imageLandscape)) isFullImageResolved = true;
+    var isFullImageResolved = isFullImage;
 
     if(imgSrc){
       imgEl.src = imgSrc;
@@ -25400,13 +25353,8 @@ function dpResetConfig(){
 
 // ── Announcement list ──
 function _devAnnLoadList(){
-  // Bridge ke sistem baru dpAnn
-  if(typeof dpAnnLoadList === 'function') dpAnnLoadList();
-}
-function _devAnnLoadList_UNUSED(){
   if(!fbDb){ showToast('Firestore belum tersambung'); return; }
   var listEl = document.getElementById('devAnnList');
-  if(!listEl) return;
   listEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:12px;padding:8px 0;text-align:center">⏳ Memuat...</div>';
   fbDb.collection('announcements').orderBy('createdAt','desc').limit(20).get().then(function(snap){
     if(snap.empty){ listEl.innerHTML = '<div style="color:rgba(255,255,255,0.2);font-size:12px;padding:12px 0;text-align:center">— Belum ada pengumuman —</div>'; return; }
@@ -25432,27 +25380,82 @@ function _devAnnLoadList_UNUSED(){
     });
     listEl.innerHTML = html;
   }).catch(function(e){ listEl.innerHTML = '<div style="color:#f87171;font-size:11px">Error: '+e.message+'</div>'; });
-} // end _devAnnLoadList_UNUSED
+}
 
-// Bridge: devAnnSubmit → dpAnnSubmit (sistem baru)
 function devAnnSubmit(){
-  if(typeof dpAnnSubmit === 'function') dpAnnSubmit();
+  if(!isDeveloper() || !fbDb) return;
+  var title     = document.getElementById('devAnnTitle').value.trim();
+  var msgEl     = document.getElementById('devAnnMessage');
+  var message   = msgEl.innerHTML.trim();
+  var plainText = (msgEl.innerText || msgEl.textContent || '').trim();
+  var mode      = document.getElementById('devAnnMode').value;
+  var expiryVal = document.getElementById('devAnnExpiry').value;
+  var linkVal   = (document.getElementById('devAnnLink') && document.getElementById('devAnnLink').value.trim()) || '';
+  var imgModeVal= (document.getElementById('devAnnImgMode') && document.getElementById('devAnnImgMode').value) || 'thumbnail';
+  var orientVal = (document.getElementById('devAnnImgOrient') && document.getElementById('devAnnImgOrient').value) || 'portrait';
+  var cbEnabled = document.getElementById('devAnnCustomBtnEnabled') ? document.getElementById('devAnnCustomBtnEnabled').checked : false;
+  var cbText    = (document.getElementById('devAnnCustomBtnText') && document.getElementById('devAnnCustomBtnText').value.trim()) || '';
+  var cbUrl     = (document.getElementById('devAnnCustomBtnUrl') && document.getElementById('devAnnCustomBtnUrl').value.trim()) || '';
+  var cbAction  = (document.getElementById('devAnnCustomBtnAction') && document.getElementById('devAnnCustomBtnAction').value) || 'link';
+  // Mode fullimage: boleh tanpa teks
+  var isFullImage = imgModeVal === 'fullimage' && _devAnnImgBase64;
+  if(!title){ showToast('⚠️ Judul harus diisi!'); return; }
+  if(!isFullImage && !plainText){ showToast('⚠️ Pesan harus diisi (atau pilih mode Full Gambar dengan gambar ter-upload)!'); return; }
+
+  var btn = document.getElementById('devAnnSubmitBtn');
+  btn.disabled = true; btn.textContent = '⏳ Menyimpan...';
+
+  function _saveAnnToFirestore(imageBase64Val){
+    var data = {
+      title: title, message: message, style: _devAnnSelectedStyle||'info',
+      displayMode: mode, active: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: fbUser.uid,
+      expiresAt: expiryVal ? firebase.firestore.Timestamp.fromDate(new Date(expiryVal)) : null,
+      imageBase64: imageBase64Val || null,
+      imageLink:   linkVal || null,
+      imageMode:   imgModeVal,
+      imageOrient: orientVal,
+      customBtnEnabled: cbEnabled,
+      customBtnText:    cbEnabled ? cbText : null,
+      customBtnUrl:     (cbEnabled && cbAction === 'link') ? cbUrl : null,
+      customBtnAction:  cbEnabled ? cbAction : null
+    };
+    fbDb.collection('announcements').add(data).then(function(){
+      showToast('✅ Pengumuman dikirim ke semua user!');
+      document.getElementById('devAnnTitle').value = '';
+      msgEl.innerHTML = '';
+      document.getElementById('devAnnExpiry').value = '';
+      var cnt = document.getElementById('devAnnCharCount'); if(cnt) cnt.textContent = '0';
+      devAnnRemoveImg();
+      var linkEl2 = document.getElementById('devAnnLink'); if(linkEl2) linkEl2.value = '';
+      var cbTxtEl = document.getElementById('devAnnCustomBtnText'); if(cbTxtEl) cbTxtEl.value = '';
+      var cbUrlEl = document.getElementById('devAnnCustomBtnUrl'); if(cbUrlEl) cbUrlEl.value = '';
+      var cbEnEl  = document.getElementById('devAnnCustomBtnEnabled'); if(cbEnEl){ cbEnEl.checked = false; _devAnnToggleCustomBtn(false); }
+      btn.disabled = false; btn.textContent = '📢 Kirim Pengumuman';
+      _devAnnLoadList();
+    }).catch(function(e){
+      showToast('❌ Error: ' + e.message);
+      btn.disabled = false; btn.textContent = '📢 Kirim Pengumuman';
+    });
+  }
+
+  // Simpan langsung ke Firestore (base64 sudah dikompres saat upload)
+  _saveAnnToFirestore(_devAnnImgBase64 || null);
 }
 
 function _devAnnToggle(id, newActive){
-  if(!fbDb) return;
   fbDb.collection('announcements').doc(id).update({ active: newActive }).then(function(){
     showToast(newActive ? '✅ Pengumuman diaktifkan' : '🔕 Pengumuman dinonaktifkan');
-    dpAnnLoadList();
+    _devAnnLoadList();
   });
 }
 
 function _devAnnDelete(id){
   if(!confirm('Hapus pengumuman ini permanen?')) return;
-  if(!fbDb) return;
   fbDb.collection('announcements').doc(id).delete().then(function(){
     showToast('🗑 Pengumuman dihapus');
-    dpAnnLoadList();
+    _devAnnLoadList();
   });
 }
 
@@ -25580,12 +25583,11 @@ function _devLoadGuestUsers(listEl, countEl){
   var selfIsGuest = (typeof fbUser !== 'undefined') && fbUser && fbUser._isGuest;
   if(selfIsGuest){
     var selfEntry = {
-      email: fbUser.displayName || 'Tamu',
-      name: 'Perangkat ini · ' + navigator.userAgent.substring(0, 30),
+      email: 'Perangkat Ini (Guest)',
+      name: navigator.userAgent.substring(0, 40),
       isGuest: true,
       diffMs: 0,
       isOnline: true,
-      uid: fbUser.uid,
       deviceId: 'self'
     };
     online.push(selfEntry);
@@ -25594,7 +25596,7 @@ function _devLoadGuestUsers(listEl, countEl){
   if(!fbDb){
     // Hanya tampilkan self jika ada
     if(online.length === 0 && offline.length === 0){
-      listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">🎭 Tidak ada data guest.<br><br>Guest tidak menyimpan data presence ke cloud \u2014 hanya perangkat yang sedang aktif yang bisa terdeteksi.</div>';
+      listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">🎭 Tidak ada data guest.<br><br>Guest tidak menyimpan data presence ke cloud — hanya perangkat yang sedang aktif yang bisa terdeteksi.</div>';
       if(countEl) countEl.textContent = '0 guest';
       return;
     }
@@ -25602,24 +25604,23 @@ function _devLoadGuestUsers(listEl, countEl){
     return;
   }
 
-  // Load dari Firestore collection 'users' yang _isGuest=true
-  fbDb.collection('users').where('_isGuest','==',true).get().then(function(snap){
+  // Coba load dari Firestore presence yang isGuest=true
+  fbDb.collection('presence').where('isGuest','==',true).get().then(function(snap){
     snap.forEach(function(doc){
       var d        = doc.data();
-      var uid      = doc.id;
+      var lastSeen = d.lastSeen ? d.lastSeen.toDate() : null;
+      var diffMs   = lastSeen ? (now - lastSeen.getTime()) : Infinity;
+      var isOnline = diffMs <= onlineMs;
       // Hindari duplikat self
-      if(selfIsGuest && uid === (fbUser && fbUser.uid)) return;
-      var lastSaved = d.lastSaved ? new Date(d.lastSaved) : null;
-      var diffMs    = lastSaved ? (now - lastSaved.getTime()) : Infinity;
-      var isOnline  = diffMs <= onlineMs;
-      var guestName = d._userName || 'Tamu';
+      if(selfIsGuest && isOnline && diffMs < 30000) return;
+      var deviceId = d.deviceId || doc.id;
       var entry = {
-        email: guestName,
-        name: uid.substring(0, 16) + '…',
+        email: d.deviceId ? ('Guest #'+deviceId.substring(0,8)) : '🎭 Guest',
+        name: d.ua ? d.ua.substring(0,50) : '',
         isGuest: true,
         diffMs: diffMs,
         isOnline: isOnline,
-        uid: uid
+        deviceId: deviceId
       };
       if(isOnline) online.push(entry); else offline.push(entry);
     });
@@ -25628,8 +25629,8 @@ function _devLoadGuestUsers(listEl, countEl){
       listEl.innerHTML = '<div style="padding:20px 14px;text-align:center">'
         +'<div style="font-size:24px;margin-bottom:8px">🎭</div>'
         +'<div style="font-size:12px;color:rgba(255,255,255,0.4);line-height:1.6">'
-        +'Belum ada user guest yang terdaftar.<br>'
-        +'<span style="font-size:10px;color:rgba(255,255,255,0.2)">Data guest tersimpan di Firestore setelah mereka menyimpan task pertama.</span>'
+        +'Tidak ada data guest terdeteksi.<br>'
+        +'<span style="font-size:10px;color:rgba(255,255,255,0.2)">Guest biasanya tidak menyimpan presence ke cloud. Data hanya tersedia jika presence system diaktifkan untuk guest.</span>'
         +'</div></div>';
       if(countEl) countEl.textContent = '0 guest';
       return;
@@ -25640,7 +25641,7 @@ function _devLoadGuestUsers(listEl, countEl){
     _devRenderUserList(listEl, countEl, online, offline, '🎭');
 
   }).catch(function(e){
-    // Fallback jika query gagal
+    // Fallback jika query gagal (misalnya index belum ada)
     if(online.length > 0){
       _devRenderUserList(listEl, countEl, online, [], '🎭');
     } else {
@@ -25948,8 +25949,8 @@ function _downloadJson(data, filename){
   a.download=filename+'_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
 }
 function _devExport(collectionName, filename){
-  // ── Fallback localStorage untuk offline ──
-  if(!fbDb||!fbUser||fbUser._isOffline){
+  // ── Fallback localStorage untuk guest/offline ──
+  if(!fbDb||!fbUser||fbUser._isGuest||fbUser._isOffline){
     var ld=_getLocalData();
     if(!ld){ showToast('Tidak ada data lokal'); _devLog('No local data found','err'); return; }
     var data=[];
@@ -25975,8 +25976,8 @@ function devExportTasks(){ _devExport('tasks','chitask_tasks'); }
 function devExportHabits(){ _devExport('habits','chitask_habits'); }
 function devExportFinance(){ _devExport('transactions','chitask_finance'); }
 function devExportAll(){
-  // ── Fallback localStorage untuk offline ──
-  if(!fbDb||!fbUser||fbUser._isOffline){
+  // ── Fallback localStorage untuk guest/offline ──
+  if(!fbDb||!fbUser||fbUser._isGuest||fbUser._isOffline){
     var ld=_getLocalData();
     if(!ld){ showToast('Tidak ada data lokal'); _devLog('No local data found','err'); return; }
     var allData={
@@ -26011,7 +26012,7 @@ function devExportAll(){
   });
 }
 function devLoadFirestoreStats(){
-  if(!fbDb||!fbUser||fbUser._isOffline){ showToast('Butuh koneksi Firebase'); return; }
+  if(!fbDb||!fbUser||fbUser._isGuest){ showToast('Butuh login Firebase'); return; }
   var el=document.getElementById('devFirestoreStats'); if(el) el.innerHTML='⏳ Memuat...';
   var cols=['tasks','habits','transactions','journals','wallets']; var stats={}; var pending=cols.length;
   cols.forEach(function(col){
@@ -26357,7 +26358,7 @@ function devWipeUserData(){
   <div style="flex:1;overflow-y:auto;padding:14px 14px 32px">
 
     <!-- ══ TAB: ANNOUNCE ══ -->
-    <div id="dpContent-ann" style="display:block">
+    <div id="dpContent-ann" style="display:none">
       <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px;margin-bottom:14px">
         <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px"><span style="font-size:14px">✏️</span> Buat Pengumuman Baru</div>
         <div style="margin-bottom:12px">
