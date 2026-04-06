@@ -1059,23 +1059,25 @@ function _startFirebase() {
       });
 
     // ── Tangkap hasil signInWithRedirect (dari loginGoogle) ──
-    // Deteksi: apakah halaman ini dibuka karena balik dari redirect OAuth?
+    // ✅ FIX: Gunakan sessionStorage (persist antar redirect) bukan document.referrer
+    // document.referrer tidak reliable — Firebase redirect lewat chitask.firebaseapp.com
+    // bukan accounts.google.com, sehingga deteksi selalu gagal.
     try {
-      if (document.referrer.indexOf('accounts.google.com') !== -1 ||
-          document.referrer.indexOf('google.com/o/oauth2') !== -1) {
+      if (sessionStorage.getItem('chitask_redirect_pending') === '1') {
         _redirectInProgress = true;
+        // Jangan hapus dulu — hapus setelah getRedirectResult selesai
       }
     } catch(e) {}
     fbAuth.getRedirectResult().then(function(result) {
+      _redirectInProgress = false;
+      try { sessionStorage.removeItem('chitask_redirect_pending'); } catch(e) {}
       if (result && result.user) {
         // Berhasil balik dari redirect — onAuthStateChanged akan handle user-nya
-        _redirectInProgress = false;
-      } else {
-        // Tidak ada pending redirect
-        _redirectInProgress = false;
+        console.log('[ChiTask] getRedirectResult: user ditemukan →', result.user.email);
       }
     }).catch(function(e) {
       _redirectInProgress = false;
+      try { sessionStorage.removeItem('chitask_redirect_pending'); } catch(e) {}
       if (e && e.code !== 'auth/no-current-user') {
         console.warn('[ChiTask] getRedirectResult error:', e.message);
       }
@@ -1225,7 +1227,13 @@ function _startFirebase() {
           }
           if (_hasPrevLogin) {
             // Ada data user sebelumnya (Google atau Guest) → masuk offline mode
-            _enterOfflineMode();
+            // ✅ FIX: Tapi jangan masuk offline mode kalau sedang proses redirect Google login!
+            // _redirectInProgress sudah di-set dari sessionStorage di atas
+            if (_redirectInProgress) {
+              console.log('[ChiTask] Redirect in progress — skip offline mode, tunggu getRedirectResult');
+            } else {
+              _enterOfflineMode();
+            }
           } else if (_redirectInProgress) {
             // Sedang proses balik dari redirect OAuth — tunggu, jangan tampil login
             // onAuthStateChanged akan fire lagi dengan user yang benar
@@ -1299,7 +1307,9 @@ function loginGoogle() {
   provider.setCustomParameters({ prompt: 'select_account' });
   // Tandai bahwa kita akan redirect — supaya saat balik, onAuthStateChanged
   // tidak salah mengira user = null dan memanggil showLoginScreen()
+  // ✅ FIX: Pakai sessionStorage (persist antar redirect) bukan in-memory variable
   _redirectInProgress = true;
+  try { sessionStorage.setItem('chitask_redirect_pending', '1'); } catch(e) {}
   // Gunakan redirect — popup menyebabkan COOP error di browser modern
   fbAuth.signInWithRedirect(provider);
 }
