@@ -941,7 +941,7 @@ document.addEventListener('DOMContentLoaded', function(){ applyLang(getLang()); 
 // Untuk full offline support: jalankan bundle_firebase.py
 // lalu uncomment tag <script src="firebase-bundle.js">
 // ═══════════════════════════════════════════════════════
-var fbAuth = null, fbDb = null, fbUser = null;
+var fbAuth = null, fbDb = null, fbUser = null, fbStorage = null;
 var _fbSyncTimer = null, _fbInitialized = false;
 var _offlineMode = false;
 // Guard: true setelah initApp() selesai load data dari cloud/localStorage
@@ -1008,10 +1008,14 @@ function _initFirebase(baseUrl, onDone) {
       if (e2 instanceof Error) { onDone(e2); return; }
       _loadScript(baseUrl + 'firebase-firestore-compat.js', function(e3) {
         if (e3 instanceof Error) { onDone(e3); return; }
-        // FCM messaging SDK
-        _loadScript(baseUrl + 'firebase-messaging-compat.js', function(e4) {
-          // messaging gagal tidak fatal (fallback ke setTimeout notif)
-          onDone(null);
+        // Firebase Storage SDK
+        _loadScript(baseUrl + 'firebase-storage-compat.js', function(e4) {
+          // storage gagal tidak fatal
+          // FCM messaging SDK
+          _loadScript(baseUrl + 'firebase-messaging-compat.js', function(e5) {
+            // messaging gagal tidak fatal (fallback ke setTimeout notif)
+            onDone(null);
+          });
         });
       });
     });
@@ -1029,8 +1033,9 @@ function _startFirebase() {
       appId: "1:914322046491:web:f35fc2b9258b9d710e82be"
     };
     if (!firebase.apps.length) firebase.initializeApp(cfg);
-    fbAuth = firebase.auth();
-    fbDb   = firebase.firestore();
+    fbAuth    = firebase.auth();
+    fbDb      = firebase.firestore();
+    try { fbStorage = firebase.storage(); } catch(e) { fbStorage = null; }
 
     // ✅ FIX 4: enablePersistence — Firestore cache offline + auto-sync saat online balik
     fbDb.enablePersistence({ synchronizeTabs: true })
@@ -1061,6 +1066,9 @@ function _startFirebase() {
 
         // ── Google Calendar: inisialisasi via GIS (bukan Firebase popup) ──
         _gcalInitForUser(user);
+
+        // ── Presence System: tulis lastSeen ke Firestore ──
+        _startPresenceHeartbeat(user);
 
         if (!_fbInitialized) {
           // Reset _appReady untuk user login baru — akan di-set true di akhir init()
@@ -7876,7 +7884,7 @@ function _gcalInitForUser(user) {
     }).catch(function() { /* offline atau worker error — skip */ });
   }
 }
-var navSectionOpen={task:true,fin:true,maint:true,journal:true};
+var navSectionOpen={task:true,fin:false,maint:false,journal:false};
 var STORAGE_KEY='chitask_v6_data';
 var _syncTimer=null;
 
@@ -8009,7 +8017,7 @@ function applyNavSections(){
   ['task','fin','maint','journal'].forEach(function(sec){
     var group=document.getElementById('navgroup-'+sec);
     var chevron=document.getElementById('chevron-'+sec);
-    var open=navSectionOpen[sec]!==false;
+    var open=navSectionOpen[sec]===true;
     if(group){group.style.maxHeight=open?'800px':'0';}
     if(chevron){chevron.classList.toggle('open',open);}
   });
@@ -8618,7 +8626,7 @@ function init(){
     totalDone=saved.totalDone||0;
     perfectDays=saved.perfectDays||0;
     totalSubtasks=saved.totalSubtasks||0;
-    navSectionOpen=saved.navSectionOpen||{task:true,fin:true,maint:true,journal:true};
+    navSectionOpen=saved.navSectionOpen||{task:true,fin:false,maint:false,journal:false};
     finTransactions=saved.finTransactions||[];
     finWallets=saved.finWallets||JSON.parse(JSON.stringify(DEFAULT_WALLETS));
     finWishlist=saved.finWishlist||[];
@@ -24204,7 +24212,7 @@ function _annShowPopup(ann){
   var styleKey = ann.style || 'info';
   var card = document.getElementById('annCard');
   var imgMode = ann.imageMode || 'thumbnail'; // 'thumbnail' | 'fullimage'
-  var isFullImage = imgMode === 'fullimage' && ann.imageBase64;
+  var isFullImage = imgMode === 'fullimage' && (ann.imageUrl || ann.imageBase64);
 
   card.setAttribute('data-ann-style', styleKey);
   // Mode fullimage: sembunyikan header, icon, body teks
@@ -24249,8 +24257,9 @@ function _annShowPopup(ann){
   var imgEl   = document.getElementById('annImage');
   var imgHint = document.getElementById('annImageLinkHint');
   if(imgWrap && imgEl){
-    if(ann.imageBase64){
-      imgEl.src = ann.imageBase64;
+    var imgSrc = ann.imageUrl || ann.imageBase64 || null;
+    if(imgSrc){
+      imgEl.src = imgSrc;
       imgWrap.style.display = 'block';
       imgWrap.dataset.link = ann.imageLink || '';
       // Styling berdasarkan mode & orientasi
@@ -24403,6 +24412,11 @@ function _annDismiss(ann){
   setTimeout(function(){
     overlay.style.display='none';
     card.style.transform=''; card.style.opacity='';
+    // Kembalikan z-index annOverlay jika ada dev preview cleanup
+    if(typeof window._devPreviewCleanupOnce === 'function'){
+      window._devPreviewCleanupOnce();
+      window._devPreviewCleanupOnce = null;
+    }
     // FIX #4: Lanjut tampilkan pengumuman berikutnya di antrian
     _annShowing = false;
     _annDequeueNext();
@@ -24489,51 +24503,81 @@ function _devAnnSetOrient(orient, btn){
 }
 
 
-var _devAnnImgBase64 = null; // base64 string gambar yang dipilih
+
+var _devAnnImgBase64 = null; // base64 final (sudah dikompres, siap simpan ke Firestore)
 
 function devAnnHandleImg(file){
   if(!file) return;
   if(!file.type.startsWith('image/')){ showToast('⚠️ File harus berupa gambar!'); return; }
-  // Auto-compress jika lebih dari ~900KB agar aman disimpan di Firestore
-  var MAX_BYTES = 900 * 1024;
+  var originalKB = Math.round(file.size / 1024);
+  var info = document.getElementById('devAnnImgInfo');
+  if(info) info.textContent = '⏳ Memproses gambar...';
+
   var reader = new FileReader();
   reader.onload = function(e){
-    var originalB64 = e.target.result;
-    var originalKB = (file.size/1024).toFixed(0);
-    function _applyImg(b64, compressedKB){
-      _devAnnImgBase64 = b64;
-      var preview = document.getElementById('devAnnImgPreview');
-      var placeholder = document.getElementById('devAnnImgPlaceholder');
-      var removeBtn = document.getElementById('devAnnImgRemove');
-      var info = document.getElementById('devAnnImgInfo');
-      var linkWrap = document.getElementById('devAnnLinkWrap');
-      var modeEl = document.getElementById('devAnnImgMode');
-      var imgMode = modeEl ? modeEl.value : 'thumbnail';
-      var orientEl = document.getElementById('devAnnImgOrient');
-      var orient = orientEl ? orientEl.value : 'portrait';
-      _devAnnUpdatePreviewStyle(imgMode, orient, preview);
-      if(placeholder) placeholder.style.display = 'none';
-      if(removeBtn) removeBtn.style.display = 'block';
-      var sizeLabel = compressedKB ? '✅ ' + file.name + ' (' + originalKB + 'KB → dikompres ~' + compressedKB + 'KB)' : '✅ ' + file.name + ' (' + originalKB + 'KB)';
-      if(info) info.textContent = sizeLabel;
-      if(linkWrap) linkWrap.style.display = 'block';
-    }
-    if(file.size <= MAX_BYTES){ _applyImg(originalB64, null); return; }
-    // Kompres via canvas
     var img2 = new Image();
     img2.onload = function(){
-      var canvas = document.createElement('canvas');
+      // Target: base64 string < 700KB (aman untuk Firestore 1MB doc limit)
+      var TARGET_B64_CHARS = 700 * 1024; // ~700KB karakter base64
       var maxW = 1200, maxH = 1200;
       var w = img2.width, h = img2.height;
-      var scale = Math.min(maxW/w, maxH/h, 1);
-      canvas.width = Math.round(w*scale); canvas.height = Math.round(h*scale);
-      canvas.getContext('2d').drawImage(img2, 0, 0, canvas.width, canvas.height);
-      var b64 = canvas.toDataURL('image/jpeg', 0.82);
-      var approxKB = Math.round(b64.length * 0.75 / 1024);
-      _applyImg(b64, approxKB);
-      showToast('📐 Gambar dikompres otomatis (' + originalKB + 'KB → ~' + approxKB + 'KB)');
+
+      // Fungsi kompres dengan dimensi & kualitas tertentu
+      function _compress(maxDim, quality){
+        var canvas = document.createElement('canvas');
+        var scale = Math.min(maxDim/w, maxDim/h, 1);
+        canvas.width  = Math.round(w * scale);
+        canvas.height = Math.round(h * scale);
+        canvas.getContext('2d').drawImage(img2, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', quality);
+      }
+
+      // Iterasi: turunkan kualitas/dimensi sampai ukuran aman
+      var steps = [
+        { dim: 1200, q: 0.85 },
+        { dim: 1000, q: 0.80 },
+        { dim:  900, q: 0.75 },
+        { dim:  800, q: 0.70 },
+        { dim:  700, q: 0.65 },
+        { dim:  600, q: 0.60 },
+        { dim:  500, q: 0.55 }
+      ];
+      var finalB64 = null;
+      for(var i = 0; i < steps.length; i++){
+        var b64 = _compress(steps[i].dim, steps[i].q);
+        if(b64.length <= TARGET_B64_CHARS){ finalB64 = b64; break; }
+        // Simpan hasil terakhir sebagai fallback
+        finalB64 = b64;
+      }
+
+      var finalKB = Math.round(finalB64.length * 0.75 / 1024);
+      _devAnnImgBase64 = finalB64;
+
+      var preview     = document.getElementById('devAnnImgPreview');
+      var placeholder = document.getElementById('devAnnImgPlaceholder');
+      var removeBtn   = document.getElementById('devAnnImgRemove');
+      var linkWrap    = document.getElementById('devAnnLinkWrap');
+      var modeEl      = document.getElementById('devAnnImgMode');
+      var imgMode     = modeEl ? modeEl.value : 'thumbnail';
+      var orientEl    = document.getElementById('devAnnImgOrient');
+      var orient      = orientEl ? orientEl.value : 'portrait';
+
+      _devAnnUpdatePreviewStyle(imgMode, orient, preview);
+      if(preview) preview.src = finalB64;
+      if(placeholder) placeholder.style.display = 'none';
+      if(removeBtn)   removeBtn.style.display   = 'block';
+      if(linkWrap)    linkWrap.style.display     = 'block';
+
+      var sizeOk = finalB64.length <= TARGET_B64_CHARS;
+      if(info) info.textContent = (sizeOk ? '✅ ' : '⚠️ ') + file.name
+        + ' (' + originalKB + 'KB → ~' + finalKB + 'KB'
+        + (sizeOk ? ', aman ✓' : ', mungkin terlalu besar') + ')';
+
+      if(originalKB > finalKB){
+        showToast('📐 Dikompres: ' + originalKB + 'KB → ~' + finalKB + 'KB');
+      }
     };
-    img2.src = originalB64;
+    img2.src = e.target.result;
   };
   reader.readAsDataURL(file);
 }
@@ -24613,6 +24657,17 @@ function devAnnPreview(){
     customBtnUrl:     (cbUrlEl && cbUrlEl.value.trim()) || '',
     customBtnAction:  (cbActEl && cbActEl.value) || 'link'
   };
+  // Naikkan z-index annOverlay di atas devPage (9900) agar preview tampil
+  var overlayEl = document.getElementById('annOverlay');
+  if(overlayEl) overlayEl.style.zIndex = '10000';
+  // Kembalikan z-index setelah dismiss
+  var _origDismiss = window._annDismissHook;
+  var _devPreviewCleanup = function(){
+    if(overlayEl) overlayEl.style.zIndex = '';
+  };
+  // Patch sekali pakai: tambahkan cleanup ke dismiss berikutnya
+  var _origAnnDismiss = window._annDismiss;
+  window._devPreviewCleanupOnce = _devPreviewCleanup;
   // Reset _annShowing agar preview bisa tampil kapanpun
   _annShowing = false;
   _annShowPopup(ann);
@@ -24976,40 +25031,47 @@ function devAnnSubmit(){
   var isFullImage = imgModeVal === 'fullimage' && _devAnnImgBase64;
   if(!title){ showToast('⚠️ Judul harus diisi!'); return; }
   if(!isFullImage && !plainText){ showToast('⚠️ Pesan harus diisi (atau pilih mode Full Gambar dengan gambar ter-upload)!'); return; }
-  var data = {
-    title:title, message:message, style:_devAnnSelectedStyle||'info',
-    displayMode:mode, active:true,
-    createdAt:firebase.firestore.FieldValue.serverTimestamp(),
-    createdBy:fbUser.uid,
-    expiresAt:expiryVal ? firebase.firestore.Timestamp.fromDate(new Date(expiryVal)) : null,
-    imageBase64: _devAnnImgBase64 || null,
-    imageLink:   linkVal || null,
-    imageMode:   imgModeVal,
-    imageOrient: orientVal,
-    customBtnEnabled: cbEnabled,
-    customBtnText:    cbEnabled ? cbText : null,
-    customBtnUrl:     (cbEnabled && cbAction === 'link') ? cbUrl : null,
-    customBtnAction:  cbEnabled ? cbAction : null
-  };
+
   var btn = document.getElementById('devAnnSubmitBtn');
-  btn.disabled=true; btn.textContent='⏳ Menyimpan...';
-  fbDb.collection('announcements').add(data).then(function(){
-    showToast('✅ Pengumuman dikirim ke semua user!');
-    document.getElementById('devAnnTitle').value='';
-    msgEl.innerHTML='';
-    document.getElementById('devAnnExpiry').value='';
-    var cnt = document.getElementById('devAnnCharCount'); if(cnt) cnt.textContent='0';
-    devAnnRemoveImg();
-    var linkEl = document.getElementById('devAnnLink'); if(linkEl) linkEl.value='';
-    var cbTxtEl = document.getElementById('devAnnCustomBtnText'); if(cbTxtEl) cbTxtEl.value='';
-    var cbUrlEl = document.getElementById('devAnnCustomBtnUrl'); if(cbUrlEl) cbUrlEl.value='';
-    var cbEnEl = document.getElementById('devAnnCustomBtnEnabled'); if(cbEnEl){ cbEnEl.checked=false; _devAnnToggleCustomBtn(false); }
-    btn.disabled=false; btn.textContent='📢 Kirim Pengumuman';
-    _devAnnLoadList();
-  }).catch(function(e){
-    showToast('Error: '+e.message);
-    btn.disabled=false; btn.textContent='📢 Kirim Pengumuman';
-  });
+  btn.disabled = true; btn.textContent = '⏳ Menyimpan...';
+
+  function _saveAnnToFirestore(imageBase64Val){
+    var data = {
+      title: title, message: message, style: _devAnnSelectedStyle||'info',
+      displayMode: mode, active: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: fbUser.uid,
+      expiresAt: expiryVal ? firebase.firestore.Timestamp.fromDate(new Date(expiryVal)) : null,
+      imageBase64: imageBase64Val || null,
+      imageLink:   linkVal || null,
+      imageMode:   imgModeVal,
+      imageOrient: orientVal,
+      customBtnEnabled: cbEnabled,
+      customBtnText:    cbEnabled ? cbText : null,
+      customBtnUrl:     (cbEnabled && cbAction === 'link') ? cbUrl : null,
+      customBtnAction:  cbEnabled ? cbAction : null
+    };
+    fbDb.collection('announcements').add(data).then(function(){
+      showToast('✅ Pengumuman dikirim ke semua user!');
+      document.getElementById('devAnnTitle').value = '';
+      msgEl.innerHTML = '';
+      document.getElementById('devAnnExpiry').value = '';
+      var cnt = document.getElementById('devAnnCharCount'); if(cnt) cnt.textContent = '0';
+      devAnnRemoveImg();
+      var linkEl2 = document.getElementById('devAnnLink'); if(linkEl2) linkEl2.value = '';
+      var cbTxtEl = document.getElementById('devAnnCustomBtnText'); if(cbTxtEl) cbTxtEl.value = '';
+      var cbUrlEl = document.getElementById('devAnnCustomBtnUrl'); if(cbUrlEl) cbUrlEl.value = '';
+      var cbEnEl  = document.getElementById('devAnnCustomBtnEnabled'); if(cbEnEl){ cbEnEl.checked = false; _devAnnToggleCustomBtn(false); }
+      btn.disabled = false; btn.textContent = '📢 Kirim Pengumuman';
+      _devAnnLoadList();
+    }).catch(function(e){
+      showToast('❌ Error: ' + e.message);
+      btn.disabled = false; btn.textContent = '📢 Kirim Pengumuman';
+    });
+  }
+
+  // Simpan langsung ke Firestore (base64 sudah dikompres saat upload)
+  _saveAnnToFirestore(_devAnnImgBase64 || null);
 }
 
 function _devAnnToggle(id, newActive){
@@ -25045,6 +25107,45 @@ function devRefreshUserInfo(){
 // ════════════════════════════════════════════
 // PRESENCE SYSTEM — deteksi user online
 // ════════════════════════════════════════════
+
+var _presenceHeartbeatTimer = null;
+
+function _writePresence(user){
+  if(!fbDb || !user || user._isGuest) return;
+  var isGuest = !!(user._isGuest);
+  fbDb.collection('presence').doc(user.uid).set({
+    uid:      user.uid,
+    email:    user.email || '',
+    name:     user.displayName || user.email || '',
+    photoURL: user.photoURL || '',
+    isGuest:  isGuest,
+    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true }).catch(function(e){
+    console.warn('Presence write failed:', e.message);
+  });
+}
+
+function _startPresenceHeartbeat(user){
+  if(!user || user._isGuest) return;
+  // Tulis segera saat login
+  _writePresence(user);
+  // Clear timer lama jika ada (misalnya user login ulang)
+  if(_presenceHeartbeatTimer) clearInterval(_presenceHeartbeatTimer);
+  // Heartbeat tiap 2 menit
+  _presenceHeartbeatTimer = setInterval(function(){
+    if(fbUser && !fbUser._isGuest) _writePresence(fbUser);
+    else clearInterval(_presenceHeartbeatTimer);
+  }, 2 * 60 * 1000);
+  // Juga update saat user kembali ke tab (visibility change)
+  document.removeEventListener('visibilitychange', _onVisibilityForPresence);
+  document.addEventListener('visibilitychange', _onVisibilityForPresence);
+}
+
+function _onVisibilityForPresence(){
+  if(document.visibilityState === 'visible' && fbUser && !fbUser._isGuest){
+    _writePresence(fbUser);
+  }
+}
 
 
 function devShowAllUsers(){
