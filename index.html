@@ -1038,7 +1038,7 @@ function _startFirebase() {
   try {
     var cfg = {
       apiKey: "AIzaSyA_erlGbohRGlL0ei8l2RqJLR0sy-kVtvU",
-      authDomain: "chitask.firebaseapp.com",
+      authDomain: "chitask.netlify.app",
       projectId: "chitask",
       storageBucket: "chitask.firebasestorage.app",
       messagingSenderId: "914322046491",
@@ -1058,6 +1058,13 @@ function _startFirebase() {
           console.warn('Browser tidak support offline persistence.');
         }
       });
+
+    // Handle redirect result from signInWithRedirect (COOP-safe login flow)
+    fbAuth.getRedirectResult().catch(function(e) {
+      if (e && e.code && e.code !== 'auth/cancelled-popup-request') {
+        alert('Login gagal: ' + e.message);
+      }
+    });
 
     fbAuth.onAuthStateChanged(function(user) {
       if (user) {
@@ -1271,12 +1278,9 @@ function loginGoogle() {
   var provider = new firebase.auth.GoogleAuthProvider();
   // Hanya Firebase auth scope — Calendar dihandle oleh GIS secara terpisah
   provider.setCustomParameters({ prompt: 'select_account' });
-  fbAuth.signInWithPopup(provider).then(function(result) {
-    // Firebase auth berhasil — GIS akan otomatis init via onAuthStateChanged → _gcalInitForUser
-  }).catch(function(e) {
-    if (e.code !== 'auth/popup-closed-by-user') {
-      alert('Login gagal: ' + e.message);
-    }
+  // Use redirect instead of popup to avoid Cross-Origin-Opener-Policy (COOP) issues on Netlify
+  fbAuth.signInWithRedirect(provider).catch(function(e) {
+    alert('Login gagal: ' + e.message);
   });
 }
 
