@@ -16,7 +16,7 @@ var _STRINGS = {
     login_sub: 'Task Manager · Keuangan · Maintenance<br>Data tersimpan aman di cloud ☁️',
     login_google: 'Masuk dengan Google',
     login_guest: 'Coba dulu tanpa login',
-    login_guest_note: 'Data tersimpan di cloud ☁️ — <b>bisa akses dari perangkat lain</b> dengan anonymous login yang sama. Upgrade ke Google untuk sinkronisasi penuh.',
+    login_guest_note: 'Data disimpan di perangkat ini saja &mdash; <b>tidak bisa sync</b> ke perangkat lain. Bisa upgrade ke akun Google kapan saja.',
     // ── Sidebar nav sections ──
     nav_sec_task: '📋 Task',
     nav_sec_fin: '💰 Keuangan',
@@ -145,12 +145,6 @@ var _STRINGS = {
     btn_close: 'Tutup',
     btn_apply_nav: '✓ Simpan Setting',
     settings_hint: 'Bisa diubah kapan saja di ⚙️ Settings',
-    // ── Guest username modal ──
-    guest_username_title: 'Halo! Siapa namamu? 👋',
-    guest_username_sub: 'Nama ini akan ditampilkan di sidebar. Bisa diganti kapan saja.',
-    guest_username_placeholder: 'Masukkan namamu...',
-    guest_username_btn: '✓ Mulai Pakai ChiTask',
-    guest_username_skip: 'Lewati (pakai "Tamu")',
     // ── Sync / save ──
     saved: '✓ Tersimpan',
     sync_activate: '☁️ Aktifkan sync → Masuk dengan Google',
@@ -339,7 +333,7 @@ var _STRINGS = {
     login_sub: 'Task Manager · Finance · Maintenance<br>Your data is safely stored in the cloud ☁️',
     login_google: 'Sign in with Google',
     login_guest: 'Try without signing in',
-    login_guest_note: 'Data is saved in the cloud ☁️ — <b>accessible from other devices</b> using the same anonymous login. Upgrade to Google for full sync.',
+    login_guest_note: 'Data is saved on this device only &mdash; <b>no cloud sync</b>. You can upgrade to a Google account anytime.',
     nav_sec_task: '📋 Tasks',
     nav_sec_fin: '💰 Finance',
     nav_sec_maint: '🔧 Maintenance',
@@ -459,12 +453,6 @@ var _STRINGS = {
     btn_close: 'Close',
     btn_apply_nav: '✓ Save Settings',
     settings_hint: 'Can be changed anytime in ⚙️ Settings',
-    // ── Guest username modal ──
-    guest_username_title: 'Hello! What\'s your name? 👋',
-    guest_username_sub: 'This name will be shown in the sidebar. You can change it anytime.',
-    guest_username_placeholder: 'Enter your name...',
-    guest_username_btn: '✓ Start Using ChiTask',
-    guest_username_skip: 'Skip (use "Guest")',
     saved: '✓ Saved',
     sync_activate: '☁️ Enable sync → Sign in with Google',
     confirm_logout: 'Are you sure you want to log out?',
@@ -1068,43 +1056,6 @@ function _startFirebase() {
           fbUser.uid = user.uid;
           return; // skip flow Google login
         }
-        // ── Anonymous user baru (belum ada fbUser di memori = app baru buka) ──
-        // Cek apakah ada data guest di Firestore untuk uid ini
-        if (user.isAnonymous && (!fbUser || !fbUser._isGuest)) {
-          // Load data dari localStorage dulu untuk cek username
-          var _savedAnon = null;
-          try { _savedAnon = JSON.parse(localStorage.getItem('chitask_v6_data') || '{}'); } catch(e) { _savedAnon = {}; }
-          var _anonName = (_savedAnon && _savedAnon._userName) ? _savedAnon._userName : null;
-          // Set fbUser sebagai guest
-          fbUser = {
-            uid: user.uid,
-            displayName: _anonName || 'Tamu',
-            photoURL: null,
-            email: '',
-            _isOffline: false,
-            _isGuest: true
-          };
-          _offlineMode = false;
-          if (!_fbInitialized) {
-            _appReady = false;
-            window._initAppRunning = false;
-            _fbInitialized = true;
-            fbLoadData(function(cloudData) {
-              if (cloudData) {
-                // Ambil username dari cloud jika ada
-                if (cloudData._userName) {
-                  fbUser.displayName = cloudData._userName;
-                }
-                try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {}
-              }
-              updateAuthUI(fbUser);
-              if (typeof initApp === 'function') initApp();
-            });
-          } else {
-            updateAuthUI(fbUser);
-          }
-          return;
-        }
         fbUser = user;
         _offlineMode = false;
         updateAuthUI(user);
@@ -1248,7 +1199,7 @@ function fbSaveData(payload) {
   // Simpan ke localStorage dulu (selalu, online maupun offline)
   try { localStorage.setItem('chitask_v6_data', payload); } catch(e) {}
   // Kalau offline mode, skip Firestore
-  if (_offlineMode || !fbUser || fbUser._isOffline || !fbDb) return;
+  if (_offlineMode || !fbUser || fbUser._isOffline || fbUser._isGuest || !fbDb) return;
   // ── GUARD: jangan push ke Firestore sebelum app selesai load data awal ──
   // Mencegah race condition: initApp() jalan sebelum cloud data balik,
   // lalu saveData() overwrite Firestore dengan data kosong/localStorage lama.
@@ -1270,7 +1221,7 @@ function fbSaveData(payload) {
 }
 
 function fbLoadData(callback) {
-  if (!fbUser || !fbDb || fbUser._isOffline) { callback(null); return; }
+  if (!fbUser || !fbDb || fbUser._isOffline || fbUser._isGuest) { callback(null); return; }
   fbDb.collection('users').doc(fbUser.uid).get()
     .then(function(doc) { callback(doc.exists ? doc.data() : null); })
     .catch(function(e) { console.warn('Firestore load error:', e); callback(null); });
@@ -1293,149 +1244,51 @@ function loginGoogle() {
 // gcalReauth sudah dipindah ke blok Google Calendar state di bawah
 
 function loginAsGuest() {
-  // Cek apakah sudah ada data guest sebelumnya (sudah pernah login sebagai guest)
+  // Cek apakah sudah ada data guest sebelumnya
   var savedData = null;
   try { savedData = localStorage.getItem('chitask_v6_data'); } catch(e) {}
   var savedParsed = null;
   if (savedData) { try { savedParsed = JSON.parse(savedData); } catch(e) {} }
   var isGuestData = !savedParsed || !savedParsed._userName || savedParsed._isGuest;
-  // Kalau sudah punya username guest sebelumnya, langsung lanjut tanpa tanya lagi
-  var existingGuestName = (savedParsed && savedParsed._isGuest && savedParsed._userName && savedParsed._userName !== 'Tamu' && savedParsed._userName !== 'Guest')
-    ? savedParsed._userName : null;
 
-  function _proceedAsGuest(anonUid, guestDisplayName) {
+  function _proceedAsGuest(anonUid) {
+    // _offlineMode = false agar fbDb bisa dipakai (announcements, dll)
+    // Data task/keuangan tetap hanya dari localStorage (fbSaveData guard pakai _isGuest)
     _offlineMode = false;
     var guestUser = {
       uid: anonUid || 'guest_user',
-      displayName: guestDisplayName || 'Tamu',
+      displayName: 'Tamu',
       photoURL: null,
       email: '',
       _isOffline: false,
       _isGuest: true
     };
     fbUser = guestUser;
-    // Tandai data sebagai guest dan simpan username
-    var dataToSave = savedParsed || {};
-    dataToSave._isGuest = true;
-    dataToSave._userName = guestUser.displayName;
-    try { localStorage.setItem('chitask_v6_data', JSON.stringify(dataToSave)); } catch(e) {}
-
-    // ── Simpan ke Firestore agar data guest cloud-synced ──
-    if (fbDb && anonUid && anonUid !== 'guest_user') {
-      fbDb.collection('users').doc(anonUid).get().then(function(doc) {
-        if (doc.exists) {
-          // Data sudah ada di Firestore — load dan pakai
-          var cloudData = doc.data();
-          try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {}
-          // Pastikan username tersimpan
-          if (!cloudData._userName || cloudData._userName === 'Tamu' || cloudData._userName === 'Guest') {
-            fbDb.collection('users').doc(anonUid).update({ _userName: guestUser.displayName });
-          }
-        } else {
-          // User baru — set dokumen awal dengan username
-          fbDb.collection('users').doc(anonUid).set(dataToSave);
-        }
-        updateAuthUI(guestUser);
-        if (typeof initApp === 'function') initApp();
-      }).catch(function() {
-        updateAuthUI(guestUser);
-        if (typeof initApp === 'function') initApp();
-      });
-    } else {
-      updateAuthUI(guestUser);
-      if (typeof initApp === 'function') initApp();
+    // Tandai data sebagai guest agar tidak tercampur dengan akun Google
+    if (savedParsed && isGuestData) {
+      savedParsed._isGuest = true;
+      try { localStorage.setItem('chitask_v6_data', JSON.stringify(savedParsed)); } catch(e) {}
     }
+    updateAuthUI(guestUser);
+    if (typeof initApp === 'function') initApp();
   }
 
-  function _doAnonSignIn(onSuccess) {
-    if (fbAuth && typeof fbAuth.signInAnonymously === 'function') {
-      fbAuth.signInAnonymously().then(function(result) {
-        var anonUid = result.user ? result.user.uid : 'guest_anon';
-        onSuccess(anonUid);
-      }).catch(function(err) {
-        console.warn('[ChiTask] Anonymous sign-in gagal, fallback offline guest:', err.message);
-        _offlineMode = true;
-        onSuccess('guest_user');
-      });
-    } else {
+  // Coba Anonymous Sign-In agar punya Firebase auth token
+  // → Firestore rules bisa baca announcements (read: request.auth != null)
+  if (fbAuth && typeof fbAuth.signInAnonymously === 'function') {
+    fbAuth.signInAnonymously().then(function(result) {
+      var anonUid = result.user ? result.user.uid : 'guest_anon';
+      _proceedAsGuest(anonUid);
+    }).catch(function(err) {
+      // Anon sign-in gagal (misal disabled di Firebase Console) → fallback mode lama
+      console.warn('[ChiTask] Anonymous sign-in gagal, fallback offline guest:', err.message);
       _offlineMode = true;
-      onSuccess('guest_user');
-    }
-  }
-
-  // Kalau sudah punya username sebelumnya, langsung lanjut tanpa modal
-  if (existingGuestName) {
-    _doAnonSignIn(function(anonUid) { _proceedAsGuest(anonUid, existingGuestName); });
-    return;
-  }
-
-  // ── Tampilkan modal input username ──
-  _showGuestUsernameModal(function(chosenName) {
-    _doAnonSignIn(function(anonUid) { _proceedAsGuest(anonUid, chosenName); });
-  });
-}
-
-// ── Modal input username untuk guest baru ──
-function _showGuestUsernameModal(onConfirm) {
-  // Hapus modal lama kalau ada
-  var old = document.getElementById('guestUsernameModal');
-  if (old) old.remove();
-
-  var modal = document.createElement('div');
-  modal.id = 'guestUsernameModal';
-  modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.innerHTML = [
-    '<div style="background:#1c1917;border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:32px 28px;width:100%;max-width:360px;box-shadow:0 24px 64px rgba(0,0,0,0.6);display:flex;flex-direction:column;gap:16px">',
-      '<div style="text-align:center">',
-        '<div style="font-size:36px;margin-bottom:8px">👤</div>',
-        '<div style="font-size:18px;font-weight:800;color:#fff;font-family:DM Sans,sans-serif" id="guestUnModalTitle">'+t('guest_username_title')+'</div>',
-        '<div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:6px;line-height:1.5;font-family:DM Sans,sans-serif" id="guestUnModalSub">'+t('guest_username_sub')+'</div>',
-      '</div>',
-      '<input id="guestUsernameInput" type="text" maxlength="30"',
-        ' placeholder="'+t('guest_username_placeholder')+'"',
-        ' style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1.5px solid rgba(245,158,11,0.35);border-radius:10px;padding:13px 15px;color:#fff;font-size:15px;font-family:DM Sans,sans-serif;outline:none;transition:border-color 0.15s"',
-        ' oninput="var v=this.value.trim();document.getElementById(\'guestUnConfirmBtn\').disabled=!v;document.getElementById(\'guestUnConfirmBtn\').style.opacity=v?\'1\':\'0.45\'"',
-        ' onkeydown="if(event.key===\'Enter\'){var v=this.value.trim();if(v)document.getElementById(\'guestUnConfirmBtn\').click()}"',
-      '>',
-      '<button id="guestUnConfirmBtn" disabled',
-        ' style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,rgba(217,119,6,0.9),rgba(180,83,9,0.85));color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;opacity:0.45;transition:opacity 0.15s"',
-        ' onclick="_guestUsernameConfirm()">'+t('guest_username_btn'),
-      '</button>',
-      '<button style="width:100%;padding:9px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;background:transparent;color:rgba(255,255,255,0.3);font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif"',
-        ' onclick="_guestUsernameSkip()">'+t('guest_username_skip'),
-      '</button>',
-    '</div>'
-  ].join('');
-
-  document.body.appendChild(modal);
-  window._guestUsernameCallback = onConfirm;
-
-  // Fokus ke input setelah animasi
-  setTimeout(function() {
-    var inp = document.getElementById('guestUsernameInput');
-    if (inp) inp.focus();
-  }, 200);
-}
-
-function _guestUsernameConfirm() {
-  var inp = document.getElementById('guestUsernameInput');
-  var name = inp ? inp.value.trim() : '';
-  if (!name) return;
-  var modal = document.getElementById('guestUsernameModal');
-  if (modal) modal.remove();
-  if (typeof window._guestUsernameCallback === 'function') {
-    window._guestUsernameCallback(name);
-    window._guestUsernameCallback = null;
-  }
-}
-
-function _guestUsernameSkip() {
-  var modal = document.getElementById('guestUsernameModal');
-  if (modal) modal.remove();
-  var skipName = (getLang() === 'en') ? 'Guest' : 'Tamu';
-  if (typeof window._guestUsernameCallback === 'function') {
-    window._guestUsernameCallback(skipName);
-    window._guestUsernameCallback = null;
+      _proceedAsGuest('guest_user');
+    });
+  } else {
+    // fbAuth belum siap → fallback
+    _offlineMode = true;
+    _proceedAsGuest('guest_user');
   }
 }
 
@@ -1465,15 +1318,13 @@ function updateAuthUI(user) {
         ? '<img src="'+user.photoURL+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0">'
         : '<div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">'+init+'</div>';
       if (user._isGuest) {
-        // Guest mode: show username + upgrade prompt
-        var guestName = user.displayName || 'Tamu';
-        var guestInit = guestName.charAt(0).toUpperCase();
+        // Guest mode: show upgrade prompt
         userEl.innerHTML =
           '<div style="display:flex;flex-direction:column;gap:4px;width:100%;padding:2px 0">'
           + '<div style="display:flex;align-items:center;gap:7px">'
-          + '<div style="width:26px;height:26px;border-radius:50%;background:rgba(245,158,11,0.25);border:1.5px solid rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fbbf24;flex-shrink:0">'+guestInit+'</div>'
-          + '<span style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+guestName+'</span>'
-          + '<span style="font-size:8px;background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:auto;white-space:nowrap;flex-shrink:0">TAMU</span>'
+          + '<span style="font-size:16px">👤</span>'
+          + '<span style="font-size:11px;color:rgba(255,255,255,0.55);font-weight:600">Mode Tamu</span>'
+          + '<span style="font-size:8px;background:rgba(245,158,11,0.25);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:auto;white-space:nowrap">LOKAL</span>'
           + '</div>'
           + '<button onclick="showLoginScreen()" style="width:100%;padding:5px 8px;border:1px solid rgba(245,158,11,0.4);border-radius:6px;background:rgba(245,158,11,0.1);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left">☁️ Aktifkan sync → Masuk dengan Google</button>'
           + '</div>';
@@ -6888,7 +6739,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
     </button>
     <div class="fb-guest-note">
       <span class="fb-guest-note-icon">📱</span>
-      <div id="loginGuestNote">Coba dulu tanpa login - Data tersimpan di cloud ☁️ — <b>bisa akses dari perangkat lain</b> dengan anonymous login yang sama. Upgrade ke Google untuk sinkronisasi penuh.</div>
+      <div id="loginGuestNote">Coba dulu tanpa login - Data disimpan di perangkat ini saja &mdash; <b>tidak bisa sync</b> ke perangkat lain. Bisa upgrade ke akun Google kapan saja.</div>
     </div>
   </div>
 </div>
@@ -24418,13 +24269,16 @@ function _annShowPopup(ann){
   // Mode fullimage: sembunyikan header, icon, body teks
   var headerEl = document.getElementById('annPopupHeader');
   var bodyEl   = document.getElementById('annPopupBody');
-  if(isFullImage){
+  // isFullImage: sembunyikan header & body teks, gambar tampil sendiri
+  // annImageWrap sudah di luar body sehingga tidak ikut tersembunyi
+  var resolvedIsFullImage = isFullImage || (_hasNewImg);
+  if(resolvedIsFullImage){
     card.classList.add('ann-fullimage-mode');
   } else {
     card.classList.remove('ann-fullimage-mode');
   }
-  if(headerEl) headerEl.style.display = isFullImage ? 'none' : '';
-  if(bodyEl)   bodyEl.style.display   = isFullImage ? 'none' : '';
+  if(headerEl) headerEl.style.display = resolvedIsFullImage ? 'none' : '';
+  if(bodyEl)   bodyEl.style.display   = resolvedIsFullImage ? 'none' : '';
 
   document.getElementById('annIcon').textContent = iconMap[styleKey] || '📢';
   document.getElementById('annTitle').textContent = ann.title || 'Pengumuman';
@@ -24484,10 +24338,14 @@ function _annShowPopup(ann){
       imgEl.src = imgSrc;
       imgWrap.style.display = 'block';
       imgWrap.dataset.link = ann.imageLink || '';
+      // annImageWrap kini berada di luar annPopupBody sehingga tidak tersembunyi
+      // saat fullimage mode. Styling tetap dibedakan fullimage vs thumbnail.
       if(isFullImage || isFullImageResolved){
+        // Full-image: gambar edge-to-edge, tidak ada border radius
         imgWrap.style.margin = '0';
         imgWrap.style.borderRadius = '0';
         imgWrap.style.overflow = 'hidden';
+        imgWrap.style.marginBottom = '0';
         if(resolvedOrient === 'landscape'){
           imgEl.style.maxHeight = '';
           imgEl.style.height = 'auto';
@@ -24499,13 +24357,16 @@ function _annShowPopup(ann){
           imgEl.style.height = 'auto';
           imgEl.style.width = '100%';
           imgEl.style.objectFit = 'cover';
-          imgEl.style.aspectRatio = '';
+          imgEl.style.aspectRatio = '3/4';
         }
         card.style.paddingTop = '0';
         card.style.overflow = 'hidden';
       } else {
-        imgWrap.style.margin = '';
+        // Thumbnail: gambar dengan border radius, ada jarak
+        imgWrap.style.margin = '0 18px';
         imgWrap.style.borderRadius = '14px';
+        imgWrap.style.overflow = 'hidden';
+        imgWrap.style.marginBottom = '16px';
         imgEl.style.maxHeight = '220px';
         imgEl.style.height = '';
         imgEl.style.width = '100%';
@@ -25528,12 +25389,11 @@ function _devLoadGuestUsers(listEl, countEl){
   var selfIsGuest = (typeof fbUser !== 'undefined') && fbUser && fbUser._isGuest;
   if(selfIsGuest){
     var selfEntry = {
-      email: fbUser.displayName || 'Tamu',
-      name: 'Perangkat ini · ' + navigator.userAgent.substring(0, 30),
+      email: 'Perangkat Ini (Guest)',
+      name: navigator.userAgent.substring(0, 40),
       isGuest: true,
       diffMs: 0,
       isOnline: true,
-      uid: fbUser.uid,
       deviceId: 'self'
     };
     online.push(selfEntry);
@@ -25550,24 +25410,23 @@ function _devLoadGuestUsers(listEl, countEl){
     return;
   }
 
-  // Load dari Firestore collection 'users' yang _isGuest=true
-  fbDb.collection('users').where('_isGuest','==',true).get().then(function(snap){
+  // Coba load dari Firestore presence yang isGuest=true
+  fbDb.collection('presence').where('isGuest','==',true).get().then(function(snap){
     snap.forEach(function(doc){
       var d        = doc.data();
-      var uid      = doc.id;
+      var lastSeen = d.lastSeen ? d.lastSeen.toDate() : null;
+      var diffMs   = lastSeen ? (now - lastSeen.getTime()) : Infinity;
+      var isOnline = diffMs <= onlineMs;
       // Hindari duplikat self
-      if(selfIsGuest && uid === (fbUser && fbUser.uid)) return;
-      var lastSaved = d.lastSaved ? new Date(d.lastSaved) : null;
-      var diffMs    = lastSaved ? (now - lastSaved.getTime()) : Infinity;
-      var isOnline  = diffMs <= onlineMs;
-      var guestName = d._userName || 'Tamu';
+      if(selfIsGuest && isOnline && diffMs < 30000) return;
+      var deviceId = d.deviceId || doc.id;
       var entry = {
-        email: guestName,
-        name: uid.substring(0, 16) + '…',
+        email: d.deviceId ? ('Guest #'+deviceId.substring(0,8)) : '🎭 Guest',
+        name: d.ua ? d.ua.substring(0,50) : '',
         isGuest: true,
         diffMs: diffMs,
         isOnline: isOnline,
-        uid: uid
+        deviceId: deviceId
       };
       if(isOnline) online.push(entry); else offline.push(entry);
     });
@@ -25576,8 +25435,8 @@ function _devLoadGuestUsers(listEl, countEl){
       listEl.innerHTML = '<div style="padding:20px 14px;text-align:center">'
         +'<div style="font-size:24px;margin-bottom:8px">🎭</div>'
         +'<div style="font-size:12px;color:rgba(255,255,255,0.4);line-height:1.6">'
-        +'Belum ada user guest yang terdaftar.<br>'
-        +'<span style="font-size:10px;color:rgba(255,255,255,0.2)">Data guest tersimpan di Firestore setelah mereka menyimpan task pertama.</span>'
+        +'Tidak ada data guest terdeteksi.<br>'
+        +'<span style="font-size:10px;color:rgba(255,255,255,0.2)">Guest biasanya tidak menyimpan presence ke cloud. Data hanya tersedia jika presence system diaktifkan untuk guest.</span>'
         +'</div></div>';
       if(countEl) countEl.textContent = '0 guest';
       return;
@@ -25588,7 +25447,7 @@ function _devLoadGuestUsers(listEl, countEl){
     _devRenderUserList(listEl, countEl, online, offline, '🎭');
 
   }).catch(function(e){
-    // Fallback jika query gagal
+    // Fallback jika query gagal (misalnya index belum ada)
     if(online.length > 0){
       _devRenderUserList(listEl, countEl, online, [], '🎭');
     } else {
@@ -25896,8 +25755,8 @@ function _downloadJson(data, filename){
   a.download=filename+'_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
 }
 function _devExport(collectionName, filename){
-  // ── Fallback localStorage untuk offline ──
-  if(!fbDb||!fbUser||fbUser._isOffline){
+  // ── Fallback localStorage untuk guest/offline ──
+  if(!fbDb||!fbUser||fbUser._isGuest||fbUser._isOffline){
     var ld=_getLocalData();
     if(!ld){ showToast('Tidak ada data lokal'); _devLog('No local data found','err'); return; }
     var data=[];
@@ -25923,8 +25782,8 @@ function devExportTasks(){ _devExport('tasks','chitask_tasks'); }
 function devExportHabits(){ _devExport('habits','chitask_habits'); }
 function devExportFinance(){ _devExport('transactions','chitask_finance'); }
 function devExportAll(){
-  // ── Fallback localStorage untuk offline ──
-  if(!fbDb||!fbUser||fbUser._isOffline){
+  // ── Fallback localStorage untuk guest/offline ──
+  if(!fbDb||!fbUser||fbUser._isGuest||fbUser._isOffline){
     var ld=_getLocalData();
     if(!ld){ showToast('Tidak ada data lokal'); _devLog('No local data found','err'); return; }
     var allData={
@@ -25959,7 +25818,7 @@ function devExportAll(){
   });
 }
 function devLoadFirestoreStats(){
-  if(!fbDb||!fbUser||fbUser._isOffline){ showToast('Butuh koneksi Firebase'); return; }
+  if(!fbDb||!fbUser||fbUser._isGuest){ showToast('Butuh login Firebase'); return; }
   var el=document.getElementById('devFirestoreStats'); if(el) el.innerHTML='⏳ Memuat...';
   var cols=['tasks','habits','transactions','journals','wallets']; var stats={}; var pending=cols.length;
   cols.forEach(function(col){
@@ -26061,13 +25920,20 @@ function devWipeUserData(){
   border-radius: 22px;
   overflow: hidden;
 }
+/* annImageWrap kini di luar annPopupBody — tetap edge-to-edge saat fullimage */
 #annCard.ann-fullimage-mode #annImageWrap {
   margin: 0 !important;
   border-radius: 0 !important;
+  display: block !important;
 }
 #annCard.ann-fullimage-mode #annImage {
   border-radius: 0 !important;
   max-height: none !important;
+}
+/* Footer tetap terlihat di bawah gambar saat fullimage */
+#annCard.ann-fullimage-mode > div:last-child {
+  position: relative;
+  z-index: 2;
 }
 
 /* Custom button */
@@ -26117,17 +25983,17 @@ function devWipeUserData(){
       <div id="annTitle" style="font-size:19px;font-weight:900;color:#fff;line-height:1.25;letter-spacing:-0.4px;text-align:center">Pengumuman</div>
     </div>
 
+    <!-- Gambar iklan — di luar body agar tidak ikut tersembunyi saat fullimage mode -->
+    <div id="annImageWrap" style="display:none;overflow:hidden;position:relative;cursor:pointer" onclick="annImageClick()">
+      <img id="annImage" src="" alt="" style="width:100%;max-height:260px;object-fit:cover;display:block">
+      <div id="annImageLinkHint" style="display:none;position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none">🔗 Buka Link</div>
+    </div>
+
     <!-- Body -->
     <div id="annPopupBody" style="padding:0 18px 0;position:relative;z-index:1">
       <!-- Message body — lebih lebar -->
       <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px 18px;margin-bottom:16px">
         <div id="annMessage" style="font-size:14px;color:rgba(255,255,255,0.82);line-height:1.75"></div>
-      </div>
-
-      <!-- Gambar iklan thumbnail (tampil jika ada & mode thumbnail) -->
-      <div id="annImageWrap" style="display:none;margin-bottom:16px;border-radius:14px;overflow:hidden;position:relative;cursor:pointer" onclick="annImageClick()">
-        <img id="annImage" src="" alt="" style="width:100%;max-height:220px;object-fit:cover;display:block;border-radius:14px">
-        <div id="annImageLinkHint" style="display:none;position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);color:#fff;font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none">🔗 Buka Link</div>
       </div>
 
       <!-- Divider -->
