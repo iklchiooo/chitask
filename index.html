@@ -974,7 +974,7 @@ function _enterOfflineMode() {
     var isGuest = savedParsed && savedParsed._isGuest;
     var offlineUser = {
       uid: isGuest ? 'guest_user' : 'offline_user',
-      displayName: isGuest ? 'Tamu' : ((savedParsed && savedParsed._userName) ? savedParsed._userName : 'Offline Mode'),
+      displayName: (savedParsed && savedParsed._userName) ? savedParsed._userName : (isGuest ? 'Tamu' : 'Offline Mode'),
       photoURL: (savedParsed && savedParsed._userPhoto) ? savedParsed._userPhoto : null,
       email: '',
       _isOffline: true,
@@ -1196,12 +1196,13 @@ function _startFirebase() {
           if (_savedForOffline) {
             try {
               var _sp = JSON.parse(_savedForOffline);
-              // Hanya masuk offline mode kalau sebelumnya login Google (bukan guest)
-              _hasPrevLogin = _sp && _sp._userName && !_sp._isGuest;
+              // ✅ FIX: Izinkan guest DAN Google user masuk offline mode
+              // Sebelumnya guest dikecualikan (!_sp._isGuest) sehingga data kelihatan hilang saat jaringan/COOP error
+              _hasPrevLogin = _sp && _sp._userName;
             } catch(e) {}
           }
           if (_hasPrevLogin) {
-            // Ada data user sebelumnya → masuk offline mode, jangan tampil login
+            // Ada data user sebelumnya (Google atau Guest) → masuk offline mode
             _enterOfflineMode();
           } else {
             updateAuthUI(null);
