@@ -143,7 +143,7 @@ var _STRINGS = {
     settings_lang_id: '🇮🇩 Indonesia',
     settings_lang_en: '🇬🇧 English',
     btn_close: 'Tutup',
-    btn_apply_nav: '✓ Terapkan Nav',
+    btn_apply_nav: '✓ Simpan Setting',
     settings_hint: 'Bisa diubah kapan saja di ⚙️ Settings',
     // ── Sync / save ──
     saved: '✓ Tersimpan',
@@ -451,7 +451,7 @@ var _STRINGS = {
     settings_lang_id: '🇮🇩 Indonesian',
     settings_lang_en: '🇬🇧 English',
     btn_close: 'Close',
-    btn_apply_nav: '✓ Apply Nav',
+    btn_apply_nav: '✓ Save Settings',
     settings_hint: 'Can be changed anytime in ⚙️ Settings',
     saved: '✓ Saved',
     sync_activate: '☁️ Enable sync → Sign in with Google',
@@ -2484,6 +2484,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 .subtask-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 .subtask-check{width:14px;height:14px;border-radius:3px;border:1.5px solid #d6d3d1;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.1s}
 .subtask-check.checked{background:var(--green);border-color:var(--green);color:#fff;font-size:8px}
+.check.future-locked{cursor:not-allowed!important;opacity:0.4!important;}
 .subtask-name.done-sub{text-decoration:line-through;color:#b8b4b0}
 
 /* Habit side panel */
@@ -6519,6 +6520,7 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
         <span style="font-size:12px">🔔</span><span id="mchip-reminder-label" style="color:rgba(255,255,255,0.75);font-size:12px;font-weight:600">Reminder</span>
       </button>
       <input type="number" id="mchip-steps" class="mchip-select" placeholder="🔢 Langkah" min="2" max="20" style="flex-shrink:0">
+      <span class="mchip" id="mchip-pomo" onclick="toggleChip('pomo');syncMobileChips()">🍅 Pomodoro Timer</span>
     </div>
     <div class="mobile-add-chips" style="margin-top:4px">
       <input type="number" id="mchip-xp" class="mchip-select" placeholder="⚡ XP" min="1" max="200" style="display:none">
@@ -6939,6 +6941,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
         <input type="hidden" id="chip-reminder">
         <button type="button" onclick="openReminderPicker('chip-reminder')" id="chip-reminder-btn" class="chip-select" title="Pengingat" style="cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;white-space:nowrap;-webkit-tap-highlight-color:transparent">🔔 <span id="chip-reminder-label">Reminder</span></button>
         <input type="number" id="chip-steps" class="chip-select" placeholder="🔢 Langkah" min="2" max="20" style="width:105px">
+        <span class="chip" id="chip-pomo" onclick="toggleChip('pomo')">🍅 Pomodoro Timer</span>
         <input type="number" id="chip-xp" class="chip-select" placeholder="⚡ XP" min="1" max="200" style="width:80px;display:none" title="XP per task (default 10)">
         <input type="number" id="chip-gold" class="chip-select" placeholder="🪙 Gold" min="0" max="999" style="width:80px;display:none" title="Gold per task (default 2)">
         <div style="display:flex;gap:4px;align-items:center;padding:2px 6px;border:1px solid var(--border);border-radius:20px;background:var(--card)">
@@ -7003,6 +7006,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
             <span style="font-size:12px">🔔</span><span id="sqa-reminder-label" style="font-size:11px;font-weight:600">Reminder</span>
           </button>
           <input type="number" id="sqa-steps" class="sqa-select" placeholder="🔢 Langkah" min="2" max="20" style="width:110px">
+          <span class="sqa-chip" id="sqachip-pomo" onclick="toggleSqaChip('pomo')">🍅 Pomodoro Timer</span>
           <input type="number" id="sqa-xp" class="sqa-select" placeholder="⚡ XP" min="1" max="200" style="width:80px;display:none">
           <input type="number" id="sqa-gold" class="sqa-select" placeholder="🪙 Gold" min="0" max="999" style="width:80px;display:none">
         </div>
@@ -7159,13 +7163,10 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
       <button onclick="addSubtask()" style="padding:6px 12px;border:none;border-radius:7px;background:var(--accent);color:#fff;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif">+</button>
     </div>
   </div>
-  <div class="det-field">
-    <div class="det-label">Tampilkan di My Day</div>
-    <select class="det-input" id="det-myday" onchange="liveDetail()">
-      <option value="true">Ya</option>
-      <option value="false">Tidak</option>
-    </select>
-  </div>
+  <select id="det-myday" style="display:none">
+    <option value="true">Ya</option>
+    <option value="false">Tidak</option>
+  </select>
   <div class="det-field">
     <div class="det-label">Catatan</div>
     <textarea class="det-input" id="det-note" rows="3" placeholder="Tambah catatan..." oninput="liveDetail()" style="resize:vertical"></textarea>
@@ -7507,7 +7508,7 @@ function offset(n){var dt=new Date(today);dt.setDate(dt.getDate()+n);return loca
 function fmtDate(s){if(!s)return'';var p=s.split('-');return p[2]+'/'+p[1]+'/'+p[0];}
 function fmt(s){if(!s)return'';var d=new Date(s+'T00:00:00'),diff=Math.round((d-today)/86400000);if(diff===0)return'Hari ini';if(diff===-1)return'Kemarin';if(diff===1)return'Besok';return diff<0?Math.abs(diff)+' hari lalu':diff+' hari lagi';}
 function fmtShort(s){if(!s)return'';return new Date(s+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'});}
-function isOverdue(t){return t.due&&t.due<todayStr&&!t.done;}
+function isOverdue(t){return t.due&&t.due<todayStr&&!t.done&&!t._nextDue;}
 function fmtRp(n){if(!n&&n!==0)return'Rp 0';var neg=n<0;return(neg?'-':'')+'Rp '+Math.abs(Math.round(n)).toLocaleString('id-ID');}
 // Custom confirm modal — pengganti confirm() native yang sering diblokir di webview/iframe
 function showConfirm(msg,onOk,onCancel){
@@ -7644,7 +7645,7 @@ var XP_PER_LEVEL = 100; // legacy — masih dipakai di beberapa tempat, set ke 1
 // STATE
 // ══════════════════════════════════════════════
 var tasks=[], nextId=13, currentView='myday', selectedTask=null;
-var chipState={habit:false,important:false,shopping:false,nodue:false,color:''};
+var chipState={habit:false,important:false,shopping:false,nodue:false,pomo:false,color:''};
 var darkMode=false, sortDir=1, habitStreakMode='week';
 var groupOpenState={}, customGroups=[], customGroupIcons={};
 var mydayGroupOrder=[]; // urutan grup di My Day (drag-to-reorder)
@@ -8099,7 +8100,20 @@ function isHabitDueToday(t){
 // ══════════════════════════════════════════════
 function processRepeatReset(){
   tasks.forEach(function(t){
-    if(!t.repeat||!t.done)return;
+    if(!t.repeat)return;
+    // Kasus baru: task selesai hari ini, punya _nextDue → saat hari berganti, aktifkan next cycle
+    if(t._nextDue && t.done && t.doneDate && t.doneDate < todayStr){
+      t.done=false;
+      t.due=t._nextDue;
+      t.doneDate=null;
+      delete t._nextDue;
+      t.myday=(t.due===todayStr);
+      if(t.subtasks&&t.subtasks.length){t.subtasks.forEach(function(s){s.done=false;});}
+      if(t.steps&&t.steps>=2)t.stepsDone=0;
+      return;
+    }
+    // Kasus lama: task done tanpa _nextDue (migrasi data lama)
+    if(!t.done)return;
     if(isRepeatSkipToday(t.repeat))return;
     var doneDate=t.doneDate||offset(-1);
     if(doneDate>=todayStr)return;
@@ -8110,6 +8124,7 @@ function processRepeatReset(){
       t.done=false;
       t.due=todayStr;
       t.doneDate=null;
+      delete t._nextDue;
       if(t.subtasks&&t.subtasks.length){t.subtasks.forEach(function(s){s.done=false;});}
       if(t.steps&&t.steps>=2)t.stepsDone=0;
     }
@@ -8827,17 +8842,10 @@ function buildDetailColorPicker(){
 //   reschedule, t.done di-reset ke false tapi history tanggal tetap tercatat)
 // - Task dengan steps: stepsDone >= steps (tapi setelah reset stepsDone=0, tidak done lagi)
 function isEffectiveDone(t){
-  if(t.done)return true;
-  if(t.history&&t.history.length){
-    // Habit/repeat yang sudah selesai HARI INI dan di-reschedule ke masa depan:
-    // due-nya sudah jadi besok, tapi history hari ini tetap ada → anggap selesai
-    if(t.history.indexOf(todayStr)>=0)return true;
-    // Task dengan due date di masa depan yang belum dikerjakan sama sekali → false
-    if(t.due&&t.due>todayStr)return false;
-    // Untuk task overdue: cek apakah due date-nya ada di history
-    var checkDate=t.due&&t.due<=todayStr?t.due:todayStr;
-    if(t.history.indexOf(checkDate)>=0)return true;
-  }
+  // Task selesai biasa
+  if(t.done) return true;
+  // Task repeat yang sudah selesai hari ini (history hari ini ada)
+  if(t.history && t.history.indexOf(todayStr) >= 0) return true;
   return false;
 }
 
@@ -8850,15 +8858,20 @@ function isDoneForDate(t, dateStr){
 
 function getFiltered(){
   switch(currentView){
-    case 'myday':     return tasks.filter(function(t){
-      if(!(t.myday||t.due===todayStr))return false;
-      var hd=t.due&&t.due<todayStr?t.due:todayStr;
-      return !isDoneForDate(t,hd);
-    }).concat(tasks.filter(function(t){
-      if(!(t.myday||t.due===todayStr))return false;
-      var hd=t.due&&t.due<todayStr?t.due:todayStr;
-      return isDoneForDate(t,hd);
-    }));
+    case 'myday': {
+      // Tampilkan: (1) due hari ini, (2) tidak ada due, (3) sudah selesai hari ini (history)
+      var mdAll = tasks.filter(function(t){
+        if(t.due && t.due > todayStr && !t._nextDue) return false; // future task tanpa _nextDue
+        var dueToday = !t.due || t.due === todayStr;
+        var doneToday = t.history && t.history.indexOf(todayStr) >= 0;
+        var hasDueToday = t.due && t.due <= todayStr;
+        return dueToday || doneToday || hasDueToday;
+      });
+      // Pending dulu, lalu selesai
+      var mdPending = mdAll.filter(function(t){ return !isEffectiveDone(t); });
+      var mdDone    = mdAll.filter(function(t){ return isEffectiveDone(t); });
+      return mdPending.concat(mdDone);
+    }
     case 'important': return tasks.filter(function(t){
       if(!t.important)return false;
       var hd=t.due&&t.due<todayStr?t.due:todayStr;
@@ -8869,21 +8882,25 @@ function getFiltered(){
       return isDoneForDate(t,hd);
     }));
     case 'planned':   return tasks.filter(function(t){
+      // Task selesai hari ini dengan _nextDue → tampil di terjadwal sebagai next cycle
+      if(t._nextDue && t.done) return true;
       if(!t.due)return false;
-      // Task future: tampilkan selama belum done (t.done saja, bukan isEffectiveDone)
+      // Task future: tampilkan selama belum done
       if(t.due>todayStr)return !t.done;
-      // Task hari ini atau overdue: tampilkan jika belum done dan belum ada di history due-nya
+      // Task hari ini atau overdue: tampilkan jika belum done
       return !t.done&&!isDoneForDate(t,t.due);
-    }).sort(function(a,b){return a.due.localeCompare(b.due);});
+    }).sort(function(a,b){
+      var da = a._nextDue||a.due||''; var db = b._nextDue||b.due||'';
+      return da.localeCompare(db);
+    });
     case 'all':       return tasks.slice().sort(function(a,b){
       return isEffectiveDone(a)-isEffectiveDone(b);
     });
     case 'completed': return tasks.filter(function(t){
-      // Repeat/habit yang sudah selesai hari ini lalu di-reschedule ke masa depan:
-      // due-nya sudah jadi besok, tapi history hari ini tetap ada → tampilkan
-      if(t.history && t.history.indexOf(todayStr)>=0) return true;
-      // Regular task: done=true DAN doneDate tepat hari ini
-      if(t.done && t.doneDate===todayStr) return true;
+      // Hanya task yang selesai HARI INI (kemarin/lalu hanya di kalender)
+      if(t.done) return t.doneDate===todayStr||!t.doneDate;
+      // Habit/repeat: selesai hari ini jika history punya todayStr
+      if(t.history&&t.history.indexOf(todayStr)>=0) return true;
       return false;
     });
     case 'habits':    return tasks.filter(function(t){return t.type==='Habit';});
@@ -8916,13 +8933,25 @@ function renderPlannedGroup(key, list, label, color, defaultOpen){
 function render(){updateCounts();updateMaintCount();renderMain();renderHabitPanel();updateGoldDisplay();}
 
 function updateCounts(){
-  document.getElementById('cnt-myday').textContent=tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done&&!(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);}).length;
+  document.getElementById('cnt-myday').textContent=tasks.filter(function(t){
+    // Hitung task aktif (belum selesai) yang due hari ini atau tidak ada due
+    if(t.done || (t.history && t.history.indexOf(todayStr)>=0)) return false; // sudah selesai
+    if(t.due && t.due > todayStr) return false; // future
+    if(t.steps && t.steps>=2 && t.stepsDone>=t.steps) return false;
+    return !t.due || t.due === todayStr;
+  }).length;
   document.getElementById('cnt-important').textContent=tasks.filter(function(t){return t.important&&!t.done;}).length;
-  document.getElementById('cnt-planned').textContent=tasks.filter(function(t){return t.due&&!t.done;}).length;
+  document.getElementById('cnt-planned').textContent=tasks.filter(function(t){
+    // Sama persis dengan logic render: pending + _nextDue tasks
+    if(t._nextDue && t.done) return true;              // repeat selesai, next cycle pending
+    if(!t.due) return false;                            // tanpa due tidak masuk terjadwal
+    if(isEffectiveDone(t)) return false;               // sudah selesai, jangan hitung
+    if(t.due > todayStr) return true;                  // future
+    return !isDoneForDate(t, t.due);                   // hari ini atau overdue yang belum selesai
+  }).length;
   document.getElementById('cnt-completed').textContent=tasks.filter(function(t){
-    if(t.due&&t.due>todayStr)return false;
-    if(t.done&&t.doneDate===todayStr)return true;
-    if(!t.done&&t.history&&t.history.indexOf(todayStr)>=0)return true;
+    if(t.done) return t.doneDate===todayStr||!t.doneDate;
+    if(t.history&&t.history.indexOf(todayStr)>=0) return true;
     return false;
   }).length;
   // Tagihan due soon (within 7 days or overdue)
@@ -9128,6 +9157,7 @@ function renderMain(){
       return true;
     });
     var mydayTasks=tasks.filter(function(t){
+      if(t.due&&t.due>todayStr)return false;
       if(!t.myday&&t.due!==todayStr)return false;
       if(t.type==='Habit')return isHabitDueToday(t);
       return true;
@@ -9141,36 +9171,33 @@ function renderMain(){
     // Kelompokkan semua task myday per grup (aktif + selesai)
     var groups={};
     mydayTasks.forEach(function(t){var g=t.group||'';if(!groups[g])groups[g]=[];groups[g].push(t);});
+    // Masukkan overdue tasks sebagai grup '__overdue__' di dalam groups
+    var OVERDUE_KEY='__overdue__';
+    if(overdueTasks.length){
+      overdueTasks.sort(function(a,b){return a.due.localeCompare(b.due);});
+      groups[OVERDUE_KEY]=overdueTasks;
+    }
     // Susun urutan grup: gunakan mydayGroupOrder sbg urutan dasar, sisipkan grup baru yg belum ada
     var defaultOrder=getGroupOrder().filter(function(g){return groups[g]&&groups[g].length;});
     if(groups['']&&groups[''].length&&defaultOrder.indexOf('')<0)defaultOrder.push('');
     defaultOrder.forEach(function(g){if(mydayGroupOrder.indexOf(g)<0)mydayGroupOrder.push(g);});
+    // Masukkan OVERDUE_KEY ke mydayGroupOrder jika belum ada (agar posisi drag bisa tersimpan)
+    if(groups[OVERDUE_KEY]&&mydayGroupOrder.indexOf(OVERDUE_KEY)<0)mydayGroupOrder.push(OVERDUE_KEY);
     var orderedGrps=mydayGroupOrder.filter(function(g){return groups[g]&&groups[g].length;});
 
-    // FIX: Render section overdue di atas My Day
-    var overdueHtml='';
-    if(overdueTasks.length){
-      overdueHtml+='<div class="group-accordion" id="overdue-accordion" style="border-color:#fca5a5;margin-bottom:8px">'
-        +'<div class="group-header" style="background:#fff1f2" onclick="toggleOverdueGroup()">'
-        +'<div class="group-header-left" style="color:#dc2626">\u26a0\ufe0f Terlambat<span class="group-badge" style="background:#dc2626">'+overdueTasks.length+'</span></div>'
-        +'<span class="group-chevron open" id="overdue-chevron">\u25bc</span>'
-        +'</div>'
-        +'<div class="group-body open" id="overdue-body"><div style="padding:6px 8px 8px">';
-      overdueTasks.sort(function(a,b){return a.due.localeCompare(b.due);}).forEach(function(t){overdueHtml+=taskCard(t);});
-      overdueHtml+='</div></div></div>';
-    }
-    var html=overdueHtml+getUpcomingTaskReminderHTML()+getJournalMyDayBannerHTML()+getTagihanMyDayHTML()+getMaintMyDayHTML();
+    var html=getUpcomingTaskReminderHTML()+getJournalMyDayBannerHTML()+getTagihanMyDayHTML()+getMaintMyDayHTML();
     orderedGrps.forEach(function(g){
       var gTasks=groups[g];
       var pending=gTasks.filter(function(t){return!isEffectiveDone(t)&&!(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);});
       var done=gTasks.filter(function(t){return isEffectiveDone(t)||(t.steps&&t.steps>=2&&t.stepsDone>=t.steps);});
       if(!pending.length)return;
-      var gKey='md_'+g;
+      var isOverdue=(g===OVERDUE_KEY);
+      var gKey=isOverdue?'md_overdue':('md_'+g);
       if(!(gKey in groupOpenState))groupOpenState[gKey]=true;
       var isOpen=groupOpenState[gKey];
-      var label=g?(getGroupIcon(g)+' '+g):'📁 Tanpa Grup';
-      var badge='<span class="group-badge">'+pending.length+'</span>';
-      var gSafe=g.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      var label=isOverdue?'\u26a0\ufe0f Terlambat':(g?(getGroupIcon(g)+' '+g):'📁 Tanpa Grup');
+      var badge='<span class="group-badge"'+(isOverdue?' style="background:#dc2626"':'')+'>'+pending.length+'</span>';
+      var gSafe=isOverdue?'__overdue__':(g.replace(/\\/g,'\\\\').replace(/'/g,"\\'"));
 
       // Estimasi saldo wallet untuk grup Belanja
       var estimasiHtml='';
@@ -9225,12 +9252,16 @@ function renderMain(){
         }
       }
 
-      html+='<div class="group-accordion myday-drag-grp" draggable="true" data-grp="'+g.replace(/"/g,'&quot;')+'"'
+      var accordionExtra=isOverdue?' style="border-color:#fca5a5"':'';
+      var headerExtra=isOverdue?' style="display:flex;align-items:center;gap:0;background:#fff1f2"':' style="display:flex;align-items:center;gap:0"';
+      var labelExtra=isOverdue?' style="flex:1;color:#dc2626"':' style="flex:1"';
+      html+='<div class="group-accordion myday-drag-grp" draggable="true" data-grp="'+(isOverdue?'__overdue__':g.replace(/"/g,'&quot;'))+'"'
+        +accordionExtra
         +' ondragstart="mdGrpDragStart(event,this)" ondragend="mdGrpDragEnd(event,this)"'
         +' ondragover="mdGrpDragOver(event)" ondragleave="mdGrpDragLeave(event)" ondrop="mdGrpDrop(event,this)">'
-        +'<div class="group-header" onclick="toggleGroup(\''+gKey+'\')" style="display:flex;align-items:center;gap:0">'
+        +'<div class="group-header" onclick="toggleGroup(\''+gKey+'\')"'+headerExtra+'>'
         +'<span class="myday-drag-handle" onclick="event.stopPropagation()" title="Drag untuk ubah urutan">⠿</span>'
-        +'<div class="group-header-left" style="flex:1">'+label+badge+'</div>'
+        +'<div class="group-header-left"'+labelExtra+'>'+label+badge+'</div>'
         +'<span class="group-chevron'+(isOpen?' open':'')+'">▼</span>'
         +'</div>'
         +'<div class="group-body'+(isOpen?' open':'')+'"><div style="padding:6px 8px 8px">'
@@ -9248,12 +9279,15 @@ function renderMain(){
     return;
   }
   var html='';
-  var pending=list.filter(function(t){return!isEffectiveDone(t);}),done=list.filter(function(t){return isEffectiveDone(t);});
+  // Task dengan _nextDue (repeat selesai hari ini) → tampil sebagai pending di Terjadwal
+  var pending=list.filter(function(t){return !isEffectiveDone(t) || t._nextDue;});
+  var done=list.filter(function(t){return isEffectiveDone(t) && !t._nextDue;});
   if(pending.length){
     if(currentView==='planned'){
-      var overdueList=pending.filter(function(t){return t.due<todayStr;});
-      var todayList=pending.filter(function(t){return t.due===todayStr;});
-      var upcomingList=pending.filter(function(t){return t.due>todayStr;});
+      // Task dengan _nextDue: gunakan _nextDue untuk pengelompokan, bukan due asli
+      var overdueList=pending.filter(function(t){var d=t._nextDue||t.due; return d<todayStr && !t._nextDue;});
+      var todayList=pending.filter(function(t){var d=t._nextDue||t.due; return d===todayStr;});
+      var upcomingList=pending.filter(function(t){var d=t._nextDue||t.due; return d>todayStr;});
       html+=renderPlannedGroup('overdue',overdueList,'⚠️ Terlambat','#dc2626',true);
       html+=renderPlannedGroup('today',todayList,'☀️ Hari Ini','var(--accent)',true);
       html+=renderPlannedGroup('upcoming',upcomingList,'📅 Akan Datang','var(--text)',true);
@@ -9289,7 +9323,8 @@ function taskCard(t){
     for(var i=0;i<t.steps;i++){
       var checked=i<stepsDone;
       var bc=checked?'var(--green)':'#d6d3d1',bg=checked?'var(--green)':'transparent';
-      boxes+='<div onclick="event.stopPropagation();toggleStep('+t.id+','+i+')" style="width:16px;height:16px;border-radius:50%;border:2px solid '+bc+';background:'+bg+';display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0"><span style="color:#fff;font-size:8px">'+(checked?'✓':'')+'</span></div>';
+      var stepClick=isFutureTask?('event.stopPropagation();showToast(\'⏳ Task ini baru bisa diselesaikan pada '+fmt(t.due)+'\')'):'event.stopPropagation();toggleStep('+t.id+','+i+')';
+      boxes+='<div onclick="'+stepClick+'" style="width:16px;height:16px;border-radius:50%;border:2px solid '+bc+';background:'+bg+';display:inline-flex;align-items:center;justify-content:center;cursor:'+(isFutureTask?'not-allowed':'pointer')+';flex-shrink:0;opacity:'+(isFutureTask?'0.5':'1')+'"><span style="color:#fff;font-size:8px">'+(checked?'✓':'')+'</span></div>';
     }
     stepsHtml='<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:5px;align-items:center">'+boxes+'<span style="font-size:10px;color:var(--muted);margin-left:3px;font-family:DM Mono,monospace">'+stepsDone+'/'+t.steps+'</span></div>';
   }
@@ -9298,19 +9333,23 @@ function taskCard(t){
   if(t.subtasks&&t.subtasks.length){
     subHtml='<div class="subtask-list">';
     t.subtasks.forEach(function(s){
-      subHtml+='<div class="subtask-item"><div class="subtask-check'+(s.done?' checked':'')+'" onclick="event.stopPropagation();toggleSubtask('+t.id+',\''+s.id+'\')">'+(s.done?'✓':'')+'</div><span class="subtask-name'+(s.done?' done-sub':'')+'">'+s.name+'</span></div>';
+      subHtml+='<div class="subtask-item"><div class="subtask-check'+(s.done?' checked':'')+'" onclick="event.stopPropagation();'+(isFutureTask?'showToast(\'⏳ Task ini baru bisa diselesaikan pada '+fmt(t.due)+'\')':'toggleSubtask('+t.id+',\''+s.id+'\')')+'" style="cursor:'+(isFutureTask?'not-allowed':'pointer')+';opacity:'+(isFutureTask?'0.5':'1')+'">'+(s.done?'✓':'')+'</div><span class="subtask-name'+(s.done?' done-sub':'')+'">'+s.name+'</span></div>';
     });
     subHtml+='</div>';
   }
 
   var colorStrip=color?'<div class="task-color-strip" style="background:'+color+'"></div>':'';
+  var isFutureTask=!!(t.due&&t.due>todayStr&&!t._nextDue);
   var checkIcon=effectiveDone?'✓':(isMulti?'<span style="font-size:8px;font-weight:700;color:var(--accent)">'+stepsDone+'</span>':'');
-  var checkClick=isMulti?'toggleStep('+t.id+',"all")':'toggleDone('+t.id+')';
+  var checkClick=isFutureTask?'event.stopPropagation();showToast(\'⏳ Task ini baru bisa diselesaikan pada \'+fmt(\''+t.due+'\'))':isMulti?'toggleStep('+t.id+',"all")':'toggleDone('+t.id+')';
   var cardClass='task-card'+(effectiveDone?' done':'')+(over?' overdue':'');
-  var checkClass='check'+(effectiveDone?' checked':'');
+  var checkClass='check'+(effectiveDone?' checked':'')+(isFutureTask?' future-locked':'');
   var groupTag=t.group?'<span class="tag" style="background:#f0fdf4;color:#166534">'+getGroupIcon(t.group)+' '+t.group+'</span>':'';
   var repeatTag=t.repeat?'<span class="tag repeat">🔄 '+t.repeat+'</span>':'';
-  var dueTag=t.due?'<span class="due'+(over?' overdue':'')+'">📅 '+fmt(t.due)+'</span>':'';
+  var displayDue = (currentView==='completed')?t.due:(t._nextDue||t.due);
+  var isNextCycle = currentView!=='completed'&&!!t._nextDue;
+  var isNextCycle = !!t._nextDue;
+  var dueTag=displayDue?'<span class="due'+(over?' overdue':'')+(isNextCycle?'">🔄 ':'">📅 ')+fmt(displayDue)+'</span>':'';
   var reminderTag=t.reminder?'<span style="font-size:10px;color:var(--muted)">🔔 '+t.reminder+'</span>':'';
   var noteTag=t.note?'<span style="font-size:11px;color:var(--muted)">· '+t.note.slice(0,30)+(t.note.length>30?'…':'')+'</span>':'';
   var typeTag='<span class="tag '+(t.type==='Habit'?'habit':(t.isShopping?'shopping':'task'))+'">'+( t.isShopping?'🛒 Belanja':t.type)+'</span>';
@@ -9326,7 +9365,8 @@ function taskCard(t){
       +stepsHtml+subHtml
       +'<div class="task-meta">'+typeTag+groupTag+repeatTag+dueTag+reminderTag+xpTag+' '+goldTag+priceTag+noteTag+'</div>'
     +'</div>'
-    +'<button onclick="event.stopPropagation();openPomoForTask('+t.id+')" title="Pomodoro 🍅" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px;line-height:1;flex-shrink:0;border-radius:5px;transition:background 0.1s">🍅</button>'
+    +(over&&!effectiveDone?'<button onclick="event.stopPropagation();skipToToday('+t.id+')" title="Skip ke hari ini" style="border:none;background:#fff7ed;color:#d97706;cursor:pointer;font-size:10px;font-weight:700;padding:4px 8px;line-height:1.3;flex-shrink:0;border-radius:6px;border:1px solid #fed7aa;font-family:DM Sans,sans-serif;transition:background 0.1s;white-space:nowrap">⏩ Skip ke hari ini</button>':'')
+    +(t.pomo?'<button onclick="event.stopPropagation();openPomoForTask('+t.id+')" title="Pomodoro" style="border:none;background:none;cursor:pointer;font-size:15px;padding:2px 3px;line-height:1;flex-shrink:0;border-radius:5px;transition:background 0.1s;-webkit-tap-highlight-color:transparent">🍅</button>':'')
     +'<button class="star-btn'+(t.important?' on':'')+'" onclick="event.stopPropagation();toggleImportant('+t.id+')" title="'+(t.important?'Hapus dari penting':'Tandai penting')+'">'+(t.important?'★':'☆')+'</button>'
     +'</div>';
 }
@@ -9728,6 +9768,8 @@ function getTasksForDate(dateStr){
     }
     // Regular task yang diselesaikan di dateStr (doneDate = dateStr, meski due beda)
     if(t.done&&t.doneDate===dateStr){seen[t.id]=true;result.push(t);return;}
+    // Fix: task biasa yang diselesaikan overdue — due sudah lewat tapi history mencatat tanggal due asli
+    if(t.done&&t.type!=='Habit'&&t.history&&t.history.indexOf(dateStr)>=0){seen[t.id]=true;result.push(t);return;}
     // Task tanpa due date tidak muncul di kalender (kecuali selesai di dateStr, sudah ditangani di atas)
     // TIDAK include history umum di sini — repeat task yang sudah reschedule
     // cukup muncul di due date barunya, bukan di tanggal history lama.
@@ -10329,7 +10371,7 @@ function dpRenderCalendar() {
 
   var today = new Date();
   today.setHours(0,0,0,0);
-  var todayStr = today.toISOString().split('T')[0];
+  var todayStr = localDateStr(today);
 
   // first day of month
   var firstDay = new Date(_dpViewYear, _dpViewMonth, 1).getDay(); // 0=Sun
@@ -14088,46 +14130,70 @@ function calcNextDue(t, fromDate) {
   return localDateStr(dt);
 }
 
+function skipToToday(id){
+  var t=tasks.filter(function(x){return x.id===id;})[0];if(!t)return;
+  if(!t.due||t.due>=todayStr)return;
+  t.due=todayStr;
+  t.myday=true;
+  showToast('⏩ Task dipindah ke hari ini');
+  saveData(true);render();
+}
 function toggleDone(id){
   var t=tasks.filter(function(x){return x.id===id;})[0];if(!t)return;
-  // Task dengan due masa depan tidak bisa dicentang
-  if(!t.done&&t.due&&t.due>todayStr){showToast('⏳ Task ini baru bisa diselesaikan pada '+fmt(t.due));return;}
-  var _wasChecked=!t.done; // true = baru dicentang, false = di-uncheck
-  var _savedDoneDate=t.doneDate; // simpan sebelum di-null
-  var effectiveDoneDate=(t.due&&t.due<todayStr)?t.due:todayStr; // tanggal efektif selesai
-  t.done=!t.done;
-  if(t.done){
-    // FIX OVERDUE: gunakan due date asli sebagai tanggal selesai (bukan hari ini)
-    // supaya repeat dihitung dari due asli, bukan dari hari dicentang
-    t.doneDate=effectiveDoneDate;totalDone++;
-    // Hanya beri XP & Gold kalau task BELUM PERNAH selesai hari ini (cegah double reward)
-    var _alreadyRewarded=t.history&&(t.history.indexOf(todayStr)>=0||t.history.indexOf(effectiveDoneDate)>=0);
-    if(!_alreadyRewarded){
-      var xpGain=getTaskXP(t);
-      addXP(xpGain,'+'+xpGain);
-      var goldGain=t.goldVal||GOLD_PER_TASK;
-      addGold(goldGain);
-    }
-    awardStatProgress(t);
-    triggerCompletionEffect();
-    // Repeat: jadwalkan ke due berikutnya dihitung dari due asli (bukan hari ini)
-    if(t.repeat){
-      var nextDue=calcNextDue(t,effectiveDoneDate);
-      if(nextDue){
-        t._prevDue=t.due;
-        t.due=nextDue;
-        t.done=false;
-        t.doneDate=null;
-        // FIX: reset steps supaya task muncul kembali sebagai aktif
-        if(t.steps)t.stepsDone=0;
-        // NOTE: JANGAN hapus history effectiveDoneDate di sini!
-        // History tetap perlu dicatat supaya task muncul di tab Selesai hari ini.
-        // processRepeatReset akan membersihkan next-cycle saat due baru tiba.
-        // Jika next due = hari ini, langsung masuk myday
-        t.myday=(nextDue===todayStr);
+
+  // Kalau task punya _nextDue (sudah selesai hari ini, repeat pending besok)
+  // dan user uncheck dari view completed → batalkan: hapus _nextDue, kembalikan ke My Day
+  if(t._nextDue && t.done){
+    // Undo repeat: hapus _nextDue, kembalikan due ke hari ini
+    delete t._nextDue;
+    t.done=false;
+    t.doneDate=null;
+    t.due=todayStr;
+    t.myday=true;
+    if(t.steps)t.stepsDone=0;
+    totalDone=Math.max(0,totalDone-1);
+    xp=Math.max(0,xp-getTaskXP(t));updateXPBar();
+    goldBalance=Math.max(0,goldBalance-(t.goldVal||GOLD_PER_TASK));updateGoldDisplay();
+    revokeStatProgress(t);
+    // Hapus history hari ini
+    if(!t.history)t.history=[];
+    var hi=t.history.indexOf(todayStr);if(hi>=0)t.history.splice(hi,1);
+    // Undo shopping
+    if(t.isShopping&&t.price&&t.walletId){
+      var w=getWalletById(t.walletId);
+      for(var i=finTransactions.length-1;i>=0;i--){
+        if(finTransactions[i].note==='Task: '+t.name&&finTransactions[i].type==='expense'){
+          if(w)w.balance+=t.price;finTransactions.splice(i,1);break;
+        }
       }
     }
-    // Shopping: deduct from wallet
+    showToast('↩️ Task dibuka kembali');
+    checkAchievements();saveData(true);render();
+    return;
+  }
+
+  // Task dengan due masa depan tidak bisa dicentang
+  if(!t.done&&t.due&&t.due>todayStr){showToast('⏳ Task ini baru bisa diselesaikan pada '+fmt(t.due));return;}
+
+  var _wasChecked=!t.done;
+  var effectiveDoneDate=(t.due&&t.due<todayStr)?t.due:todayStr;
+  t.done=!t.done;
+
+  if(t.done){
+    t.doneDate=effectiveDoneDate;totalDone++;
+    var _alreadyRewarded=t.history&&(t.history.indexOf(todayStr)>=0||t.history.indexOf(effectiveDoneDate)>=0);
+    if(!_alreadyRewarded){
+      var xpGain=getTaskXP(t);addXP(xpGain,'+'+xpGain);
+      var goldGain=t.goldVal||GOLD_PER_TASK;addGold(goldGain);
+    }
+    awardStatProgress(t);triggerCompletionEffect();
+    // Repeat: simpan _nextDue, task tetap done=true tampil di Selesai
+    // _nextDue dipakai oleh: view Terjadwal (preview next cycle) & processRepeatReset (besok pagi)
+    if(t.repeat){
+      var nextDue=calcNextDue(t,effectiveDoneDate);
+      if(nextDue) t._nextDue=nextDue;
+    }
+    // Shopping
     if(t.isShopping&&t.price&&t.walletId){
       var w=getWalletById(t.walletId);
       if(w){
@@ -14136,47 +14202,39 @@ function toggleDone(id){
         showToast('✅ Selesai & '+fmtRp(t.price)+' dikurangi dari '+w.name);
       }
     }
-    var myDayTasks=tasks.filter(function(x){return x.myday;});
-    if(myDayTasks.length&&myDayTasks.every(function(x){return x.done;})){perfectDays++;showToast('✨ Hari Sempurna! Semua task selesai!');}
+    var myDayTasks=tasks.filter(function(x){return x.myday||x.due===todayStr;});
+    if(myDayTasks.length&&myDayTasks.every(function(x){return x.done||(x._nextDue&&x.history&&x.history.indexOf(todayStr)>=0);})){perfectDays++;showToast('✨ Hari Sempurna! Semua task selesai!');}
   } else {
+    // Uncheck task biasa (non-repeat atau repeat tanpa _nextDue)
     t.doneDate=null;totalDone=Math.max(0,totalDone-1);
     xp=Math.max(0,xp-getTaskXP(t));updateXPBar();
-    // Kembalikan gold yang pernah diberikan saat task diselesaikan
     goldBalance=Math.max(0,goldBalance-(t.goldVal||GOLD_PER_TASK));updateGoldDisplay();
     revokeStatProgress(t);
-    // Undo repeat scheduling (kalau sebelumnya sudah di-reschedule)
-    if(t.repeat&&t._prevDue!==undefined){
-      t.due=t._prevDue;
-      delete t._prevDue;
-    }
+    delete t._nextDue;
     t.myday=(t.due===todayStr||!t.due);
     if(t.steps)t.stepsDone=0;
-    // Reverse shopping deduction (find latest matching tx)
     if(t.isShopping&&t.price&&t.walletId){
       var w=getWalletById(t.walletId);
       var matchTx=null;
       for(var i=finTransactions.length-1;i>=0;i--){
         if(finTransactions[i].note==='Task: '+t.name&&finTransactions[i].type==='expense'){matchTx=i;break;}
       }
-      if(matchTx!==null){
-        if(w)w.balance+=t.price;
-        finTransactions.splice(matchTx,1);
-      }
+      if(matchTx!==null){if(w)w.balance+=t.price;finTransactions.splice(matchTx,1);}
     }
   }
-  // Catat history untuk semua task supaya tab Selesai bisa query berdasarkan tanggal
-  // History selalu pakai todayStr (hari task dicentang), bukan due date asli
-  // effectiveDoneDate hanya dipakai untuk repeat scheduling, bukan untuk history tab Selesai
   if(!t.history)t.history=[];
   if(_wasChecked){
-    if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);
+    // Fix: catat history di effectiveDoneDate (tanggal due asli), bukan hanya todayStr
+    var _histDate = effectiveDoneDate || todayStr;
+    if(t.history.indexOf(_histDate)<0) t.history.push(_histDate);
+    if(_histDate !== todayStr && t.history.indexOf(todayStr)<0) t.history.push(todayStr);
   } else {
-    var hidx=t.history.indexOf(_savedDoneDate||todayStr);if(hidx>=0)t.history.splice(hidx,1);
-    var hidx2=t.history.indexOf(todayStr);if(hidx2>=0)t.history.splice(hidx2,1);
+    var hidx=t.history.indexOf(todayStr);if(hidx>=0)t.history.splice(hidx,1);
+    if(effectiveDoneDate && effectiveDoneDate!==todayStr){var hidx2=t.history.indexOf(effectiveDoneDate);if(hidx2>=0)t.history.splice(hidx2,1);}
   }
   if(_wasChecked){
     if(t.type==='Habit')showToast('🔥 Habit selesai! Streak terjaga!');
-    else if(t.repeat&&t.due)showToast('✅ Selesai! Next due: '+t.due+' 🔄');
+    else if(t.repeat)showToast('✅ Selesai! Terjadwal lagi '+fmt(t._nextDue||'')+ ' 🔄');
     else if(!t.isShopping||!t.price)showToast('Task selesai! ✅');
   } else {
     showToast('↩️ Task dibuka kembali');
@@ -14202,16 +14260,10 @@ function toggleStep(id,idx){
     if(t.repeat){
       var nd=calcNextDue(t,effDate);
       if(nd){
-        t._prevDue=t.due;
-        t.due=nd;
-        t.done=false;
-        t.doneDate=null;
-        t.stepsDone=0;
-        // FIX: JANGAN hapus history — dibutuhkan agar task muncul di tab Selesai hari ini.
-        // Pastikan todayStr tercatat di history (bukan effDate yg mungkin = kemarin)
+        t._nextDue=nd;
+        // task tetap done=true, tampil di Selesai
         if(!t.history)t.history=[];
         if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);
-        t.myday=(nd===todayStr);
       }
     }
   }
@@ -14221,26 +14273,20 @@ function toggleStep(id,idx){
     // Kembalikan gold saat step task dibuka kembali
     goldBalance=Math.max(0,goldBalance-(t.goldVal||GOLD_PER_TASK));updateGoldDisplay();
     revokeStatProgress(t);
-    // Undo repeat jika ada
-    if(t.repeat&&t._prevDue!==undefined){t.due=t._prevDue;delete t._prevDue;}
-    // FIX RESTORE: due kemarin → geser ke hari ini, muncul di My Day aktif
+    // Undo repeat: hapus _nextDue, kembalikan due hari ini
+    if(t.repeat&&t._nextDue){ delete t._nextDue; t.due=todayStr; }
+    // _prevDue sudah tidak dipakai, _nextDue handles repeat
     if(t.due&&t.due<todayStr)t.due=todayStr;
     t.myday=(t.due===todayStr||!t.due);
     t.stepsDone=0;
   }
   if(!t.history)t.history=[];
-  // Deteksi: apakah task ini baru saja selesai lalu di-reschedule (repeat)?
-  // Tandanya: t.done=false tapi _wasStepDone=true dan t._prevDue ada (sudah di-reschedule)
-  var _justRescheduled=(wasDone&&!t.done&&t.repeat&&t._prevDue!==undefined)||
-                       (wasDone&&!t.done&&t.repeat&&t.history&&t.history.indexOf(todayStr)>=0);
-  if(t.type==='Habit'){
-    var hd=(t.doneDate&&t.doneDate<todayStr)?t.doneDate:todayStr;
-    if(t.done||_justRescheduled){if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);}
-    else if(!t.done&&!_justRescheduled){[todayStr,hd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
+  // Catat history hari ini kalau selesai (termasuk repeat dengan _nextDue)
+  if(t.done || t._nextDue){
+    if(t.history.indexOf(todayStr)<0) t.history.push(todayStr);
   } else {
-    var thd=t.doneDate||todayStr;
-    if(t.done||_justRescheduled){if(t.history.indexOf(todayStr)<0)t.history.push(todayStr);}
-    else if(!t.done&&!_justRescheduled){[todayStr,thd].forEach(function(d){var i=t.history.indexOf(d);if(i>=0)t.history.splice(i,1);});}
+    // Uncheck: hapus history hari ini
+    var hi=t.history.indexOf(todayStr); if(hi>=0) t.history.splice(hi,1);
   }
   showToast(t.done?'Semua langkah selesai! ✅':t.stepsDone+'/'+t.steps+' langkah ✓');
   checkAchievements();saveData(true);render();
@@ -14266,6 +14312,7 @@ function toggleHabitDay(id,dateStr){
 
 function toggleSubtask(taskId,subId){
   var t=tasks.filter(function(x){return x.id===taskId;})[0];if(!t||!t.subtasks)return;
+  if(t.due&&t.due>todayStr&&!t._nextDue){showToast('⏳ Task ini baru bisa diselesaikan pada '+fmt(t.due));return;}
   var s=t.subtasks.filter(function(x){return x.id===subId;})[0];if(!s)return;
   s.done=!s.done;
   if(s.done){totalSubtasks++;addXP(XP_PER_SUBTASK,'+'+XP_PER_SUBTASK);}
@@ -14296,13 +14343,15 @@ function addTask(){
   var goldInput=document.getElementById('chip-gold');
   var goldVal=goldInput?(parseInt(goldInput.value)||0):0;
   if(!goldVal)goldVal=_gr.gold;
-  var newTask={id:nextId++,name:name,type:isHabit?'Habit':'Task',repeat:repeat,due:due,done:false,important:isImp,myday:true,note:'',group:group,history:[],color:color,subtasks:[],reminder:reminder,xpVal:xpVal,goldVal:goldVal,isShopping:isShopping||false};
+  var isPomo=chipState.pomo;
+  var newTask={id:nextId++,name:name,type:isHabit?'Habit':'Task',repeat:repeat,due:due,done:false,important:isImp,myday:true,note:'',group:group,history:[],color:color,subtasks:[],reminder:reminder,xpVal:xpVal,goldVal:goldVal,isShopping:isShopping||false,pomo:isPomo||false};
   if(isShopping){newTask.price=chipState.shoppingPrice||0;newTask.walletId=chipState.shoppingWalletId||(defaultShoppingWalletId||'');}
   if(steps){newTask.steps=steps;newTask.stepsDone=0;}
   tasks.unshift(newTask);
-  inp.value='';chipState={habit:false,important:false,shopping:false,nodue:false,color:'',shoppingPrice:0,shoppingWalletId:''};
-  ['chip-habit','chip-important','chip-shopping','chip-nodue'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
-  ['mchip-habit','mchip-important','mchip-shopping','mchip-nodue'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
+  inp.value='';chipState={habit:false,important:false,shopping:false,nodue:false,pomo:false,color:'',shoppingPrice:0,shoppingWalletId:''};
+  ['chip-habit','chip-important','chip-shopping','chip-nodue','chip-pomo'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
+  ['mchip-habit','mchip-important','mchip-shopping','mchip-nodue','mchip-pomo'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
+  ['sqachip-pomo'].forEach(function(id){var el=document.getElementById(id);if(el)el.classList.remove('active');});
   document.getElementById('chip-repeat').value='';
   document.getElementById('chip-group').value='';
   document.getElementById('chip-due').value='';
@@ -14639,11 +14688,8 @@ function liveDetail(){
   selectedTask.due=document.getElementById('det-due').value;
   taskbarDateUpdateLabel('det-due', selectedTask.due||'');
   selectedTask.reminder=document.getElementById('det-reminder').value||'';
-  selectedTask.myday=document.getElementById('det-myday').value==='true';
-  // Auto-sync myday: kalau due diubah ke hari ini, otomatis masuk My Day
-  if(selectedTask.due===todayStr) selectedTask.myday=true;
-  // Kalau due diubah ke masa depan dan myday tidak di-set manual, keluarkan dari My Day
-  else if(selectedTask.due&&selectedTask.due>todayStr&&document.getElementById('det-myday').value!=='true') selectedTask.myday=false;
+  // My Day otomatis: tampil jika due hari ini atau tidak ada due date
+  selectedTask.myday = (selectedTask.due === todayStr || !selectedTask.due);
   selectedTask.note=document.getElementById('det-note').value;
   selectedTask.group=document.getElementById('det-group').value;
   var xpRaw=parseInt(document.getElementById('det-xp').value)||0;  if(xpRaw>0)selectedTask.xpVal=xpRaw;
@@ -14680,9 +14726,10 @@ function renderSubtasksPanel(){
   var wrap=document.getElementById('det-subtasks');if(!wrap||!selectedTask)return;
   if(!selectedTask.subtasks)selectedTask.subtasks=[];
   var html='';
+  var isFutureDet=!!(selectedTask.due&&selectedTask.due>todayStr&&!selectedTask._nextDue);
   selectedTask.subtasks.forEach(function(s,i){
     html+='<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border)">'
-      +'<div class="subtask-check'+(s.done?' checked':'')+'" onclick="toggleSubtaskDet('+i+')">'+(s.done?'✓':'')+'</div>'
+      +'<div class="subtask-check'+(s.done?' checked':'')+'" onclick="toggleSubtaskDet('+i+')" style="cursor:'+(isFutureDet?'not-allowed':'pointer')+';opacity:'+(isFutureDet?'0.5':'1')+'">'+(s.done?'✓':'')+'</div>'
       +'<span style="flex:1;font-size:13px;'+(s.done?'text-decoration:line-through;color:var(--muted)':'')+'">'+s.name+'</span>'
       +'<span onclick="removeSubtask('+i+')" style="cursor:pointer;color:var(--muted);font-size:14px;line-height:1">×</span>'
       +'</div>';
@@ -14703,6 +14750,7 @@ function addSubtask(){
 
 function toggleSubtaskDet(idx){
   if(!selectedTask||!selectedTask.subtasks)return;
+  if(selectedTask.due&&selectedTask.due>todayStr&&!selectedTask._nextDue){showToast('⏳ Task ini baru bisa diselesaikan pada '+fmt(selectedTask.due));return;}
   var s=selectedTask.subtasks[idx];if(!s)return;
   s.done=!s.done;
   if(s.done){totalSubtasks++;addXP(XP_PER_SUBTASK,'+'+XP_PER_SUBTASK);}
@@ -15110,13 +15158,7 @@ function refreshDetailGroups(){
 // MISC
 // ══════════════════════════════════════════════
 function setStreakMode(mode){habitStreakMode=mode;render();}
-function toggleOverdueGroup(){
-  var body=document.getElementById('overdue-body');
-  var chev=document.getElementById('overdue-chevron');
-  if(!body)return;
-  body.classList.toggle('open');
-  if(chev)chev.classList.toggle('open');
-}
+
 function toggleGroup(gKey){groupOpenState[gKey]=!groupOpenState[gKey];saveData();render();}
 function switchView(v){
   currentView=v;
@@ -15906,7 +15948,7 @@ function addTaskSqa(){
 }
 function syncMobileChips(){
   // Sync mobile chip visual state with chipState
-  var keys=['habit','important','shopping','nodue'];
+  var keys=['habit','important','shopping','nodue','pomo'];
   keys.forEach(function(k){
     var el=document.getElementById('mchip-'+k);
     if(el)el.classList.toggle('active',!!chipState[k]);
@@ -16024,7 +16066,7 @@ function updateBottomNav(){
   if(badge){var c=getMaintDueCount();badge.textContent=c;badge.style.display=c?'':'none';}
   // update task badge
   var tbadge=document.getElementById('bn-task-badge');
-  if(tbadge){var tc=tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done;}).length;tbadge.textContent=tc;tbadge.style.display=tc?'':'none';}
+  if(tbadge){var tc=tasks.filter(function(t){return !t.done&&!(t.history&&t.history.indexOf(todayStr)>=0)&&(!t.due||t.due===todayStr);}).length;tbadge.textContent=tc;tbadge.style.display=tc?'':'none';}
   // update sub-drawer active items
   updateSubDrawerActive();
   // update journal count badge
@@ -16032,9 +16074,15 @@ function updateBottomNav(){
   if(jcnt){var jc=journalEntries.length;jcnt.textContent=jc;jcnt.style.display=jc?'':'none';}
   // update sdi counts
   var cntMap={
-    'sdi-cnt-myday':tasks.filter(function(t){return (t.myday||t.due===todayStr)&&!t.done;}).length,
+    'sdi-cnt-myday':tasks.filter(function(t){return !t.done&&!(t.history&&t.history.indexOf(todayStr)>=0)&&(!t.due||t.due===todayStr);}).length,
     'sdi-cnt-important':tasks.filter(function(t){return t.important&&!t.done;}).length,
-    'sdi-cnt-planned':tasks.filter(function(t){return t.due&&!t.done;}).length,
+    'sdi-cnt-planned':tasks.filter(function(t){
+      if(t._nextDue && t.done) return true;
+      if(!t.due) return false;
+      if(isEffectiveDone(t)) return false;
+      if(t.due > todayStr) return true;
+      return !isDoneForDate(t, t.due);
+    }).length,
     'sdi-cnt-completed':tasks.filter(function(t){
       if(t.due&&t.due>todayStr)return false;
       if(t.done&&t.doneDate===todayStr)return true;
@@ -21324,7 +21372,7 @@ toggleDone = function(id){
   _origToggleDone(id);
   var tAfter = tasks.filter(function(x){ return x.id===id; })[0];
   if(!tAfter || bossState.defeated) return;
-  var wasJustCompleted = !wasDone && (tAfter.done || tAfter._prevDue !== undefined);
+  var wasJustCompleted = !wasDone && (tAfter.done || tAfter._nextDue !== undefined);
   if(wasJustCompleted && !(tAfter.steps && tAfter.steps >= 2)){
     setTimeout(function(){
       if(bossState.defeated) return;
@@ -21816,7 +21864,24 @@ setTimeout(function(){ bossInit(); }, 700);
 <div id="navPrefModal" style="display:none;position:fixed;z-index:8001;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;background:var(--sidebar,#1c1917);border-radius:24px 24px 0 0;padding:28px 20px 40px;box-shadow:0 -16px 60px rgba(0,0,0,0.6);font-family:'DM Sans',sans-serif;box-sizing:border-box;max-height:92vh;overflow-y:auto;"
   <!-- Handle bar -->
   <div style="width:40px;height:4px;background:rgba(255,255,255,0.2);border-radius:2px;margin:0 auto 24px"></div>
-  <div id="navPrefNavSection">
+  <!-- ── LANGUAGE SECTION ── -->
+  <div style="margin-top:0;padding-top:0">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span id="settingsLangLabel" style="font-size:13px;font-weight:800;color:rgba(255,255,255,0.85)">🌐 Bahasa / Language</span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button id="langBtnId2" onclick="setLang('id')"
+        style="flex:1;padding:10px 0;border-radius:10px;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+        <span id="settingsLangId">🇮🇩 Indonesia</span>
+      </button>
+      <button id="langBtnEn2" onclick="setLang('en')"
+        style="flex:1;padding:10px 0;border-radius:10px;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+        <span id="settingsLangEn">🇬🇧 English</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="navPrefNavSection" style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px">
   <div style="text-align:center;margin-bottom:6px">
     <div style="font-size:24px;margin-bottom:8px">🧭</div>
     <div id="settingsNavTitle" style="font-size:18px;font-weight:800;color:#fff;letter-spacing:-0.5px">Pilih Tampilan Navigasi</div>
@@ -21891,92 +21956,6 @@ setTimeout(function(){ bossInit(); }, 700);
     </div>
   </div>
   </div><!-- end navPrefNavSection -->
-
-  <!-- ── GAMIFICATION SECTION ── -->
-  <div style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-      <span style="font-size:18px">⚡</span>
-      <span id="settingsGamiTitle" style="font-size:15px;font-weight:800;color:#fff">Gamifikasi</span>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px;margin-bottom:10px">
-      <div>
-        <div id="gamiModeLabel" style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.85)">🎯 Fokus Mode Aktif</div>
-        <div id="settingsGamiSub" style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px">Aktifkan untuk Gamer Mode (boss, radar chart)</div>
-      </div>
-      <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px">
-        <input type="checkbox" id="gamiModeToggle" onchange="gamiSwitchMode(this.checked?'gamer':'focus')" style="opacity:0;width:0;height:0;position:absolute">
-        <span style="position:absolute;cursor:pointer;inset:0;border-radius:24px;background:rgba(255,255,255,0.1);transition:0.3s;border:1px solid rgba(255,255,255,0.15)" id="gamiToggleTrack"></span>
-        <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:0.3s;pointer-events:none" id="gamiToggleThumb"></span>
-      </label>
-    </div>
-    <!-- Individual feature toggles -->
-    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:10px">
-      <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.8px">Fitur Individual</div>
-      <!-- Boss Battle -->
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:12px;color:rgba(255,255,255,0.6)">⚔️ Boss Battle</span>
-        <label style="position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0">
-          <input type="checkbox" id="gamiFeatureBoss" onchange="gamiToggleBoss(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
-          <span style="position:absolute;cursor:pointer;inset:0;border-radius:20px;background:rgba(255,255,255,0.1);transition:0.3s;border:1px solid rgba(255,255,255,0.12)" class="gami-feat-track"></span>
-          <span style="position:absolute;height:14px;width:14px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:0.3s;pointer-events:none" class="gami-feat-thumb"></span>
-        </label>
-      </div>
-      <!-- Radar Chart -->
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:12px;color:rgba(255,255,255,0.6)">🕸 Radar Chart</span>
-        <label style="position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0">
-          <input type="checkbox" id="gamiFeatureRadar" onchange="gamiToggleRadar(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
-          <span style="position:absolute;cursor:pointer;inset:0;border-radius:20px;background:rgba(255,255,255,0.1);transition:0.3s;border:1px solid rgba(255,255,255,0.12)" class="gami-feat-track"></span>
-          <span style="position:absolute;height:14px;width:14px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:0.3s;pointer-events:none" class="gami-feat-thumb"></span>
-        </label>
-      </div>
-
-    </div>
-    <button onclick="showGamificationOnboarding();closeNavPreferenceModal()" style="width:100%;margin-top:10px;padding:9px;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;background:transparent;color:rgba(255,255,255,0.4);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif"><span id="settingsGamiReview">↩ Lihat ulang pilihan mode</span></button>
-  </div>
-
-  <!-- ── JADWAL SHOLAT SECTION ── -->
-  <div style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-      <span style="font-size:18px">🕌</span>
-      <span style="font-size:15px;font-weight:800;color:#fff">Jadwal Sholat</span>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px;margin-bottom:10px">
-      <div>
-        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.85)">🕌 Aktifkan Jadwal Sholat</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px">Tampilkan tombol jadwal &amp; reminder waktu sholat</div>
-      </div>
-      <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px">
-        <input type="checkbox" id="sholatFeatureToggle" onchange="sholatToggleFeature(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
-        <span style="position:absolute;cursor:pointer;inset:0;border-radius:24px;background:rgba(255,255,255,0.1);transition:0.3s;border:1px solid rgba(255,255,255,0.15)" id="sholatToggleTrack"></span>
-        <span style="position:absolute;content:\'\';height:18px;width:18px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:0.3s;pointer-events:none" id="sholatToggleThumb"></span>
-      </label>
-    </div>
-    <div id="sholatKotaSettingsRow" style="display:none;flex-direction:column;gap:6px">
-      <select id="sholat-kota-select-settings" style="background:#1e2d24;border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#fff;padding:8px 10px;font-size:13px;outline:none;width:100%;box-sizing:border-box;-webkit-appearance:auto;appearance:auto">
-        <option value="" style="background:#1e2d24;color:#fff">— Pilih Kota —</option>
-      </select>
-      <button onclick="sholatSimpanKotaSettings()" style="background:#2d9e5f;border:none;border-radius:8px;color:#fff;padding:9px;font-size:13px;cursor:pointer;font-weight:600;width:100%">💾 Simpan Kota</button>
-    </div>
-  </div>
-
-  <!-- ── LANGUAGE SECTION ── -->
-  <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      <span id="settingsLangLabel" style="font-size:13px;font-weight:800;color:rgba(255,255,255,0.85)">🌐 Bahasa / Language</span>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button id="langBtnId2" onclick="setLang('id')"
-        style="flex:1;padding:10px 0;border-radius:10px;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
-        <span id="settingsLangId">🇮🇩 Indonesia</span>
-      </button>
-      <button id="langBtnEn2" onclick="setLang('en')"
-        style="flex:1;padding:10px 0;border-radius:10px;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
-        <span id="settingsLangEn">🇬🇧 English</span>
-      </button>
-    </div>
-  </div>
-
   <!-- ── NOTIFICATION SECTION ── -->
   <div style="margin-top:18px;border-top:1px solid rgba(255,255,255,0.08);padding-top:16px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
@@ -22021,430 +22000,87 @@ setTimeout(function(){ bossInit(); }, 700);
     </div>
   </div>
 
+  <!-- ── JADWAL SHOLAT SECTION ── -->
+  <div style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <span style="font-size:18px">🕌</span>
+      <span style="font-size:15px;font-weight:800;color:#fff">Jadwal Sholat</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.85)">🕌 Aktifkan Jadwal Sholat</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px">Tampilkan tombol jadwal &amp; reminder waktu sholat</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px">
+        <input type="checkbox" id="sholatFeatureToggle" onchange="sholatToggleFeature(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
+        <span style="position:absolute;cursor:pointer;inset:0;border-radius:24px;background:rgba(255,255,255,0.1);transition:0.3s;border:1px solid rgba(255,255,255,0.15)" id="sholatToggleTrack"></span>
+        <span style="position:absolute;content:\'\';height:18px;width:18px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:0.3s;pointer-events:none" id="sholatToggleThumb"></span>
+      </label>
+    </div>
+    <div id="sholatKotaSettingsRow" style="display:none;flex-direction:column;gap:6px">
+      <select id="sholat-kota-select-settings" style="background:#1e2d24;border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#fff;padding:8px 10px;font-size:13px;outline:none;width:100%;box-sizing:border-box;-webkit-appearance:auto;appearance:auto">
+        <option value="" style="background:#1e2d24;color:#fff">— Pilih Kota —</option>
+      </select>
+      <button onclick="sholatSimpanKotaSettings()" style="background:#2d9e5f;border:none;border-radius:8px;color:#fff;padding:9px;font-size:13px;cursor:pointer;font-weight:600;width:100%">💾 Simpan Kota</button>
+    </div>
+  </div>
+
+  <!-- ── GAMIFICATION SECTION ── -->
+  <div style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <span style="font-size:18px">⚡</span>
+      <span id="settingsGamiTitle" style="font-size:15px;font-weight:800;color:#fff">Gamifikasi</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div>
+        <div id="gamiModeLabel" style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.85)">🎯 Fokus Mode Aktif</div>
+        <div id="settingsGamiSub" style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px">Aktifkan untuk Gamer Mode (boss, radar chart)</div>
+      </div>
+      <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px">
+        <input type="checkbox" id="gamiModeToggle" onchange="gamiSwitchMode(this.checked?'gamer':'focus')" style="opacity:0;width:0;height:0;position:absolute">
+        <span style="position:absolute;cursor:pointer;inset:0;border-radius:24px;background:rgba(255,255,255,0.1);transition:0.3s;border:1px solid rgba(255,255,255,0.15)" id="gamiToggleTrack"></span>
+        <span style="position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:0.3s;pointer-events:none" id="gamiToggleThumb"></span>
+      </label>
+    </div>
+    <!-- Individual feature toggles -->
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:0.8px">Fitur Individual</div>
+      <!-- Boss Battle -->
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;color:rgba(255,255,255,0.6)">⚔️ Boss Battle</span>
+        <label style="position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0">
+          <input type="checkbox" id="gamiFeatureBoss" onchange="gamiToggleBoss(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
+          <span style="position:absolute;cursor:pointer;inset:0;border-radius:20px;background:rgba(255,255,255,0.1);transition:0.3s;border:1px solid rgba(255,255,255,0.12)" class="gami-feat-track"></span>
+          <span style="position:absolute;height:14px;width:14px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:0.3s;pointer-events:none" class="gami-feat-thumb"></span>
+        </label>
+      </div>
+      <!-- Radar Chart -->
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;color:rgba(255,255,255,0.6)">🕸 Radar Chart</span>
+        <label style="position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0">
+          <input type="checkbox" id="gamiFeatureRadar" onchange="gamiToggleRadar(this.checked)" style="opacity:0;width:0;height:0;position:absolute">
+          <span style="position:absolute;cursor:pointer;inset:0;border-radius:20px;background:rgba(255,255,255,0.1);transition:0.3s;border:1px solid rgba(255,255,255,0.12)" class="gami-feat-track"></span>
+          <span style="position:absolute;height:14px;width:14px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:0.3s;pointer-events:none" class="gami-feat-thumb"></span>
+        </label>
+      </div>
+
+    </div>
+    <button onclick="showGamificationOnboarding();closeNavPreferenceModal()" style="width:100%;margin-top:10px;padding:9px;border:1px dashed rgba(255,255,255,0.15);border-radius:10px;background:transparent;color:rgba(255,255,255,0.4);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif"><span id="settingsGamiReview">↩ Lihat ulang pilihan mode</span></button>
+  </div>
+
   <div style="margin-top:18px;display:flex;gap:10px">
     <button id="navPrefCancelBtn" onclick="closeNavPreferenceModal()" style="flex:1;padding:13px;border:1px solid rgba(255,255,255,0.15);border-radius:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.6);font-size:14px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">Tutup</button>
-    <button id="navPrefApplyBtn" onclick="applyNavMode()" style="flex:2;padding:13px;border:none;border-radius:12px;background:var(--accent,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Terapkan Nav</button>
+    <button id="navPrefApplyBtn" onclick="applyNavMode()" style="flex:2;padding:13px;border:none;border-radius:12px;background:var(--accent,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Simpan Setting</button>
   </div>
   <div id="navPrefHint" style="text-align:center;margin-top:14px;font-size:11px;color:rgba(255,255,255,0.25)">Bisa diubah kapan saja di ⚙️ Settings</div>
 
   <!-- ══ DEVELOPER PANEL — hanya tampil untuk developer UID ══ -->
   <div id="devSection" style="display:none;margin-top:20px;border-top:1px solid rgba(217,119,6,0.25);padding-top:20px">
-
-    <!-- Header -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,rgba(217,119,6,0.25),rgba(245,158,11,0.12));border:1px solid rgba(217,119,6,0.3);display:flex;align-items:center;justify-content:center;font-size:18px">🛠️</div>
-        <div>
-          <div style="font-size:15px;font-weight:900;color:#f59e0b;letter-spacing:-0.2px">Developer Console</div>
-          <div style="font-size:10px;color:rgba(217,119,6,0.5);font-weight:600;letter-spacing:0.3px">RESTRICTED ACCESS</div>
-        </div>
-      </div>
-      <span style="font-size:9px;font-weight:800;color:rgba(217,119,6,0.7);background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.25);border-radius:20px;padding:3px 10px;letter-spacing:0.5px;text-transform:uppercase">DEV ONLY</span>
-    </div>
-    <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-bottom:16px;padding:8px 12px;background:rgba(0,0,0,0.2);border-radius:8px;border-left:3px solid rgba(217,119,6,0.4)">⚡ Panel ini hanya terlihat oleh akun developer. Perubahan langsung berdampak ke semua user.</div>
-
-    <!-- ─── TAB NAV ─── -->
-    <div style="display:flex;gap:5px;margin-bottom:14px;background:rgba(0,0,0,0.2);border-radius:10px;padding:4px">
-      <button id="devTab-ann" onclick="devSwitchTab('ann')"
-        style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:rgba(217,119,6,0.85);color:#fff;transition:all 0.2s">
-        📢 Announce
-      </button>
-      <button id="devTab-debug" onclick="devSwitchTab('debug')"
-        style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:transparent;color:rgba(255,255,255,0.4);transition:all 0.2s">
-        🐛 Debug
-      </button>
-      <button id="devTab-gami" onclick="devSwitchTab('gami')"
-        style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:transparent;color:rgba(255,255,255,0.4);transition:all 0.2s">
-        🎮 Gami
-      </button>
-      <button id="devTab-data" onclick="devSwitchTab('data')"
-        style="flex:1;padding:7px 4px;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:transparent;color:rgba(255,255,255,0.4);transition:all 0.2s">
-        🗄️ Data
-      </button>
-    </div>
-
-    <!-- ══════ TAB: ANNOUNCEMENT ══════ -->
-    <div id="devTabContent-ann">
-
-      <!-- Form buat pengumuman baru -->
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px">
-          <span style="font-size:14px">✏️</span> Buat Pengumuman Baru
-        </div>
-
-        <!-- Style selector chips -->
-        <div style="margin-bottom:12px">
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Pilih Gaya</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="dev-style-chip dev-style-active" data-style="info" onclick="devSelectStyle('info',this)"
-              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid #3b82f6;background:rgba(59,130,246,0.15);color:#60a5fa;transition:all 0.15s">
-              📢 Info
-            </button>
-            <button class="dev-style-chip" data-style="success" onclick="devSelectStyle('success',this)"
-              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">
-              ✅ Sukses
-            </button>
-            <button class="dev-style-chip" data-style="warning" onclick="devSelectStyle('warning',this)"
-              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">
-              ⚠️ Warning
-            </button>
-            <button class="dev-style-chip" data-style="danger" onclick="devSelectStyle('danger',this)"
-              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">
-              🚨 Bahaya
-            </button>
-            <button class="dev-style-chip" data-style="promo" onclick="devSelectStyle('promo',this)"
-              style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">
-              🎁 Promo
-            </button>
-          </div>
-        </div>
-
-        <!-- Judul -->
-        <div style="margin-bottom:10px">
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Judul <span style="color:rgba(255,80,80,0.6)">*</span></div>
-          <input id="devAnnTitle" type="text" placeholder="Contoh: Update Versi 2.1 🎉" maxlength="80"
-            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
-            onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-        </div>
-
-        <!-- Pesan (Rich Text Editor) -->
-        <div id="devAnnMsgSection" style="margin-bottom:10px;transition:opacity 0.2s">
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Isi Pesan <span style="color:rgba(255,80,80,0.6)">*</span></div>
-          <!-- Toolbar -->
-          <div id="devAnnToolbar" style="display:flex;flex-wrap:wrap;gap:4px;padding:7px 8px;background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.1);border-bottom:none;border-radius:10px 10px 0 0">
-            <!-- Format teks -->
-            <button title="Bold" onclick="devAnnExec('bold')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;font-weight:900;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s" onmousedown="event.preventDefault()"><b>B</b></button>
-            <button title="Italic" onclick="devAnnExec('italic')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;font-family:serif;transition:all 0.15s" onmousedown="event.preventDefault()"><i>I</i></button>
-            <button title="Underline" onclick="devAnnExec('underline')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;text-decoration:underline" onmousedown="event.preventDefault()">U</button>
-            <button title="Strikethrough" onclick="devAnnExec('strikethrough')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s;text-decoration:line-through" onmousedown="event.preventDefault()">S</button>
-            <!-- Separator -->
-            <div style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></div>
-            <!-- Alignment -->
-            <button title="Rata Kiri" onclick="devAnnExec('justifyLeft')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">≡←</button>
-            <button title="Tengah" onclick="devAnnExec('justifyCenter')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">≡</button>
-            <button title="Rata Kanan" onclick="devAnnExec('justifyRight')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">≡→</button>
-            <button title="Rata Kiri-Kanan" onclick="devAnnExec('justifyFull')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">≡≡</button>
-            <!-- Separator -->
-            <div style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></div>
-            <!-- List -->
-            <button title="Bullet List" onclick="devAnnExec('insertUnorderedList')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">• —</button>
-            <button title="Numbered List" onclick="devAnnExec('insertOrderedList')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;transition:all 0.15s" onmousedown="event.preventDefault()">1. —</button>
-            <!-- Separator -->
-            <div style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></div>
-            <!-- Font size -->
-            <select onchange="devAnnExec('fontSize',this.value);this.value=''" style="padding:3px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;outline:none" title="Ukuran Font">
-              <option value="" disabled selected style="background:#1c1917">Ukuran</option>
-              <option value="1" style="background:#1c1917">Kecil</option>
-              <option value="3" style="background:#1c1917">Normal</option>
-              <option value="4" style="background:#1c1917">Besar</option>
-              <option value="5" style="background:#1c1917">XL</option>
-            </select>
-            <!-- Clear format -->
-            <button title="Hapus format" onclick="devAnnExec('removeFormat')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:rgba(255,80,80,0.7);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s" onmousedown="event.preventDefault()">✕ fmt</button>
-          </div>
-          <!-- Contenteditable area -->
-          <div id="devAnnMessage" contenteditable="true" data-placeholder="Tulis isi pengumuman di sini..."
-            oninput="devAnnCountChars(this)"
-            style="min-height:110px;max-height:260px;overflow-y:auto;width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-top:none;border-radius:0 0 10px 10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;line-height:1.65;transition:border-color 0.2s;word-break:break-word"
-            onfocus="this.parentElement.querySelector('#devAnnToolbar').style.borderColor='rgba(217,119,6,0.5)';this.style.borderColor='rgba(217,119,6,0.5)'"
-            onblur="this.parentElement.querySelector('#devAnnToolbar').style.borderColor='rgba(255,255,255,0.1)';this.style.borderColor='rgba(255,255,255,0.1)'"></div>
-          <style>
-            #devAnnMessage:empty:before{content:attr(data-placeholder);color:rgba(255,255,255,0.2);pointer-events:none}
-            #devAnnMessage ul,#devAnnMessage ol{padding-left:18px;margin:4px 0}
-            #devAnnMessage li{margin:2px 0}
-            #devAnnToolbar button:hover{background:rgba(255,255,255,0.12)!important}
-          </style>
-          <div style="text-align:right;font-size:10px;color:rgba(255,255,255,0.2);margin-top:3px"><span id="devAnnCharCount">0</span>/1000 karakter</div>
-        </div>
-
-        <!-- Gambar Iklan (opsional) -->
-        <div style="margin-bottom:12px">
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🖼 Gambar Iklan <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none;letter-spacing:0">(opsional · auto-compress &gt;900KB)</span></div>
-
-          <!-- Mode selector -->
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <button onclick="_devAnnSetImgMode('thumbnail',this)" id="devAnnImgModeBtn-thumbnail"
-              style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid rgba(217,119,6,0.7);background:rgba(217,119,6,0.12);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
-              🖼 Thumbnail
-            </button>
-            <button onclick="_devAnnSetImgMode('fullimage',this)" id="devAnnImgModeBtn-fullimage"
-              style="flex:1;padding:7px 6px;border-radius:9px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
-              🖼 Full Gambar
-            </button>
-          </div>
-          <input type="hidden" id="devAnnImgMode" value="thumbnail">
-
-          <!-- Orientation selector (hanya muncul di mode fullimage) -->
-          <div id="devAnnOrientWrap" style="display:none;align-items:center;gap:6px;margin-bottom:8px">
-            <span style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap">Orientasi:</span>
-            <button onclick="_devAnnSetOrient('portrait',this)" id="devAnnOrientBtn-portrait"
-              style="flex:1;padding:5px 10px;border-radius:8px;border:1.5px solid rgba(217,119,6,0.7);background:rgba(217,119,6,0.12);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
-              📱 Portrait
-            </button>
-            <button onclick="_devAnnSetOrient('landscape',this)" id="devAnnOrientBtn-landscape"
-              style="flex:1;padding:5px 10px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
-              🖥 Landscape
-            </button>
-          </div>
-          <input type="hidden" id="devAnnImgOrient" value="portrait">
-
-          <!-- Guide ukuran -->
-          <div id="devAnnImgGuide" style="display:block;font-size:10px;color:rgba(255,255,255,0.3);background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:8px 10px;margin-bottom:8px;line-height:1.6">
-            📐 <b>Thumbnail</b> — Gambar kecil di bawah teks. Disarankan lebar minimal <b>600px</b>, rasio bebas (maks tinggi 220px).
-          </div>
-
-          <!-- Drop zone upload -->
-          <div id="devAnnImgZone"
-            onclick="document.getElementById('devAnnImgInput').click()"
-            ondragover="event.preventDefault();this.style.borderColor='rgba(217,119,6,0.6)';this.style.background='rgba(217,119,6,0.08)'"
-            ondragleave="this.style.borderColor='rgba(255,255,255,0.1)';this.style.background='rgba(255,255,255,0.03)'"
-            ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.1)';this.style.background='rgba(255,255,255,0.03)';devAnnHandleImg(event.dataTransfer.files[0])"
-            style="border:1.5px dashed rgba(255,255,255,0.1);border-radius:12px;background:rgba(255,255,255,0.03);padding:14px;text-align:center;cursor:pointer;transition:all 0.2s;min-height:56px;display:flex;align-items:center;justify-content:center;gap:10px;position:relative">
-            <div id="devAnnImgPlaceholder" style="display:flex;flex-direction:column;align-items:center;gap:4px">
-              <span style="font-size:22px">🖼</span>
-              <span style="font-size:11px;color:rgba(255,255,255,0.3);font-weight:600">Klik atau drag & drop gambar</span>
-              <span style="font-size:10px;color:rgba(255,255,255,0.15)">JPG, PNG, GIF, WebP · Tanpa batas ukuran (auto-compress)</span>
-            </div>
-            <img id="devAnnImgPreview" src="" alt="" style="display:none;max-height:120px;max-width:100%;border-radius:8px;object-fit:cover">
-            <button id="devAnnImgRemove" onclick="event.stopPropagation();devAnnRemoveImg()" style="display:none;position:absolute;top:6px;right:6px;border:none;background:rgba(239,68,68,0.8);color:#fff;border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;font-weight:700;line-height:1;padding:0">✕</button>
-          </div>
-          <input id="devAnnImgInput" type="file" accept="image/*" style="display:none" onchange="devAnnHandleImg(this.files[0])">
-          <div id="devAnnImgInfo" style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:4px;text-align:right"></div>
-        </div>
-
-        <!-- Link URL (opsional, muncul saat ada gambar) -->
-        <div id="devAnnLinkWrap" style="margin-bottom:12px;display:none">
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">🔗 Link saat gambar diklik <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none;letter-spacing:0">(opsional)</span></div>
-          <input id="devAnnLink" type="url" placeholder="https://contoh.com/promo"
-            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 13px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
-            onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-        </div>
-
-        <!-- ── Tombol Custom (opsional) ── -->
-        <div style="margin-bottom:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:10px 12px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
-            <input type="checkbox" id="devAnnCustomBtnEnabled" onchange="_devAnnToggleCustomBtn(this.checked)"
-              style="width:15px;height:15px;accent-color:#d97706;cursor:pointer">
-            <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:0.5px">🔘 Tombol Custom (opsional)</span>
-          </label>
-          <div id="devAnnCustomBtnDetails" style="display:none;margin-top:10px">
-            <!-- Teks tombol -->
-            <div style="margin-bottom:8px">
-              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Teks Tombol <span style="color:rgba(255,80,80,0.6)">*</span></div>
-              <input id="devAnnCustomBtnText" type="text" placeholder="Contoh: Lihat Promo, Download, Daftar Sekarang..." maxlength="40"
-                style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
-                onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-            </div>
-            <!-- Aksi tombol -->
-            <div style="margin-bottom:8px">
-              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Fungsi Tombol</div>
-              <select id="devAnnCustomBtnAction" onchange="_devAnnToggleCustomBtnAction(this.value)"
-                style="width:100%;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;color:#fff;padding:9px 10px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:auto">
-                <option value="link" style="background:#1c1917">🔗 Buka Link (+ tutup popup)</option>
-                <option value="close" style="background:#1c1917">✕ Tutup Popup saja</option>
-              </select>
-            </div>
-            <!-- URL (muncul jika action = link) -->
-            <div id="devAnnCustomBtnUrlWrap">
-              <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">URL Tujuan <span style="color:rgba(255,80,80,0.6)">*</span></div>
-              <input id="devAnnCustomBtnUrl" type="url" placeholder="https://contoh.com/halaman-promo"
-                style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 12px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
-                onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-            </div>
-          </div>
-        </div>
-
-        <!-- Mode + Expiry row -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-          <div>
-            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Mode Tampil</div>
-            <select id="devAnnMode" style="width:100%;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;color:#fff;padding:9px 10px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:auto">
-              <option value="once" style="background:#1c1917">1️⃣ Sekali per user</option>
-              <option value="always" style="background:#1c1917">🔄 Selalu tiap buka</option>
-            </select>
-          </div>
-          <div>
-            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Kedaluwarsa</div>
-            <input id="devAnnExpiry" type="datetime-local"
-              style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 10px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;color-scheme:dark">
-          </div>
-        </div>
-
-        <!-- Preview button + submit -->
-        <div style="display:flex;gap:8px">
-          <button onclick="devAnnPreview()"
-            style="flex:1;padding:11px;border:1.5px solid rgba(217,119,6,0.4);border-radius:10px;background:rgba(217,119,6,0.08);color:#f59e0b;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
-            👁 Preview
-          </button>
-          <button id="devAnnSubmitBtn" onclick="devAnnSubmit()"
-            style="flex:2;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 14px rgba(217,119,6,0.35);transition:all 0.15s;letter-spacing:0.2px">
-            📢 Kirim Pengumuman
-          </button>
-        </div>
-      </div>
-
-      <!-- Daftar pengumuman existing -->
-      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.5px">📋 Pengumuman Tersimpan</div>
-          <button onclick="_devAnnLoadList()" style="padding:5px 12px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px">↻ Refresh</button>
-        </div>
-        <div id="devAnnList">
-          <div style="color:rgba(255,255,255,0.2);font-size:12px;padding:12px 0;text-align:center">— Klik Refresh untuk memuat —</div>
-        </div>
-      </div>
-    </div><!-- /tab-ann -->
-
-    <!-- ══════ TAB: DEBUG ══════ -->
-    <div id="devTabContent-debug" style="display:none">
-
-      <!-- User Info -->
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">👤 Info User Aktif</div>
-        <button onclick="devShowAllUsers()" style="width:100%;padding:10px;border:1px solid rgba(99,102,241,0.4);border-radius:10px;background:rgba(99,102,241,0.1);color:#a5b4fc;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:7px">👥 Lihat Semua User Aktif</button>
-      </div>
-
-  <!-- ══ MODAL: SEMUA USER AKTIF ══ -->
-  <div id="devAllUsersModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center" onclick="if(event.target===this)devCloseAllUsersModal()">
-    <div style="background:#1c1917;border:1px solid rgba(99,102,241,0.3);border-radius:20px;padding:20px;width:90%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
-      <!-- Header modal -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:34px;height:34px;border-radius:10px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);display:flex;align-items:center;justify-content:center;font-size:17px">👥</div>
-          <div>
-            <div style="font-size:14px;font-weight:800;color:#a5b4fc">Semua User Aktif</div>
-            <div id="devAllUsersCount" style="font-size:10px;color:rgba(255,255,255,0.3)">Memuat...</div>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <button onclick="devLoadAllUsers()" style="padding:5px 11px;border:1px solid rgba(99,102,241,0.3);border-radius:8px;background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">↻ Refresh</button>
-          <button onclick="devCloseAllUsersModal()" style="width:28px;height:28px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;line-height:1">✕</button>
-        </div>
-      </div>
-      <!-- Daftar user -->
-      <div id="devAllUsersList" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-right:2px">
-        <div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">⏳ Memuat data user...</div>
-      </div>
-    </div>
-  </div>
-
-      <!-- Debug Actions -->
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚡ Quick Actions</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
-          <button onclick="devForceShowAnn()" style="padding:9px 6px;border:1px solid rgba(59,130,246,0.3);border-radius:9px;background:rgba(59,130,246,0.08);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">📢 Test Ann Modal</button>
-          <button onclick="devClearAnnReads()" style="padding:9px 6px;border:1px solid rgba(245,158,11,0.3);border-radius:9px;background:rgba(245,158,11,0.08);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🗑 Clear Ann Reads</button>
-          <button onclick="devShowToast()" style="padding:9px 6px;border:1px solid rgba(34,197,94,0.3);border-radius:9px;background:rgba(34,197,94,0.08);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🍞 Test Toast</button>
-          <button onclick="devCheckFirestore()" style="padding:9px 6px;border:1px solid rgba(139,92,246,0.3);border-radius:9px;background:rgba(139,92,246,0.08);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔥 Cek Firestore</button>
-          <button onclick="devReloadApp()" style="padding:9px 6px;border:1px solid rgba(255,255,255,0.15);border-radius:9px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔄 Reload App</button>
-          <button onclick="devClearLocalStorage()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">💣 Clear Storage</button>
-        </div>
-      </div>
-
-      <!-- Console Log -->
-      <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px">📟 Debug Log</div>
-          <button onclick="devClearLog()" style="padding:3px 9px;border:1px solid rgba(255,255,255,0.08);border-radius:6px;background:transparent;color:rgba(255,255,255,0.25);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Clear</button>
-        </div>
-        <div id="devConsoleLog" style="font-size:10px;font-family:monospace;color:rgba(255,255,255,0.45);line-height:1.8;max-height:140px;overflow-y:auto;word-break:break-all">
-          <span style="color:rgba(255,255,255,0.2)">// Ready. Gunakan tombol di atas untuk debug.</span>
-        </div>
-      </div>
-    </div><!-- /tab-debug -->
-
-    <!-- ══════ TAB: GAMIFICATION ══════ -->
-    <div id="devTabContent-gami" style="display:none">
-
-      <!-- XP & Gold inject -->
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚡ Inject XP & Gold (ke diri sendiri)</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-          <div>
-            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;margin-bottom:4px;text-transform:uppercase">XP</div>
-            <input id="devXpAmount" type="number" value="100" min="1" max="9999"
-              style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 11px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
-          </div>
-          <div>
-            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;margin-bottom:4px;text-transform:uppercase">Gold 🪙</div>
-            <input id="devGoldAmount" type="number" value="50" min="1" max="9999"
-              style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 11px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
-          </div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button onclick="devInjectXp()" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,rgba(251,191,36,0.8),rgba(245,158,11,0.7));color:#1c1400;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">⚡ +XP</button>
-          <button onclick="devInjectGold()" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,rgba(251,191,36,0.6),rgba(217,119,6,0.5));color:#fff3c0;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">🪙 +Gold</button>
-          <button onclick="devInjectBoth()" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">🎁 Both</button>
-        </div>
-      </div>
-
-      <!-- Boss Debug -->
-      <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:16px;padding:14px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:800;color:rgba(167,139,250,0.7);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚔️ Boss Battle Debug</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px">
-          <button onclick="devBossSpawn()" style="padding:9px 6px;border:1px solid rgba(139,92,246,0.35);border-radius:9px;background:rgba(139,92,246,0.1);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">⚔️ Spawn Boss Baru</button>
-          <button onclick="devBossKill()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💀 Kill Boss Skrg</button>
-          <button onclick="devBossDmg()" style="padding:9px 6px;border:1px solid rgba(245,158,11,0.3);border-radius:9px;background:rgba(245,158,11,0.08);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💥 Deal 100 DMG</button>
-          <button onclick="devBossStatus()" style="padding:9px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:9px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.45);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Log Boss Status</button>
-        </div>
-        <div id="devBossInfo" style="font-size:10px;font-family:monospace;color:rgba(167,139,250,0.5);background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;min-height:36px">— Boss status akan tampil di sini —</div>
-      </div>
-
-      <!-- Shop & Tema Info -->
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">🎨 Shop & Tema</div>
-        <!-- Info aktif -->
-        <div id="devShopInfo" style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);line-height:1.9;background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;margin-bottom:10px">— Klik Refresh untuk lihat status —</div>
-        <button onclick="devRefreshShopInfo()" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:10px">↻ Refresh Status Shop</button>
-        <!-- Actions -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
-          <button onclick="devResetShopPurchases()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.07);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;grid-column:span 2">🗑️ Reset Semua Pembelian Shop</button>
-        </div>
-      </div>
-
-      <!-- Level reset -->
-      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:16px;padding:14px">
-        <div style="font-size:10px;font-weight:800;color:rgba(248,113,113,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">⚠️ Reset / Danger Zone</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
-          <button onclick="devResetGami()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.35);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔁 Reset XP/Gold/Level</button>
-          <button onclick="devResetAllGami()" style="padding:9px 6px;border:1.5px solid rgba(239,68,68,0.5);border-radius:9px;background:rgba(239,68,68,0.12);color:#fca5a5;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">💣 Reset SEMUA Gami</button>
-        </div>
-      </div>
-    </div><!-- /tab-gami -->
-
-    <!-- ══════ TAB: DATA ══════ -->
-    <div id="devTabContent-data" style="display:none">
-
-      <!-- Export -->
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">📦 Export / Import Data User</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px">
-          <button onclick="devExportTasks()" style="padding:9px 6px;border:1px solid rgba(59,130,246,0.3);border-radius:9px;background:rgba(59,130,246,0.07);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Export Tasks</button>
-          <button onclick="devExportHabits()" style="padding:9px 6px;border:1px solid rgba(34,197,94,0.3);border-radius:9px;background:rgba(34,197,94,0.07);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔥 Export Habits</button>
-          <button onclick="devExportFinance()" style="padding:9px 6px;border:1px solid rgba(251,191,36,0.3);border-radius:9px;background:rgba(251,191,36,0.07);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Export Finance</button>
-          <button onclick="devExportAll()" style="padding:9px 6px;border:1px solid rgba(217,119,6,0.4);border-radius:9px;background:rgba(217,119,6,0.1);color:#f59e0b;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Export Semua</button>
-        </div>
-      </div>
-
-      <!-- Firestore stats -->
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px">🔥 Firestore Stats</div>
-          <button onclick="devLoadFirestoreStats()" style="padding:4px 10px;border:1px solid rgba(255,255,255,0.1);border-radius:7px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Load</button>
-        </div>
-        <div id="devFirestoreStats" style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);line-height:1.9">— Klik Load untuk memuat —</div>
-      </div>
-
-      <!-- Danger: wipe -->
-      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:16px;padding:14px">
-        <div style="font-size:10px;font-weight:800;color:rgba(248,113,113,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔥 Danger Zone</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:10px;line-height:1.5">Tindakan di bawah ini permanen dan tidak bisa di-undo.</div>
-        <div style="display:flex;gap:7px">
-          <button onclick="devWipeUserData()" style="flex:1;padding:9px;border:1.5px solid rgba(239,68,68,0.4);border-radius:9px;background:rgba(239,68,68,0.1);color:#f87171;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">💣 Wipe User Data</button>
-        </div>
-      </div>
-    </div><!-- /tab-data -->
-
+    <button onclick="openDevPage()" style="width:100%;padding:14px;border:1.5px solid rgba(217,119,6,0.5);border-radius:14px;background:linear-gradient(135deg,rgba(217,119,6,0.15),rgba(245,158,11,0.08));color:#f59e0b;font-size:14px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:10px;transition:all 0.2s;letter-spacing:0.2px">
+      <span style="font-size:20px">🛠️</span>
+      <span>Developer Mode</span>
+      <span style="font-size:9px;font-weight:800;background:rgba(217,119,6,0.2);border:1px solid rgba(217,119,6,0.4);border-radius:20px;padding:2px 8px;letter-spacing:0.8px;text-transform:uppercase">DEV ONLY</span>
+    </button>
   </div><!-- /devSection -->
 </div>
 
@@ -24188,7 +23824,7 @@ function sholatFetch(callback) {
   var kota = KOTA_LIST.find(function(k) { return k.name === _sholatKota; });
   if (!kota) { callback(null); return; }
   var d = new Date();
-  var todayStr = d.toISOString().split('T')[0];
+  var todayStr = localDateStr(d);
   if (_sholatSchedule && _sholatDate === todayStr) { callback(_sholatSchedule); return; }
   var url = 'https://api.aladhan.com/v1/timings/'
     + d.getDate() + '-' + (d.getMonth()+1) + '-' + d.getFullYear()
@@ -24391,7 +24027,7 @@ function sholatLoadAndRender() {
 // Tunggu tasks loaded, lalu inject/update task sholat hari ini
 (function() {
   if (!_sholatEnabled || !_sholatKota) return;
-  var todayStr = new Date().toISOString().split('T')[0];
+  var todayStr = localDateStr(new Date());
   // Cek apakah task sholat hari ini sudah ada & remindernya sudah benar
   // Kalau belum, jalankan autoInject setelah app siap
   var _tryCount = 0;
@@ -25003,6 +24639,292 @@ function devSwitchTab(tab){
 
 // ── openDevAnnPanel kept for backward compat ──
 function openDevAnnPanel(){ devSwitchTab('ann'); }
+
+// ══════════════════════════════════════════════
+// DEVELOPER PAGE
+// ══════════════════════════════════════════════
+var _dpLiveLogs = [];
+var _dpNetworkLogs = [];
+var _dpLogFilterMode = 'all';
+var _dpFlags = {
+  'show_task_id':       {label:'Tampilkan Task ID di card', default:false},
+  'verbose_sync':       {label:'Verbose sync log ke console', default:false},
+  'disable_animations': {label:'Matikan semua animasi', default:false},
+  'force_offline':      {label:'Simulasi offline mode', default:false},
+  'show_perf_overlay':  {label:'Performance overlay (FPS)', default:false},
+};
+
+function openDevPage(){
+  var el = document.getElementById('devPage');
+  if(!el) return;
+  el.style.display = 'flex';
+  closeNavPreferenceModal();
+  // Set UID label
+  var uid = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.email || currentUser.uid || '—') : '—';
+  var lbl = document.getElementById('devPageUidLabel');
+  if(lbl) lbl.textContent = 'UID: ' + uid;
+  // Init tabs
+  dpSwitch('ann');
+  // Start live log intercept
+  _dpStartLogIntercept();
+  // Load stats
+  setTimeout(dpLoadStats, 200);
+  // Load flags
+  dpRenderFlags();
+  // Load debug user info
+  dpLoadDebugUserInfo();
+}
+
+function closeDevPage(){
+  var el = document.getElementById('devPage');
+  if(el) el.style.display = 'none';
+}
+
+function dpSwitch(tab){
+  var tabs = ['ann','debug','gami','data','logs','stats','flags'];
+  tabs.forEach(function(t){
+    var c = document.getElementById('dpContent-'+t);
+    var b = document.getElementById('dpTab-'+t);
+    if(c) c.style.display = (t===tab)?'block':'none';
+    if(b){ b.classList.toggle('dp-tab-active', t===tab); }
+  });
+  if(tab==='stats') dpLoadStats();
+  if(tab==='logs') dpRenderLiveLogs();
+}
+
+// ── Announce (bridge to existing functions) ──
+function dpAnnExec(cmd, val){ document.execCommand(cmd, false, val||null); }
+function dpSelectStyle(style, el){
+  document.querySelectorAll('.dp-style-chip').forEach(function(b){ b.style.borderColor='rgba(255,255,255,0.12)'; b.style.background='rgba(255,255,255,0.05)'; b.style.color='rgba(255,255,255,0.4)'; b.classList.remove('dp-style-active'); });
+  el.classList.add('dp-style-active');
+  var colors = {info:{b:'#3b82f6',bg:'rgba(59,130,246,0.15)',c:'#60a5fa'}, success:{b:'#22c55e',bg:'rgba(34,197,94,0.15)',c:'#4ade80'}, warning:{b:'#f59e0b',bg:'rgba(245,158,11,0.15)',c:'#fbbf24'}, danger:{b:'#ef4444',bg:'rgba(239,68,68,0.15)',c:'#f87171'}, promo:{b:'#a855f7',bg:'rgba(168,85,247,0.15)',c:'#c084fc'}};
+  var s = colors[style]||colors.info;
+  el.style.borderColor = s.b; el.style.background = s.bg; el.style.color = s.c;
+}
+function dpAnnPreview(){
+  var title = document.getElementById('dpAnnTitle').value.trim();
+  var msg   = document.getElementById('dpAnnMessage').innerHTML.trim();
+  if(!title||!msg){ showToast('⚠️ Judul & isi wajib diisi'); return; }
+  var chip  = document.querySelector('.dp-style-chip.dp-style-active');
+  var style = chip ? chip.dataset.style : 'info';
+  if(typeof showAnnouncementModal === 'function') showAnnouncementModal({id:'preview',title:title,message:msg,style:style,mode:'once',createdAt:Date.now()});
+  else showToast('👁 Preview: '+title);
+}
+function dpAnnSubmit(){
+  var title  = document.getElementById('dpAnnTitle').value.trim();
+  var msg    = document.getElementById('dpAnnMessage').innerHTML.trim();
+  var mode   = document.getElementById('dpAnnMode').value;
+  var expiry = document.getElementById('dpAnnExpiry').value;
+  var chip   = document.querySelector('.dp-style-chip.dp-style-active');
+  var style  = chip ? chip.dataset.style : 'info';
+  if(!title||!msg){ showToast('⚠️ Judul & isi wajib diisi'); return; }
+  if(!fbDb){ showToast('Firestore tidak tersambung'); return; }
+  var data = {title:title, message:msg, style:style, mode:mode, createdAt:Date.now()};
+  if(expiry) data.expiresAt = new Date(expiry).getTime();
+  fbDb.collection('announcements').add(data).then(function(){ showToast('📢 Pengumuman dikirim!'); document.getElementById('dpAnnTitle').value=''; document.getElementById('dpAnnMessage').innerHTML=''; dpAnnLoadList(); }).catch(function(e){ showToast('❌ Gagal: '+e.message); });
+}
+function dpAnnLoadList(){
+  if(!fbDb){ return; }
+  var listEl = document.getElementById('dpAnnList');
+  listEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:12px;padding:8px 0;text-align:center">⏳ Memuat...</div>';
+  fbDb.collection('announcements').orderBy('createdAt','desc').limit(20).get().then(function(snap){
+    if(snap.empty){ listEl.innerHTML='<div style="color:rgba(255,255,255,0.2);font-size:12px;padding:12px 0;text-align:center">— Belum ada —</div>'; return; }
+    var html='';
+    snap.forEach(function(doc){ var d=doc.data(); var ts=d.createdAt?new Date(d.createdAt).toLocaleString('id-ID'):'—'; html+='<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="min-width:0"><div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.title+'</div><div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:2px">'+ts+' · '+d.style+'</div></div><button onclick="dpAnnDelete(\''+doc.id+'\')" style="flex-shrink:0;padding:4px 9px;border:1px solid rgba(239,68,68,0.3);border-radius:7px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">🗑</button></div>'; });
+    listEl.innerHTML = html;
+  }).catch(function(){ listEl.innerHTML='<div style="color:rgba(255,80,80,0.5);font-size:12px;padding:8px 0;text-align:center">Gagal memuat</div>'; });
+}
+function dpAnnDelete(id){
+  if(!fbDb||!confirm('Hapus pengumuman ini?')) return;
+  fbDb.collection('announcements').doc(id).delete().then(function(){ showToast('🗑 Dihapus'); dpAnnLoadList(); });
+}
+
+// ── Debug ──
+function dpLoadDebugUserInfo(){
+  var el = document.getElementById('dpDebugUserInfo');
+  if(!el) return;
+  var uid = (typeof currentUser!=='undefined'&&currentUser) ? (currentUser.uid||'—') : '—';
+  var email = (typeof currentUser!=='undefined'&&currentUser) ? (currentUser.email||'guest') : 'guest';
+  var xp = (typeof totalXP!=='undefined') ? totalXP : '—';
+  var gold = (typeof totalGold!=='undefined') ? totalGold : '—';
+  var level = (typeof userLevel!=='undefined') ? userLevel : '—';
+  el.innerHTML = 'UID: '+uid+'<br>Email: '+email+'<br>XP: '+xp+' · Gold: '+gold+' · Level: '+level+'<br>Tasks: '+(typeof tasks!=='undefined'?tasks.length:'—')+'<br>UA: '+navigator.userAgent.slice(0,60)+'...';
+}
+function dpLoadAllUsers(){ if(typeof devShowAllUsers==='function') devShowAllUsers(); }
+function dpSimulateError(){ try{ null.crash(); }catch(e){ dpLog('error','Simulated error: '+e.message); showToast('⚠️ Error simulated — cek Live Logs'); } }
+function dpCheckSW(){
+  if(!('serviceWorker' in navigator)){ dpLog('warn','SW not supported'); showToast('SW tidak didukung'); return; }
+  navigator.serviceWorker.getRegistrations().then(function(regs){
+    dpLog('info','SW registrations: '+regs.length);
+    regs.forEach(function(r){ dpLog('info','SW scope: '+r.scope+' state: '+(r.active?r.active.state:'none')); });
+    showToast('SW: '+regs.length+' registration(s) — cek Live Logs');
+  });
+}
+
+// ── Live Logs ──
+function _dpStartLogIntercept(){
+  if(window._dpLogIntercepted) return;
+  window._dpLogIntercepted = true;
+  var _origLog   = console.log.bind(console);
+  var _origWarn  = console.warn.bind(console);
+  var _origError = console.error.bind(console);
+  console.log   = function(){ _origLog.apply(console,arguments);   dpLog('log',   Array.from(arguments).map(String).join(' ')); };
+  console.warn  = function(){ _origWarn.apply(console,arguments);  dpLog('warn',  Array.from(arguments).map(String).join(' ')); };
+  console.error = function(){ _origError.apply(console,arguments); dpLog('error', Array.from(arguments).map(String).join(' ')); };
+  // Network intercept
+  var _origFetch = window.fetch;
+  window.fetch = function(url, opts){
+    var method = (opts&&opts.method)||'GET';
+    var t = Date.now();
+    _dpNetworkLogs.push({ts:t, method:method, url:String(url).slice(0,120), status:'pending'});
+    dpRenderNetworkLog();
+    return _origFetch.apply(this,arguments).then(function(res){
+      var entry = _dpNetworkLogs.find(function(e){ return e.ts===t; });
+      if(entry){ entry.status=res.status; entry.ok=res.ok; dpRenderNetworkLog(); }
+      return res;
+    }).catch(function(err){
+      var entry = _dpNetworkLogs.find(function(e){ return e.ts===t; });
+      if(entry){ entry.status='ERR'; dpRenderNetworkLog(); }
+      throw err;
+    });
+  };
+}
+function dpLog(level, msg){
+  var ts = new Date().toLocaleTimeString('id-ID',{hour12:false});
+  _dpLiveLogs.push({level:level, ts:ts, msg:msg});
+  if(_dpLiveLogs.length > 500) _dpLiveLogs.shift();
+  var logEl = document.getElementById('dpContent-logs');
+  if(logEl && logEl.style.display!=='none') dpRenderLiveLogs();
+}
+function dpRenderLiveLogs(){
+  var el = document.getElementById('dpLiveLogContainer');
+  if(!el) return;
+  var filtered = _dpLogFilterMode==='all' ? _dpLiveLogs : _dpLiveLogs.filter(function(l){ return l.level===_dpLogFilterMode; });
+  if(!filtered.length){ el.innerHTML='<span style="color:rgba(255,255,255,0.2)">// Belum ada log.</span>'; return; }
+  var colors = {log:'rgba(255,255,255,0.55)', warn:'#fbbf24', error:'#f87171', info:'#60a5fa'};
+  el.innerHTML = filtered.map(function(l){ return '<div><span style="color:rgba(255,255,255,0.2)">'+l.ts+'</span> <span style="color:'+(colors[l.level]||'#fff')+';font-weight:'+(l.level==='error'||l.level==='warn'?'700':'400')+'">['+l.level.toUpperCase()+']</span> '+escHtml(l.msg)+'</div>'; }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+function dpRenderNetworkLog(){
+  var el = document.getElementById('dpNetworkLog');
+  if(!el) return;
+  if(!_dpNetworkLogs.length){ el.innerHTML='<span style="color:rgba(255,255,255,0.2)">// Belum ada request.</span>'; return; }
+  var last = _dpNetworkLogs.slice(-30);
+  el.innerHTML = last.map(function(r){ var ok=r.status==='pending'?'#60a5fa':(r.ok?'#4ade80':'#f87171'); return '<div><span style="color:'+(r.ok===false||r.status==='ERR'?'#f87171':'#4ade80')+';font-weight:700">'+r.method+'</span> <span style="color:rgba(255,255,255,0.5)">'+r.url+'</span> <span style="color:'+ok+';font-weight:700">'+r.status+'</span></div>'; }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+function dpLogFilter(mode){
+  _dpLogFilterMode = mode;
+  ['all','error','warn'].forEach(function(m){
+    var b = document.getElementById('dpLogBtn-'+m);
+    if(!b) return;
+    if(m===mode){ b.style.background='rgba(217,119,6,0.12)'; b.style.color='#f59e0b'; b.style.borderColor='rgba(217,119,6,0.5)'; }
+    else { b.style.background='transparent'; b.style.color='rgba(255,255,255,0.3)'; b.style.borderColor='rgba(255,255,255,0.08)'; }
+  });
+  dpRenderLiveLogs();
+}
+function dpClearLiveLogs(){ _dpLiveLogs=[]; dpRenderLiveLogs(); }
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── App Stats ──
+function dpLoadStats(){
+  var todayStr2 = (new Date()).toISOString().slice(0,10);
+  var totalTasks   = (typeof tasks!=='undefined') ? tasks.filter(function(t){ return t.type!=='Habit'; }).length : '—';
+  var totalHabits  = (typeof tasks!=='undefined') ? tasks.filter(function(t){ return t.type==='Habit'; }).length : '—';
+  var doneToday    = (typeof tasks!=='undefined') ? tasks.filter(function(t){ return t.doneDate===todayStr2||(t.history&&t.history.indexOf(todayStr2)>=0); }).length : '—';
+  var overdueCount = (typeof tasks!=='undefined') ? tasks.filter(function(t){ return t.due&&t.due<todayStr2&&!t.done&&t.type!=='Habit'; }).length : '—';
+  var xp   = (typeof totalXP!=='undefined')   ? totalXP   : '—';
+  var gold = (typeof totalGold!=='undefined')  ? totalGold : '—';
+  var streak = '—';
+  if(typeof tasks!=='undefined'){
+    var maxS=0, curS=0, prev='';
+    var sorted = tasks.filter(function(t){ return t.doneDate; }).map(function(t){ return t.doneDate; }).sort();
+    sorted.forEach(function(d){ if(prev){ var diff=Math.round((new Date(d)-new Date(prev))/86400000); if(diff===1){curS++;maxS=Math.max(maxS,curS);}else curS=1; }else curS=1; prev=d; });
+    streak = maxS;
+  }
+  var journalCount = (typeof journalEntries!=='undefined') ? journalEntries.length : '—';
+
+  function setS(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; }
+  setS('dpStatTasks',    totalTasks);
+  setS('dpStatHabits',   totalHabits);
+  setS('dpStatDoneToday',doneToday);
+  setS('dpStatOverdue',  overdueCount);
+  setS('dpStatXP',       xp);
+  setS('dpStatGold',     gold);
+  setS('dpStatStreak',   streak);
+  setS('dpStatJournal',  journalCount);
+
+  // Groups breakdown
+  var grpEl = document.getElementById('dpStatsGroups');
+  if(grpEl && typeof tasks!=='undefined'){
+    var grpMap={};
+    tasks.forEach(function(t){ var g=t.group||'(tanpa grup)'; if(!grpMap[g])grpMap[g]={total:0,done:0}; grpMap[g].total++; if(t.done)grpMap[g].done++; });
+    var lines=Object.keys(grpMap).sort().map(function(g){ var d=grpMap[g]; return g+': '+d.total+' task, '+d.done+' selesai'; });
+    grpEl.innerHTML = lines.length ? lines.join('<br>') : '— Tidak ada data —';
+  }
+}
+
+// ── Feature Flags ──
+function dpRenderFlags(){
+  var el = document.getElementById('dpFlagsList');
+  if(!el) return;
+  var html = '';
+  Object.keys(_dpFlags).forEach(function(key){
+    var f = _dpFlags[key];
+    var saved = localStorage.getItem('devFlag_'+key);
+    var enabled = saved !== null ? saved==='1' : f.default;
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px">'
+      + '<div><div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.75)">'+key+'</div><div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:2px">'+f.label+'</div></div>'
+      + '<label style="position:relative;display:inline-block;width:38px;height:21px;flex-shrink:0">'
+      + '<input type="checkbox" '+(enabled?'checked':'')+" onchange=\"dpToggleFlag('"+key+"',this.checked)\" style=\"opacity:0;width:0;height:0;position:absolute\">"
+      + '<span style="position:absolute;cursor:pointer;inset:0;border-radius:21px;background:'+(enabled?'#d97706':'rgba(255,255,255,0.12)')+';transition:0.25s;border:1px solid rgba(255,255,255,0.15)"></span>'
+      + '<span style="position:absolute;height:15px;width:15px;left:'+(enabled?'20':'3')+'px;bottom:3px;border-radius:50%;background:#fff;transition:0.25s;pointer-events:none"></span>'
+      + '</label></div>';
+  });
+  el.innerHTML = html;
+}
+function dpToggleFlag(key, val){
+  localStorage.setItem('devFlag_'+key, val?'1':'0');
+  dpApplyFlag(key, val);
+  dpRenderFlags();
+}
+function dpApplyFlag(key, val){
+  if(key==='disable_animations'){ document.body.style.transition = val ? 'none' : ''; }
+  if(key==='show_perf_overlay'){ dpTogglePerfOverlay(val); }
+  if(key==='verbose_sync'){ window._devVerboseSync = val; }
+  dpLog('info', 'Flag ['+key+'] → '+(val?'ON':'OFF'));
+}
+function dpTogglePerfOverlay(show){
+  var el = document.getElementById('dpPerfOverlay');
+  if(show){
+    if(!el){ el=document.createElement('div'); el.id='dpPerfOverlay'; el.style.cssText='position:fixed;top:60px;right:10px;z-index:99999;background:rgba(0,0,0,0.8);color:#4ade80;font-family:monospace;font-size:11px;padding:6px 10px;border-radius:8px;pointer-events:none;border:1px solid rgba(255,255,255,0.1)'; document.body.appendChild(el); }
+    var last=performance.now(), frames=0;
+    function tick(){ frames++; var now=performance.now(); if(now-last>=1000){ el.textContent='FPS: '+frames+'\nMem: '+(performance.memory?Math.round(performance.memory.usedJSHeapSize/1048576)+'MB':'—'); frames=0; last=now; } if(document.getElementById('dpPerfOverlay')) requestAnimationFrame(tick); }
+    requestAnimationFrame(tick);
+  } else { if(el) el.remove(); }
+}
+
+// ── Config Override ──
+function dpSaveConfig(){
+  var xp   = parseInt(document.getElementById('dpCfgXP').value)||10;
+  var gold = parseInt(document.getElementById('dpCfgGold').value)||2;
+  var max  = parseInt(document.getElementById('dpCfgMaxMyday').value)||0;
+  localStorage.setItem('devCfg_xpPerTask', xp);
+  localStorage.setItem('devCfg_goldPerTask', gold);
+  localStorage.setItem('devCfg_maxMyday', max);
+  if(typeof XP_PER_TASK!=='undefined') window.XP_PER_TASK = xp;
+  if(typeof GOLD_PER_TASK!=='undefined') window.GOLD_PER_TASK = gold;
+  showToast('💾 Config override disimpan');
+  dpLog('info','Config override: XP='+xp+', Gold='+gold+', MaxMyday='+max);
+}
+function dpResetConfig(){
+  ['devCfg_xpPerTask','devCfg_goldPerTask','devCfg_maxMyday'].forEach(function(k){ localStorage.removeItem(k); });
+  document.getElementById('dpCfgXP').value    = 10;
+  document.getElementById('dpCfgGold').value  = 2;
+  document.getElementById('dpCfgMaxMyday').value = 0;
+  showToast('↩ Config direset ke default');
+}
+
 
 // ── Announcement list ──
 function _devAnnLoadList(){
@@ -25852,5 +25774,337 @@ function devWipeUserData(){
     </div>
   </div>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     DEVELOPER PAGE — Full Screen Overlay
+══════════════════════════════════════════════════════════════ -->
+<div id="devPage" style="display:none;position:fixed;inset:0;z-index:9900;background:#0d0c0b;font-family:'DM Sans',sans-serif;flex-direction:column;overflow:hidden">
+
+  <!-- Top bar -->
+  <div style="display:flex;align-items:center;gap:12px;padding:14px 16px 10px;background:#111009;border-bottom:1px solid rgba(217,119,6,0.2);flex-shrink:0">
+    <button onclick="closeDevPage()" style="width:36px;height:36px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.6);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">←</button>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:16px;font-weight:900;color:#f59e0b;letter-spacing:-0.3px">🛠️ Developer Console</div>
+      <div id="devPageUidLabel" style="font-size:10px;color:rgba(217,119,6,0.45);font-weight:600;letter-spacing:0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+    </div>
+    <span style="font-size:9px;font-weight:800;color:rgba(217,119,6,0.7);background:rgba(217,119,6,0.1);border:1px solid rgba(217,119,6,0.25);border-radius:20px;padding:3px 10px;letter-spacing:0.5px;flex-shrink:0">DEV ONLY</span>
+  </div>
+
+  <!-- Tab nav — horizontal scroll -->
+  <div style="display:flex;gap:4px;padding:10px 12px 0;background:#111009;overflow-x:auto;scrollbar-width:none;flex-shrink:0">
+    <button id="dpTab-ann"   onclick="dpSwitch('ann')"   class="dp-tab dp-tab-active">📢 Announce</button>
+    <button id="dpTab-debug" onclick="dpSwitch('debug')" class="dp-tab">🐛 Debug</button>
+    <button id="dpTab-gami"  onclick="dpSwitch('gami')"  class="dp-tab">🎮 Gami</button>
+    <button id="dpTab-data"  onclick="dpSwitch('data')"  class="dp-tab">🗄️ Data</button>
+    <button id="dpTab-logs"  onclick="dpSwitch('logs')"  class="dp-tab">📡 Live Logs</button>
+    <button id="dpTab-stats" onclick="dpSwitch('stats')" class="dp-tab">📊 App Stats</button>
+    <button id="dpTab-flags" onclick="dpSwitch('flags')" class="dp-tab">🧪 Flags</button>
+  </div>
+  <style>
+    .dp-tab{padding:8px 14px;border:none;border-radius:8px 8px 0 0;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;background:transparent;color:rgba(255,255,255,0.35);white-space:nowrap;transition:all 0.15s;border-bottom:2px solid transparent}
+    .dp-tab-active{background:rgba(217,119,6,0.12)!important;color:#f59e0b!important;border-bottom:2px solid #d97706!important}
+    .dp-tab:hover{color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.04)}
+  </style>
+
+  <!-- Divider -->
+  <div style="height:1px;background:rgba(217,119,6,0.15);flex-shrink:0"></div>
+
+  <!-- Scrollable content area -->
+  <div style="flex:1;overflow-y:auto;padding:14px 14px 32px">
+
+    <!-- ══ TAB: ANNOUNCE ══ -->
+    <div id="dpContent-ann">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px"><span style="font-size:14px">✏️</span> Buat Pengumuman Baru</div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Pilih Gaya</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="dp-style-chip dp-style-active" data-style="info"    onclick="dpSelectStyle('info',this)"    style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid #3b82f6;background:rgba(59,130,246,0.15);color:#60a5fa;transition:all 0.15s">📢 Info</button>
+            <button class="dp-style-chip"                 data-style="success" onclick="dpSelectStyle('success',this)" style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">✅ Sukses</button>
+            <button class="dp-style-chip"                 data-style="warning" onclick="dpSelectStyle('warning',this)" style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">⚠️ Warning</button>
+            <button class="dp-style-chip"                 data-style="danger"  onclick="dpSelectStyle('danger',this)"  style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">🚨 Bahaya</button>
+            <button class="dp-style-chip"                 data-style="promo"   onclick="dpSelectStyle('promo',this)"   style="padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);transition:all 0.15s">🎁 Promo</button>
+          </div>
+        </div>
+        <div style="margin-bottom:10px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Judul <span style="color:rgba(255,80,80,0.6)">*</span></div>
+          <input id="dpAnnTitle" type="text" placeholder="Contoh: Update Versi 2.1 🎉" maxlength="80"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none"
+            onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+        </div>
+        <div style="margin-bottom:10px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Isi Pesan <span style="color:rgba(255,80,80,0.6)">*</span></div>
+          <div id="dpAnnToolbar" style="display:flex;flex-wrap:wrap;gap:4px;padding:7px 8px;background:rgba(255,255,255,0.04);border:1.5px solid rgba(255,255,255,0.1);border-bottom:none;border-radius:10px 10px 0 0">
+            <button title="Bold"      onclick="dpAnnExec('bold')"                style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;font-weight:900;cursor:pointer" onmousedown="event.preventDefault()"><b>B</b></button>
+            <button title="Italic"    onclick="dpAnnExec('italic')"              style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;font-family:serif" onmousedown="event.preventDefault()"><i>I</i></button>
+            <button title="Underline" onclick="dpAnnExec('underline')"           style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer;text-decoration:underline" onmousedown="event.preventDefault()">U</button>
+            <div style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></div>
+            <button title="Bullet"    onclick="dpAnnExec('insertUnorderedList')" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer" onmousedown="event.preventDefault()">• —</button>
+            <button title="Numbered"  onclick="dpAnnExec('insertOrderedList')"   style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#fff;font-size:12px;cursor:pointer" onmousedown="event.preventDefault()">1. —</button>
+            <div style="width:1px;background:rgba(255,255,255,0.1);margin:2px 2px"></div>
+            <button title="Clear fmt" onclick="dpAnnExec('removeFormat')"        style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:rgba(255,80,80,0.7);font-size:11px;cursor:pointer" onmousedown="event.preventDefault()">✕ fmt</button>
+          </div>
+          <div id="dpAnnMessage" contenteditable="true" data-placeholder="Tulis isi pengumuman di sini..."
+            style="min-height:110px;max-height:220px;overflow-y:auto;width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-top:none;border-radius:0 0 10px 10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;line-height:1.65;word-break:break-word"></div>
+          <style>#dpAnnMessage:empty:before{content:attr(data-placeholder);color:rgba(255,255,255,0.2);pointer-events:none}</style>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+          <div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Mode Tampil</div>
+            <select id="dpAnnMode" style="width:100%;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;color:#fff;padding:9px 10px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:auto">
+              <option value="once"   style="background:#1c1917">1️⃣ Sekali per user</option>
+              <option value="always" style="background:#1c1917">🔄 Selalu tiap buka</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Kedaluwarsa</div>
+            <input id="dpAnnExpiry" type="datetime-local" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:9px 10px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;color-scheme:dark">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="dpAnnPreview()" style="flex:1;padding:11px;border:1.5px solid rgba(217,119,6,0.4);border-radius:10px;background:rgba(217,119,6,0.08);color:#f59e0b;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Preview</button>
+          <button onclick="dpAnnSubmit()"  style="flex:2;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 14px rgba(217,119,6,0.35)">📢 Kirim Pengumuman</button>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.5px">📋 Pengumuman Tersimpan</div>
+          <button onclick="dpAnnLoadList()" style="padding:5px 12px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">↻ Refresh</button>
+        </div>
+        <div id="dpAnnList"><div style="color:rgba(255,255,255,0.2);font-size:12px;padding:12px 0;text-align:center">— Klik Refresh untuk memuat —</div></div>
+      </div>
+    </div><!-- /dpContent-ann -->
+
+    <!-- ══ TAB: DEBUG ══ -->
+    <div id="dpContent-debug" style="display:none">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">👤 User Aktif</div>
+        <div id="dpDebugUserInfo" style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.45);line-height:1.9;background:rgba(0,0,0,0.2);border-radius:8px;padding:10px;margin-bottom:10px">— Memuat... —</div>
+        <button onclick="dpLoadAllUsers()" style="width:100%;padding:10px;border:1px solid rgba(99,102,241,0.4);border-radius:10px;background:rgba(99,102,241,0.1);color:#a5b4fc;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👥 Lihat Semua User Aktif</button>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚡ Quick Actions</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <button onclick="devForceShowAnn()"      style="padding:9px 6px;border:1px solid rgba(59,130,246,0.3);border-radius:9px;background:rgba(59,130,246,0.08);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">📢 Test Ann Modal</button>
+          <button onclick="devClearAnnReads()"     style="padding:9px 6px;border:1px solid rgba(245,158,11,0.3);border-radius:9px;background:rgba(245,158,11,0.08);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🗑 Clear Ann Reads</button>
+          <button onclick="devShowToast()"         style="padding:9px 6px;border:1px solid rgba(34,197,94,0.3);border-radius:9px;background:rgba(34,197,94,0.08);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🍞 Test Toast</button>
+          <button onclick="devCheckFirestore()"    style="padding:9px 6px;border:1px solid rgba(139,92,246,0.3);border-radius:9px;background:rgba(139,92,246,0.08);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔥 Cek Firestore</button>
+          <button onclick="devReloadApp()"         style="padding:9px 6px;border:1px solid rgba(255,255,255,0.15);border-radius:9px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔄 Reload App</button>
+          <button onclick="devClearLocalStorage()" style="padding:9px 6px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">💣 Clear Storage</button>
+          <button onclick="dpSimulateError()"      style="padding:9px 6px;border:1px solid rgba(239,68,68,0.2);border-radius:9px;background:rgba(239,68,68,0.05);color:#fca5a5;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">⚠️ Simulate Error</button>
+          <button onclick="dpCheckSW()"            style="padding:9px 6px;border:1px solid rgba(59,130,246,0.2);border-radius:9px;background:rgba(59,130,246,0.05);color:#93c5fd;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">📦 Check SW</button>
+        </div>
+      </div>
+      <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px">📟 Debug Log</div>
+          <button onclick="devClearLog()" style="padding:3px 9px;border:1px solid rgba(255,255,255,0.08);border-radius:6px;background:transparent;color:rgba(255,255,255,0.25);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Clear</button>
+        </div>
+        <div id="devConsoleLog" style="font-size:10px;font-family:monospace;color:rgba(255,255,255,0.45);line-height:1.8;max-height:200px;overflow-y:auto;word-break:break-all">
+          <span style="color:rgba(255,255,255,0.2)">// Ready.</span>
+        </div>
+      </div>
+    </div><!-- /dpContent-debug -->
+
+    <!-- ══ TAB: GAMI ══ -->
+    <div id="dpContent-gami" style="display:none">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚡ Inject XP & Gold</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;margin-bottom:4px;text-transform:uppercase">XP</div>
+            <input id="devXpAmount" type="number" value="100" min="1" max="9999" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 11px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
+          </div>
+          <div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;margin-bottom:4px;text-transform:uppercase">Gold 🪙</div>
+            <input id="devGoldAmount" type="number" value="50" min="1" max="9999" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:9px;padding:9px 11px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="devInjectXp()"   style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,rgba(251,191,36,0.8),rgba(245,158,11,0.7));color:#1c1400;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">⚡ +XP</button>
+          <button onclick="devInjectGold()" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,rgba(251,191,36,0.6),rgba(217,119,6,0.5));color:#fff3c0;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">🪙 +Gold</button>
+          <button onclick="devInjectBoth()" style="flex:1;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;font-size:12px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">🎁 Both</button>
+        </div>
+      </div>
+      <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(167,139,250,0.7);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚔️ Boss Battle Debug</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px">
+          <button onclick="devBossSpawn()"  style="padding:9px 6px;border:1px solid rgba(139,92,246,0.35);border-radius:9px;background:rgba(139,92,246,0.1);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">⚔️ Spawn Boss</button>
+          <button onclick="devBossKill()"   style="padding:9px 6px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💀 Kill Boss</button>
+          <button onclick="devBossDmg()"    style="padding:9px 6px;border:1px solid rgba(245,158,11,0.3);border-radius:9px;background:rgba(245,158,11,0.08);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💥 Deal 100 DMG</button>
+          <button onclick="devBossStatus()" style="padding:9px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:9px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.45);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📊 Log Status</button>
+        </div>
+        <div id="devBossInfo" style="font-size:10px;font-family:monospace;color:rgba(167,139,250,0.5);background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;min-height:36px">— Boss status —</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">🎨 Shop & Tema</div>
+        <div id="devShopInfo" style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);line-height:1.9;background:rgba(0,0,0,0.2);border-radius:8px;padding:8px 10px;margin-bottom:10px">— Klik Refresh —</div>
+        <button onclick="devRefreshShopInfo()" style="width:100%;padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:10px">↻ Refresh Status Shop</button>
+        <button onclick="devResetShopPurchases()" style="width:100%;padding:9px;border:1px solid rgba(239,68,68,0.3);border-radius:9px;background:rgba(239,68,68,0.07);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🗑️ Reset Semua Pembelian Shop</button>
+      </div>
+      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:16px;padding:14px">
+        <div style="font-size:10px;font-weight:800;color:rgba(248,113,113,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">⚠️ Danger Zone</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <button onclick="devResetGami()"    style="padding:9px 6px;border:1px solid rgba(239,68,68,0.35);border-radius:9px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">🔁 Reset XP/Gold/Level</button>
+          <button onclick="devResetAllGami()" style="padding:9px 6px;border:1.5px solid rgba(239,68,68,0.5);border-radius:9px;background:rgba(239,68,68,0.12);color:#fca5a5;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center">💣 Reset SEMUA Gami</button>
+        </div>
+      </div>
+    </div><!-- /dpContent-gami -->
+
+    <!-- ══ TAB: DATA ══ -->
+    <div id="dpContent-data" style="display:none">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">📦 Export Data User</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          <button onclick="devExportTasks()"   style="padding:9px 6px;border:1px solid rgba(59,130,246,0.3);border-radius:9px;background:rgba(59,130,246,0.07);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📋 Export Tasks</button>
+          <button onclick="devExportHabits()"  style="padding:9px 6px;border:1px solid rgba(34,197,94,0.3);border-radius:9px;background:rgba(34,197,94,0.07);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔥 Export Habits</button>
+          <button onclick="devExportFinance()" style="padding:9px 6px;border:1px solid rgba(251,191,36,0.3);border-radius:9px;background:rgba(251,191,36,0.07);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💰 Export Finance</button>
+          <button onclick="devExportAll()"     style="padding:9px 6px;border:1px solid rgba(217,119,6,0.4);border-radius:9px;background:rgba(217,119,6,0.1);color:#f59e0b;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">📦 Export Semua</button>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px">🔥 Firestore Stats</div>
+          <button onclick="devLoadFirestoreStats()" style="padding:4px 10px;border:1px solid rgba(255,255,255,0.1);border-radius:7px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Load</button>
+        </div>
+        <div id="devFirestoreStats" style="font-size:11px;font-family:monospace;color:rgba(255,255,255,0.4);line-height:1.9">— Klik Load —</div>
+      </div>
+      <div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:16px;padding:14px">
+        <div style="font-size:10px;font-weight:800;color:rgba(248,113,113,0.6);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">🔥 Danger Zone</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:10px;line-height:1.5">Tindakan di bawah ini permanen dan tidak bisa di-undo.</div>
+        <button onclick="devWipeUserData()" style="width:100%;padding:9px;border:1.5px solid rgba(239,68,68,0.4);border-radius:9px;background:rgba(239,68,68,0.1);color:#f87171;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif">💣 Wipe User Data</button>
+      </div>
+    </div><!-- /dpContent-data -->
+
+    <!-- ══ TAB: LIVE LOGS ══ -->
+    <div id="dpContent-logs" style="display:none">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px">📡 Live Console Log</div>
+          <div style="display:flex;gap:6px">
+            <button onclick="dpLogFilter('all')"   id="dpLogBtn-all"   style="padding:3px 9px;border-radius:6px;border:1px solid rgba(217,119,6,0.5);background:rgba(217,119,6,0.12);color:#f59e0b;font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">All</button>
+            <button onclick="dpLogFilter('error')" id="dpLogBtn-error" style="padding:3px 9px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,255,255,0.3);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Error</button>
+            <button onclick="dpLogFilter('warn')"  id="dpLogBtn-warn"  style="padding:3px 9px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,255,255,0.3);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Warn</button>
+            <button onclick="dpClearLiveLogs()" style="padding:3px 9px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,80,80,0.5);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Clear</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-bottom:8px">Log direkam sejak halaman dibuka. Scroll ke bawah untuk terbaru.</div>
+        <div id="dpLiveLogContainer" style="background:#050403;border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:10px;max-height:420px;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.8;word-break:break-all">
+          <span style="color:rgba(255,255,255,0.2)">// Menunggu log...</span>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">🌐 Network Monitor</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-bottom:8px">Request fetch/XHR yang tertangkap.</div>
+        <div id="dpNetworkLog" style="background:#050403;border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:10px;max-height:200px;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.8;word-break:break-all">
+          <span style="color:rgba(255,255,255,0.2)">// Menunggu request...</span>
+        </div>
+      </div>
+    </div><!-- /dpContent-logs -->
+
+    <!-- ══ TAB: APP STATS ══ -->
+    <div id="dpContent-stats" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px" id="dpStatsGrid">
+        <div class="dp-stat-card" style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:900;color:#60a5fa" id="dpStatTasks">—</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;font-weight:700">Total Tasks</div>
+        </div>
+        <div class="dp-stat-card" style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:900;color:#4ade80" id="dpStatHabits">—</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;font-weight:700">Habits Aktif</div>
+        </div>
+        <div class="dp-stat-card" style="background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.2);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:900;color:#f59e0b" id="dpStatDoneToday">—</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;font-weight:700">Selesai Hari Ini</div>
+        </div>
+        <div class="dp-stat-card" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:900;color:#f87171" id="dpStatOverdue">—</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;font-weight:700">Task Terlambat</div>
+        </div>
+        <div class="dp-stat-card" style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:900;color:#a78bfa" id="dpStatXP">—</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;font-weight:700">Total XP</div>
+        </div>
+        <div class="dp-stat-card" style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:900;color:#fbbf24" id="dpStatGold">—</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;font-weight:700">Gold 🪙</div>
+        </div>
+        <div class="dp-stat-card" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:900;color:rgba(255,255,255,0.7)" id="dpStatStreak">—</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;font-weight:700">Streak Terpanjang</div>
+        </div>
+        <div class="dp-stat-card" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px;text-align:center">
+          <div style="font-size:24px;font-weight:900;color:rgba(255,255,255,0.7)" id="dpStatJournal">—</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;font-weight:700">Entri Jurnal</div>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">📋 Breakdown Task per Grup</div>
+        <div id="dpStatsGroups" style="font-size:12px;color:rgba(255,255,255,0.5);line-height:2;font-family:monospace">— Memuat... —</div>
+      </div>
+    </div><!-- /dpContent-stats -->
+
+    <!-- ══ TAB: FEATURE FLAGS ══ -->
+    <div id="dpContent-flags" style="display:none">
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">🧪 Experimental Flags</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:14px;line-height:1.5">Toggle fitur experimental. Tersimpan di localStorage, berlaku untuk sesi ini saja kecuali di-persist.</div>
+        <div id="dpFlagsList" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:14px">
+        <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px">⚙️ App Config Override</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div>
+              <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.7)">XP per Task</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.3)">Default: 10 XP</div>
+            </div>
+            <input id="dpCfgXP" type="number" value="10" min="1" max="999" style="width:72px;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 9px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;text-align:center">
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div>
+              <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.7)">Gold per Task</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.3)">Default: 2 Gold</div>
+            </div>
+            <input id="dpCfgGold" type="number" value="2" min="1" max="999" style="width:72px;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 9px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;text-align:center">
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div>
+              <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.7)">Max Task Per Hari (My Day)</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.3)">Default: tidak ada batas</div>
+            </div>
+            <input id="dpCfgMaxMyday" type="number" value="0" min="0" max="99" placeholder="0=∞" style="width:72px;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 9px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;text-align:center">
+          </div>
+        </div>
+        <button onclick="dpSaveConfig()" style="width:100%;margin-top:14px;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,rgba(217,119,6,0.7),rgba(180,83,9,0.6));color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">💾 Simpan Config Override</button>
+        <button onclick="dpResetConfig()" style="width:100%;margin-top:7px;padding:9px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;background:transparent;color:rgba(255,255,255,0.35);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">↩ Reset ke Default</button>
+      </div>
+    </div><!-- /dpContent-flags -->
+
+  </div><!-- /scroll area -->
+</div><!-- /devPage -->
+
+<!-- ══ SEMUA USER MODAL (dipindah ke luar devPage agar z-index benar) ══ -->
+<div id="devAllUsersModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center" onclick="if(event.target===this)devCloseAllUsersModal()">
+  <div style="background:#1c1917;border:1px solid rgba(99,102,241,0.3);border-radius:20px;padding:20px;width:90%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:34px;height:34px;border-radius:10px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);display:flex;align-items:center;justify-content:center;font-size:17px">👥</div>
+        <div>
+          <div style="font-size:14px;font-weight:800;color:#a5b4fc">Semua User Aktif</div>
+          <div id="devAllUsersCount" style="font-size:10px;color:rgba(255,255,255,0.3)">Memuat...</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="devLoadAllUsers()" style="padding:5px 11px;border:1px solid rgba(99,102,241,0.3);border-radius:8px;background:rgba(99,102,241,0.08);color:#a5b4fc;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">↻</button>
+        <button onclick="devCloseAllUsersModal()" style="width:28px;height:28px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;line-height:1">✕</button>
+      </div>
+    </div>
+    <div id="devAllUsersList" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-right:2px">
+      <div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">⏳ Memuat...</div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
