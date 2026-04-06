@@ -2,22 +2,23 @@
 [build]
   publish = "."                         # folder root (index.html ada di sini)
   functions = "netlify/functions"       # folder functions
-
 # ── Node bundler untuk semua functions ───────────────────────────
 [functions]
   node_bundler = "esbuild"
-
 # ── Scheduled Function: cek reminder tiap menit ──────────────────
 [functions."send-reminders"]
   schedule = "* * * * *"
-
 # ── Headers: izinkan SW scope di root ────────────────────────────
 [[headers]]
   for = "/sw.js"
   [headers.values]
     Service-Worker-Allowed = "/"
     Cache-Control = "no-cache"
-
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "no-cache"
 [[headers]]
   for = "/*"
   [headers.values]
