@@ -1059,6 +1059,13 @@ function _startFirebase() {
         }
       });
 
+    // ── Tangkap hasil signInWithRedirect (dari loginGoogle) ──
+    fbAuth.getRedirectResult().catch(function(e) {
+      if (e && e.code !== 'auth/no-current-user') {
+        console.warn('[ChiTask] getRedirectResult error:', e.message);
+      }
+    });
+
     fbAuth.onAuthStateChanged(function(user) {
       if (user) {
         // Guard: anonymous user dari loginAsGuest — jangan overwrite fbUser
@@ -1270,36 +1277,9 @@ function fbLoadData(callback) {
 function loginGoogle() {
   if (!fbAuth) { alert('Koneksi internet diperlukan untuk login pertama kali.'); return; }
   var provider = new firebase.auth.GoogleAuthProvider();
-  // Hanya Firebase auth scope — Calendar dihandle oleh GIS secara terpisah
   provider.setCustomParameters({ prompt: 'select_account' });
-
-  // Cek dulu apakah ada hasil redirect sebelumnya (dari fallback)
-  fbAuth.getRedirectResult().then(function(result) {
-    if (result && result.user) {
-      // Sudah login via redirect — onAuthStateChanged akan handle sisanya
-      return;
-    }
-    // Coba popup dulu
-    fbAuth.signInWithPopup(provider).catch(function(e) {
-      // Popup diblokir atau COOP error → fallback ke redirect
-      var useRedirect = e.code === 'auth/popup-blocked'
-        || (e.message && e.message.toLowerCase().indexOf('cross-origin') !== -1);
-      if (useRedirect) {
-        fbAuth.signInWithRedirect(provider);
-      } else if (e.code !== 'auth/popup-closed-by-user') {
-        alert('Login gagal: ' + e.message);
-      }
-    });
-  }).catch(function() {
-    // getRedirectResult gagal — langsung coba popup
-    fbAuth.signInWithPopup(provider).catch(function(e) {
-      if (e.code === 'auth/popup-blocked') {
-        fbAuth.signInWithRedirect(provider);
-      } else if (e.code !== 'auth/popup-closed-by-user') {
-        alert('Login gagal: ' + e.message);
-      }
-    });
-  });
+  // Gunakan redirect — popup menyebabkan COOP error di browser modern
+  fbAuth.signInWithRedirect(provider);
 }
 
 // gcalReauth sudah dipindah ke blok Google Calendar state di bawah
@@ -8999,7 +8979,7 @@ function init(){
     setTimeout(function(){ _gcalInitForUser(fbUser); }, 800);
   }
 
-  // Dismiss splash screen — max 800ms, tidak perlu nunggu lama
+  // Dismiss splash screen — max 800ms
   var splash=document.getElementById('chitask-splash');
   if(splash){
     setTimeout(function(){
