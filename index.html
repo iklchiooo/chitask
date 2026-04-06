@@ -16,7 +16,7 @@ var _STRINGS = {
     login_sub: 'Task Manager · Keuangan · Maintenance<br>Data tersimpan aman di cloud ☁️',
     login_google: 'Masuk dengan Google',
     login_guest: 'Coba dulu tanpa login',
-    login_guest_note: 'Data disimpan di perangkat ini saja &mdash; <b>tidak bisa sync</b> ke perangkat lain. Bisa upgrade ke akun Google kapan saja.',
+    login_guest_note: 'Data tersimpan di cloud ☁️ — <b>bisa akses dari perangkat lain</b> dengan anonymous login yang sama. Upgrade ke Google untuk sinkronisasi penuh.',
     // ── Sidebar nav sections ──
     nav_sec_task: '📋 Task',
     nav_sec_fin: '💰 Keuangan',
@@ -145,6 +145,12 @@ var _STRINGS = {
     btn_close: 'Tutup',
     btn_apply_nav: '✓ Simpan Setting',
     settings_hint: 'Bisa diubah kapan saja di ⚙️ Settings',
+    // ── Guest username modal ──
+    guest_username_title: 'Halo! Siapa namamu? 👋',
+    guest_username_sub: 'Nama ini akan ditampilkan di sidebar. Bisa diganti kapan saja.',
+    guest_username_placeholder: 'Masukkan namamu...',
+    guest_username_btn: '✓ Mulai Pakai ChiTask',
+    guest_username_skip: 'Lewati (pakai "Tamu")',
     // ── Sync / save ──
     saved: '✓ Tersimpan',
     sync_activate: '☁️ Aktifkan sync → Masuk dengan Google',
@@ -333,7 +339,7 @@ var _STRINGS = {
     login_sub: 'Task Manager · Finance · Maintenance<br>Your data is safely stored in the cloud ☁️',
     login_google: 'Sign in with Google',
     login_guest: 'Try without signing in',
-    login_guest_note: 'Data is saved on this device only &mdash; <b>no cloud sync</b>. You can upgrade to a Google account anytime.',
+    login_guest_note: 'Data is saved in the cloud ☁️ — <b>accessible from other devices</b> using the same anonymous login. Upgrade to Google for full sync.',
     nav_sec_task: '📋 Tasks',
     nav_sec_fin: '💰 Finance',
     nav_sec_maint: '🔧 Maintenance',
@@ -453,6 +459,12 @@ var _STRINGS = {
     btn_close: 'Close',
     btn_apply_nav: '✓ Save Settings',
     settings_hint: 'Can be changed anytime in ⚙️ Settings',
+    // ── Guest username modal ──
+    guest_username_title: 'Hello! What\'s your name? 👋',
+    guest_username_sub: 'This name will be shown in the sidebar. You can change it anytime.',
+    guest_username_placeholder: 'Enter your name...',
+    guest_username_btn: '✓ Start Using ChiTask',
+    guest_username_skip: 'Skip (use "Guest")',
     saved: '✓ Saved',
     sync_activate: '☁️ Enable sync → Sign in with Google',
     confirm_logout: 'Are you sure you want to log out?',
@@ -1049,6 +1061,50 @@ function _startFirebase() {
 
     fbAuth.onAuthStateChanged(function(user) {
       if (user) {
+        // Jika ini anonymous user (dari loginAsGuest), fbUser sudah di-set
+        // oleh _proceedAsGuest() dengan flag _isGuest. Jangan overwrite.
+        if (user.isAnonymous && fbUser && fbUser._isGuest) {
+          // Update uid saja agar fbUser.uid match Firebase uid
+          fbUser.uid = user.uid;
+          return; // skip flow Google login
+        }
+        // ── Anonymous user baru (belum ada fbUser di memori = app baru buka) ──
+        // Cek apakah ada data guest di Firestore untuk uid ini
+        if (user.isAnonymous && (!fbUser || !fbUser._isGuest)) {
+          // Load data dari localStorage dulu untuk cek username
+          var _savedAnon = null;
+          try { _savedAnon = JSON.parse(localStorage.getItem('chitask_v6_data') || '{}'); } catch(e) { _savedAnon = {}; }
+          var _anonName = (_savedAnon && _savedAnon._userName) ? _savedAnon._userName : null;
+          // Set fbUser sebagai guest
+          fbUser = {
+            uid: user.uid,
+            displayName: _anonName || 'Tamu',
+            photoURL: null,
+            email: '',
+            _isOffline: false,
+            _isGuest: true
+          };
+          _offlineMode = false;
+          if (!_fbInitialized) {
+            _appReady = false;
+            window._initAppRunning = false;
+            _fbInitialized = true;
+            fbLoadData(function(cloudData) {
+              if (cloudData) {
+                // Ambil username dari cloud jika ada
+                if (cloudData._userName) {
+                  fbUser.displayName = cloudData._userName;
+                }
+                try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {}
+              }
+              updateAuthUI(fbUser);
+              if (typeof initApp === 'function') initApp();
+            });
+          } else {
+            updateAuthUI(fbUser);
+          }
+          return;
+        }
         fbUser = user;
         _offlineMode = false;
         updateAuthUI(user);
@@ -1066,9 +1122,6 @@ function _startFirebase() {
 
         // ── Google Calendar: inisialisasi via GIS (bukan Firebase popup) ──
         _gcalInitForUser(user);
-
-        // ── Presence System: tulis lastSeen ke Firestore ──
-        _startPresenceHeartbeat(user);
 
         if (!_fbInitialized) {
           // Reset _appReady untuk user login baru — akan di-set true di akhir init()
@@ -1240,30 +1293,150 @@ function loginGoogle() {
 // gcalReauth sudah dipindah ke blok Google Calendar state di bawah
 
 function loginAsGuest() {
-  _offlineMode = true;
-  // Cek apakah sudah ada data guest sebelumnya
+  // Cek apakah sudah ada data guest sebelumnya (sudah pernah login sebagai guest)
   var savedData = null;
   try { savedData = localStorage.getItem('chitask_v6_data'); } catch(e) {}
   var savedParsed = null;
   if (savedData) { try { savedParsed = JSON.parse(savedData); } catch(e) {} }
-  // Jika data yang tersimpan milik akun Google (bukan guest), jangan pakai
   var isGuestData = !savedParsed || !savedParsed._userName || savedParsed._isGuest;
-  var guestUser = {
-    uid: 'guest_user',
-    displayName: 'Tamu',
-    photoURL: null,
-    email: '',
-    _isOffline: true,
-    _isGuest: true
-  };
-  fbUser = guestUser;
-  // Tandai data sebagai guest agar tidak tercampur
-  if (savedParsed && isGuestData) {
-    savedParsed._isGuest = true;
-    try { localStorage.setItem('chitask_v6_data', JSON.stringify(savedParsed)); } catch(e) {}
+  // Kalau sudah punya username guest sebelumnya, langsung lanjut tanpa tanya lagi
+  var existingGuestName = (savedParsed && savedParsed._isGuest && savedParsed._userName && savedParsed._userName !== 'Tamu' && savedParsed._userName !== 'Guest')
+    ? savedParsed._userName : null;
+
+  function _proceedAsGuest(anonUid, guestDisplayName) {
+    _offlineMode = false;
+    var guestUser = {
+      uid: anonUid || 'guest_user',
+      displayName: guestDisplayName || 'Tamu',
+      photoURL: null,
+      email: '',
+      _isOffline: false,
+      _isGuest: true
+    };
+    fbUser = guestUser;
+    // Tandai data sebagai guest dan simpan username
+    var dataToSave = savedParsed || {};
+    dataToSave._isGuest = true;
+    dataToSave._userName = guestUser.displayName;
+    try { localStorage.setItem('chitask_v6_data', JSON.stringify(dataToSave)); } catch(e) {}
+
+    // ── Simpan ke Firestore agar data guest cloud-synced ──
+    if (fbDb && anonUid && anonUid !== 'guest_user') {
+      fbDb.collection('users').doc(anonUid).get().then(function(doc) {
+        if (doc.exists) {
+          // Data sudah ada di Firestore — load dan pakai
+          var cloudData = doc.data();
+          try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {}
+          // Pastikan username tersimpan
+          if (!cloudData._userName || cloudData._userName === 'Tamu' || cloudData._userName === 'Guest') {
+            fbDb.collection('users').doc(anonUid).update({ _userName: guestUser.displayName });
+          }
+        } else {
+          // User baru — set dokumen awal dengan username
+          fbDb.collection('users').doc(anonUid).set(dataToSave);
+        }
+        updateAuthUI(guestUser);
+        if (typeof initApp === 'function') initApp();
+      }).catch(function() {
+        updateAuthUI(guestUser);
+        if (typeof initApp === 'function') initApp();
+      });
+    } else {
+      updateAuthUI(guestUser);
+      if (typeof initApp === 'function') initApp();
+    }
   }
-  updateAuthUI(guestUser);
-  if (typeof initApp === 'function') initApp();
+
+  function _doAnonSignIn(onSuccess) {
+    if (fbAuth && typeof fbAuth.signInAnonymously === 'function') {
+      fbAuth.signInAnonymously().then(function(result) {
+        var anonUid = result.user ? result.user.uid : 'guest_anon';
+        onSuccess(anonUid);
+      }).catch(function(err) {
+        console.warn('[ChiTask] Anonymous sign-in gagal, fallback offline guest:', err.message);
+        _offlineMode = true;
+        onSuccess('guest_user');
+      });
+    } else {
+      _offlineMode = true;
+      onSuccess('guest_user');
+    }
+  }
+
+  // Kalau sudah punya username sebelumnya, langsung lanjut tanpa modal
+  if (existingGuestName) {
+    _doAnonSignIn(function(anonUid) { _proceedAsGuest(anonUid, existingGuestName); });
+    return;
+  }
+
+  // ── Tampilkan modal input username ──
+  _showGuestUsernameModal(function(chosenName) {
+    _doAnonSignIn(function(anonUid) { _proceedAsGuest(anonUid, chosenName); });
+  });
+}
+
+// ── Modal input username untuk guest baru ──
+function _showGuestUsernameModal(onConfirm) {
+  // Hapus modal lama kalau ada
+  var old = document.getElementById('guestUsernameModal');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'guestUsernameModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = [
+    '<div style="background:#1c1917;border:1px solid rgba(245,158,11,0.3);border-radius:20px;padding:32px 28px;width:100%;max-width:360px;box-shadow:0 24px 64px rgba(0,0,0,0.6);display:flex;flex-direction:column;gap:16px">',
+      '<div style="text-align:center">',
+        '<div style="font-size:36px;margin-bottom:8px">👤</div>',
+        '<div style="font-size:18px;font-weight:800;color:#fff;font-family:DM Sans,sans-serif" id="guestUnModalTitle">'+t('guest_username_title')+'</div>',
+        '<div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:6px;line-height:1.5;font-family:DM Sans,sans-serif" id="guestUnModalSub">'+t('guest_username_sub')+'</div>',
+      '</div>',
+      '<input id="guestUsernameInput" type="text" maxlength="30"',
+        ' placeholder="'+t('guest_username_placeholder')+'"',
+        ' style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1.5px solid rgba(245,158,11,0.35);border-radius:10px;padding:13px 15px;color:#fff;font-size:15px;font-family:DM Sans,sans-serif;outline:none;transition:border-color 0.15s"',
+        ' oninput="var v=this.value.trim();document.getElementById(\'guestUnConfirmBtn\').disabled=!v;document.getElementById(\'guestUnConfirmBtn\').style.opacity=v?\'1\':\'0.45\'"',
+        ' onkeydown="if(event.key===\'Enter\'){var v=this.value.trim();if(v)document.getElementById(\'guestUnConfirmBtn\').click()}"',
+      '>',
+      '<button id="guestUnConfirmBtn" disabled',
+        ' style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,rgba(217,119,6,0.9),rgba(180,83,9,0.85));color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;opacity:0.45;transition:opacity 0.15s"',
+        ' onclick="_guestUsernameConfirm()">'+t('guest_username_btn'),
+      '</button>',
+      '<button style="width:100%;padding:9px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;background:transparent;color:rgba(255,255,255,0.3);font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif"',
+        ' onclick="_guestUsernameSkip()">'+t('guest_username_skip'),
+      '</button>',
+    '</div>'
+  ].join('');
+
+  document.body.appendChild(modal);
+  window._guestUsernameCallback = onConfirm;
+
+  // Fokus ke input setelah animasi
+  setTimeout(function() {
+    var inp = document.getElementById('guestUsernameInput');
+    if (inp) inp.focus();
+  }, 200);
+}
+
+function _guestUsernameConfirm() {
+  var inp = document.getElementById('guestUsernameInput');
+  var name = inp ? inp.value.trim() : '';
+  if (!name) return;
+  var modal = document.getElementById('guestUsernameModal');
+  if (modal) modal.remove();
+  if (typeof window._guestUsernameCallback === 'function') {
+    window._guestUsernameCallback(name);
+    window._guestUsernameCallback = null;
+  }
+}
+
+function _guestUsernameSkip() {
+  var modal = document.getElementById('guestUsernameModal');
+  if (modal) modal.remove();
+  var skipName = (getLang() === 'en') ? 'Guest' : 'Tamu';
+  if (typeof window._guestUsernameCallback === 'function') {
+    window._guestUsernameCallback(skipName);
+    window._guestUsernameCallback = null;
+  }
 }
 
 function logout() {
@@ -1292,13 +1465,15 @@ function updateAuthUI(user) {
         ? '<img src="'+user.photoURL+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0">'
         : '<div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">'+init+'</div>';
       if (user._isGuest) {
-        // Guest mode: show upgrade prompt
+        // Guest mode: show username + upgrade prompt
+        var guestName = user.displayName || 'Tamu';
+        var guestInit = guestName.charAt(0).toUpperCase();
         userEl.innerHTML =
           '<div style="display:flex;flex-direction:column;gap:4px;width:100%;padding:2px 0">'
           + '<div style="display:flex;align-items:center;gap:7px">'
-          + '<span style="font-size:16px">👤</span>'
-          + '<span style="font-size:11px;color:rgba(255,255,255,0.55);font-weight:600">Mode Tamu</span>'
-          + '<span style="font-size:8px;background:rgba(245,158,11,0.25);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:auto;white-space:nowrap">LOKAL</span>'
+          + '<div style="width:26px;height:26px;border-radius:50%;background:rgba(245,158,11,0.25);border:1.5px solid rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fbbf24;flex-shrink:0">'+guestInit+'</div>'
+          + '<span style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+guestName+'</span>'
+          + '<span style="font-size:8px;background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:auto;white-space:nowrap;flex-shrink:0">TAMU</span>'
           + '</div>'
           + '<button onclick="showLoginScreen()" style="width:100%;padding:5px 8px;border:1px solid rgba(245,158,11,0.4);border-radius:6px;background:rgba(245,158,11,0.1);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left">☁️ Aktifkan sync → Masuk dengan Google</button>'
           + '</div>';
@@ -2337,6 +2512,25 @@ function _tourUpdateDots(idx) {
 <meta name="theme-color" content="#1c1917">
 <title>ChiTask — Task Manager + Keuangan</title>
 <link rel="manifest" href="/manifest.json">
+<script>
+// ── PWA Install Prompt — daftarkan SEDINI MUNGKIN agar tidak terlewat ──
+window._installPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  window._installPrompt = e;
+  // Banner mobile muncul 3 detik setelah halaman siap
+  if(window.innerWidth <= 700){
+    window.addEventListener('load', function(){
+      setTimeout(function(){
+        if(typeof showInstallBanner === 'function') showInstallBanner(window._installPrompt);
+      }, 3000);
+    }, { once: true });
+  }
+  // Tampilkan tombol install di nav
+  var btns = document.querySelectorAll('[data-pwa-install]');
+  btns.forEach(function(b){ b.style.display = ''; });
+});
+</script>
 <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
 <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
@@ -6694,7 +6888,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
     </button>
     <div class="fb-guest-note">
       <span class="fb-guest-note-icon">📱</span>
-      <div id="loginGuestNote">Coba dulu tanpa login - Data disimpan di perangkat ini saja &mdash; <b>tidak bisa sync</b> ke perangkat lain. Bisa upgrade ke akun Google kapan saja.</div>
+      <div id="loginGuestNote">Coba dulu tanpa login - Data tersimpan di cloud ☁️ — <b>bisa akses dari perangkat lain</b> dengan anonymous login yang sama. Upgrade ke Google untuk sinkronisasi penuh.</div>
     </div>
   </div>
 </div>
@@ -7884,7 +8078,7 @@ function _gcalInitForUser(user) {
     }).catch(function() { /* offline atau worker error — skip */ });
   }
 }
-var navSectionOpen={task:true,fin:false,maint:false,journal:false};
+var navSectionOpen={task:true,fin:true,maint:true,journal:true};
 var STORAGE_KEY='chitask_v6_data';
 var _syncTimer=null;
 
@@ -8017,7 +8211,7 @@ function applyNavSections(){
   ['task','fin','maint','journal'].forEach(function(sec){
     var group=document.getElementById('navgroup-'+sec);
     var chevron=document.getElementById('chevron-'+sec);
-    var open=navSectionOpen[sec]===true;
+    var open=navSectionOpen[sec]!==false;
     if(group){group.style.maxHeight=open?'800px':'0';}
     if(chevron){chevron.classList.toggle('open',open);}
   });
@@ -8626,7 +8820,7 @@ function init(){
     totalDone=saved.totalDone||0;
     perfectDays=saved.perfectDays||0;
     totalSubtasks=saved.totalSubtasks||0;
-    navSectionOpen=saved.navSectionOpen||{task:true,fin:false,maint:false,journal:false};
+    navSectionOpen=saved.navSectionOpen||{task:true,fin:true,maint:true,journal:true};
     finTransactions=saved.finTransactions||[];
     finWallets=saved.finWallets||JSON.parse(JSON.stringify(DEFAULT_WALLETS));
     finWishlist=saved.finWishlist||[];
@@ -15287,21 +15481,13 @@ function setupPWA(){
     });
   }
 
-  // Prompt install PWA
-  var _deferredInstallPrompt = null;
-  window.addEventListener('beforeinstallprompt', function(e){
-    e.preventDefault();
-    _deferredInstallPrompt = e;
-    // Aktifkan tombol install jika ada di nav
-    var btns = document.querySelectorAll('[data-pwa-install]');
-    btns.forEach(function(b){ b.style.display = ''; });
-  });
+  // window._installPrompt dipakai oleh installApp() — didaftarkan di window scope
   window._triggerPWAInstall = function(){
-    if(_deferredInstallPrompt){
-      _deferredInstallPrompt.prompt();
-      _deferredInstallPrompt.userChoice.then(function(r){
+    if(window._installPrompt){
+      window._installPrompt.prompt();
+      window._installPrompt.userChoice.then(function(r){
         if(r.outcome === 'accepted') showToast('✅ ChiTask berhasil diinstall!');
-        _deferredInstallPrompt = null;
+        window._installPrompt = null;
       });
     }
   };
@@ -15392,14 +15578,17 @@ function setupPWA(){
     }
   } // end if(false)
 
-  // Add to homescreen prompt
-  var deferredPrompt=null;
+  // Add to homescreen prompt — satu listener terpusat, simpan ke window._installPrompt
   window.addEventListener('beforeinstallprompt',function(e){
-    e.preventDefault();deferredPrompt=e;
-    // Show install banner after 3 sec if on mobile
-    if(window.innerWidth<=700){
-      setTimeout(function(){showInstallBanner(deferredPrompt);},3000);
+    e.preventDefault();
+    window._installPrompt = e;
+    // Tampilkan banner di mobile setelah 3 detik
+    if(window.innerWidth <= 700){
+      setTimeout(function(){ showInstallBanner(window._installPrompt); }, 3000);
     }
+    // Aktifkan tombol install nav jika ada
+    var btns = document.querySelectorAll('[data-pwa-install]');
+    btns.forEach(function(b){ b.style.display = ''; });
   });
 }
 
@@ -15416,7 +15605,17 @@ function showInstallBanner(prompt){
   window._installPrompt=prompt;
 }
 function installApp(){
-  if(window._installPrompt){window._installPrompt.prompt();document.getElementById('installBanner')&&document.getElementById('installBanner').remove();}
+  if(window._installPrompt){
+    window._installPrompt.prompt();
+    window._installPrompt.userChoice.then(function(r){
+      if(r.outcome === 'accepted') showToast('✅ ChiTask berhasil diinstall!');
+      window._installPrompt = null;
+    });
+    var b = document.getElementById('installBanner');
+    if(b) b.remove();
+  } else {
+    showToast('ℹ️ Buka di Chrome mobile & pastikan belum diinstall');
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -24212,7 +24411,8 @@ function _annShowPopup(ann){
   var styleKey = ann.style || 'info';
   var card = document.getElementById('annCard');
   var imgMode = ann.imageMode || 'thumbnail'; // 'thumbnail' | 'fullimage'
-  var isFullImage = imgMode === 'fullimage' && (ann.imageUrl || ann.imageBase64);
+  var _hasNewImg = ann.imagePortrait || ann.imageLandscape;
+  var isFullImage = (_hasNewImg) || (imgMode === 'fullimage' && (ann.imageUrl || ann.imageBase64));
 
   card.setAttribute('data-ann-style', styleKey);
   // Mode fullimage: sembunyikan header, icon, body teks
@@ -24252,37 +24452,55 @@ function _annShowPopup(ann){
       : (ann.displayMode === 'always' ? 'ChiTask · Pesan selalu ditampilkan' : 'ChiTask · Pesan dari developer');
   }
 
-  // Gambar iklan
+  // Gambar iklan — auto-detect device: portrait → mobile, landscape → desktop
   var imgWrap = document.getElementById('annImageWrap');
   var imgEl   = document.getElementById('annImage');
   var imgHint = document.getElementById('annImageLinkHint');
   if(imgWrap && imgEl){
-    var imgSrc = ann.imageUrl || ann.imageBase64 || null;
+    // Pilih gambar sesuai lebar layar
+    var _isMobileView = window.innerWidth < 768;
+    var imgSrc = null;
+    var resolvedOrient = 'portrait';
+    if(ann.imagePortrait || ann.imageLandscape){
+      // Sistem baru: dua gambar terpisah
+      if(_isMobileView){
+        imgSrc = ann.imagePortrait || ann.imageLandscape;
+        resolvedOrient = ann.imagePortrait ? 'portrait' : 'landscape';
+      } else {
+        imgSrc = ann.imageLandscape || ann.imagePortrait;
+        resolvedOrient = ann.imageLandscape ? 'landscape' : 'portrait';
+      }
+    } else {
+      // Fallback: sistem lama (imageBase64 / imageUrl)
+      imgSrc = ann.imageUrl || ann.imageBase64 || null;
+      resolvedOrient = ann.imageOrient || 'portrait';
+    }
+
+    var isFullImageResolved = imgMode === 'fullimage' && imgSrc;
+    // Recalc isFullImage based on resolved src
+    if(!imgSrc && (ann.imagePortrait || ann.imageLandscape)) isFullImageResolved = true;
+
     if(imgSrc){
       imgEl.src = imgSrc;
       imgWrap.style.display = 'block';
       imgWrap.dataset.link = ann.imageLink || '';
-      // Styling berdasarkan mode & orientasi
-      var orient = ann.imageOrient || 'portrait';
-      if(isFullImage){
+      if(isFullImage || isFullImageResolved){
         imgWrap.style.margin = '0';
         imgWrap.style.borderRadius = '0';
         imgWrap.style.overflow = 'hidden';
-        if(orient === 'portrait'){
-          imgEl.style.maxHeight = '';
-          imgEl.style.height = 'auto';
-          imgEl.style.width = '100%';
-          imgEl.style.objectFit = 'cover';
-          imgEl.style.aspectRatio = '';
-        } else {
-          // landscape
+        if(resolvedOrient === 'landscape'){
           imgEl.style.maxHeight = '';
           imgEl.style.height = 'auto';
           imgEl.style.width = '100%';
           imgEl.style.objectFit = 'cover';
           imgEl.style.aspectRatio = '16/9';
+        } else {
+          imgEl.style.maxHeight = '';
+          imgEl.style.height = 'auto';
+          imgEl.style.width = '100%';
+          imgEl.style.objectFit = 'cover';
+          imgEl.style.aspectRatio = '';
         }
-        // Card: hapus padding, border-radius atas, overflow
         card.style.paddingTop = '0';
         card.style.overflow = 'hidden';
       } else {
@@ -24748,53 +24966,163 @@ function dpSwitch(tab){
 }
 
 // ── Announce (bridge to existing functions) ──
-// Bridge: devAnn* functions membaca elemen dengan id dpAnn* di panel ini
-// getElementById di-patch agar devAnnTitle → dpAnnTitle, dst.
-(function(){
-  var _idMap = {
-    devAnnTitle:   'dpAnnTitle',
-    devAnnMessage: 'dpAnnMessage',
-    devAnnMode:    'dpAnnMode',
-    devAnnExpiry:  'dpAnnExpiry',
-    devAnnCharCount: 'dpAnnCharCount'
-  };
-  var _orig = document.getElementById.bind(document);
-  document.getElementById = function(id){
-    return _orig(_idMap[id] || id);
-  };
-})();
-var _devAnnSelectedStyle = 'info'; // diset oleh dpSelectStyle
 function dpAnnExec(cmd, val){ document.execCommand(cmd, false, val||null); }
 function dpSelectStyle(style, el){
-  _devAnnSelectedStyle = style;
   document.querySelectorAll('.dp-style-chip').forEach(function(b){ b.style.borderColor='rgba(255,255,255,0.12)'; b.style.background='rgba(255,255,255,0.05)'; b.style.color='rgba(255,255,255,0.4)'; b.classList.remove('dp-style-active'); });
   el.classList.add('dp-style-active');
   var colors = {info:{b:'#3b82f6',bg:'rgba(59,130,246,0.15)',c:'#60a5fa'}, success:{b:'#22c55e',bg:'rgba(34,197,94,0.15)',c:'#4ade80'}, warning:{b:'#f59e0b',bg:'rgba(245,158,11,0.15)',c:'#fbbf24'}, danger:{b:'#ef4444',bg:'rgba(239,68,68,0.15)',c:'#f87171'}, promo:{b:'#a855f7',bg:'rgba(168,85,247,0.15)',c:'#c084fc'}};
   var s = colors[style]||colors.info;
   el.style.borderColor = s.b; el.style.background = s.bg; el.style.color = s.c;
 }
+
+// ── Gambar iklan: portrait (mobile) & landscape (desktop) ──
+var _dpAnnImgPortrait  = null; // base64 gambar portrait (HP)
+var _dpAnnImgLandscape = null; // base64 gambar landscape (Desktop)
+
+function _dpAnnCompressImg(file, maxDim, targetB64, callback){
+  if(!file || !file.type.startsWith('image/')){ callback(null,'Bukan file gambar'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var img = new Image();
+    img.onload = function(){
+      var steps = [{dim:maxDim,q:0.88},{dim:Math.round(maxDim*0.85),q:0.82},{dim:Math.round(maxDim*0.75),q:0.76},{dim:Math.round(maxDim*0.65),q:0.70},{dim:Math.round(maxDim*0.55),q:0.63}];
+      var finalB64 = null;
+      for(var i=0;i<steps.length;i++){
+        var canvas=document.createElement('canvas');
+        var w=img.width, h=img.height;
+        var scale=Math.min(steps[i].dim/w, steps[i].dim/h, 1);
+        canvas.width=Math.round(w*scale); canvas.height=Math.round(h*scale);
+        canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+        var b64=canvas.toDataURL('image/jpeg',steps[i].q);
+        finalB64=b64;
+        if(b64.length<=targetB64) break;
+      }
+      callback(finalB64, null);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function dpAnnHandleImg(type, file){
+  // type: 'portrait' | 'landscape'
+  if(!file) return;
+  var TARGET = 700*1024; // ~700KB base64
+  var maxDim = type==='landscape' ? 1400 : 1000;
+  var infoEl  = document.getElementById('dpAnnImg'+_cap(type)+'Info');
+  var prevEl  = document.getElementById('dpAnnImg'+_cap(type)+'Preview');
+  var phEl    = document.getElementById('dpAnnImg'+_cap(type)+'Ph');
+  var rmBtn   = document.getElementById('dpAnnImg'+_cap(type)+'Rm');
+  if(infoEl) infoEl.textContent = '⏳ Memproses...';
+  _dpAnnCompressImg(file, maxDim, TARGET, function(b64, err){
+    if(err||!b64){ if(infoEl) infoEl.textContent='❌ '+err; showToast('❌ Gagal proses gambar'); return; }
+    var origKB = Math.round(file.size/1024);
+    var finalKB = Math.round(b64.length*0.75/1024);
+    if(type==='portrait') _dpAnnImgPortrait=b64;
+    else _dpAnnImgLandscape=b64;
+    if(prevEl){ prevEl.src=b64; prevEl.style.display='block'; }
+    if(phEl) phEl.style.display='none';
+    if(rmBtn) rmBtn.style.display='inline-flex';
+    if(infoEl) infoEl.textContent=(b64.length<=TARGET?'✅ ':'⚠️ ')+file.name+' ('+origKB+'KB → ~'+finalKB+'KB)';
+    if(origKB>finalKB) showToast('📐 Dikompres '+type+': '+origKB+'KB → ~'+finalKB+'KB');
+  });
+}
+function _cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+function dpAnnRemoveImg(type){
+  if(type==='portrait') _dpAnnImgPortrait=null;
+  else _dpAnnImgLandscape=null;
+  var prevEl = document.getElementById('dpAnnImg'+_cap(type)+'Preview');
+  var phEl   = document.getElementById('dpAnnImg'+_cap(type)+'Ph');
+  var rmBtn  = document.getElementById('dpAnnImg'+_cap(type)+'Rm');
+  var infoEl = document.getElementById('dpAnnImg'+_cap(type)+'Info');
+  var inp    = document.getElementById('dpAnnImg'+_cap(type)+'Input');
+  if(prevEl){ prevEl.src=''; prevEl.style.display='none'; }
+  if(phEl) phEl.style.display='flex';
+  if(rmBtn) rmBtn.style.display='none';
+  if(infoEl) infoEl.textContent='';
+  if(inp) inp.value='';
+}
+
 function dpAnnPreview(){
   var title = document.getElementById('dpAnnTitle').value.trim();
   var msg   = document.getElementById('dpAnnMessage').innerHTML.trim();
-  if(!title||!msg){ showToast('⚠️ Judul & isi wajib diisi'); return; }
   var chip  = document.querySelector('.dp-style-chip.dp-style-active');
   var style = chip ? chip.dataset.style : 'info';
-  if(typeof showAnnouncementModal === 'function') showAnnouncementModal({id:'preview',title:title,message:msg,style:style,mode:'once',createdAt:Date.now()});
-  else showToast('👁 Preview: '+title);
+  var hasImg = _dpAnnImgPortrait || _dpAnnImgLandscape;
+  if(!title){ showToast('⚠️ Judul wajib diisi'); return; }
+  if(!msg && !hasImg){ showToast('⚠️ Isi pesan atau upload minimal 1 gambar'); return; }
+  // Pilih gambar sesuai device saat preview
+  var isMobile = window.innerWidth < 768;
+  var imgSrc = isMobile
+    ? (_dpAnnImgPortrait || _dpAnnImgLandscape)
+    : (_dpAnnImgLandscape || _dpAnnImgPortrait);
+  var imgMode   = hasImg ? 'fullimage' : 'none';
+  var imgOrient = (_dpAnnImgLandscape && !isMobile) ? 'landscape' : 'portrait';
+  var ann = {
+    id:'__preview__', title:title, message:msg||'', style:style,
+    displayMode:'always', createdAt:null,
+    imageBase64: imgSrc || null,
+    imageMode:   imgSrc ? imgMode : 'thumbnail',
+    imageOrient: imgOrient,
+    imagePortrait:  _dpAnnImgPortrait  || null,
+    imageLandscape: _dpAnnImgLandscape || null
+  };
+  var overlayEl = document.getElementById('annOverlay');
+  if(overlayEl) overlayEl.style.zIndex='10000';
+  window._devPreviewCleanupOnce = function(){ if(overlayEl) overlayEl.style.zIndex=''; };
+  _annShowing = false;
+  _annShowPopup(ann);
 }
+
 function dpAnnSubmit(){
   var title  = document.getElementById('dpAnnTitle').value.trim();
   var msg    = document.getElementById('dpAnnMessage').innerHTML.trim();
+  var plain  = (document.getElementById('dpAnnMessage').innerText||'').trim();
   var mode   = document.getElementById('dpAnnMode').value;
   var expiry = document.getElementById('dpAnnExpiry').value;
   var chip   = document.querySelector('.dp-style-chip.dp-style-active');
   var style  = chip ? chip.dataset.style : 'info';
-  if(!title||!msg){ showToast('⚠️ Judul & isi wajib diisi'); return; }
+  var hasImg = _dpAnnImgPortrait || _dpAnnImgLandscape;
+  if(!title){ showToast('⚠️ Judul wajib diisi'); return; }
+  if(!plain && !hasImg){ showToast('⚠️ Isi pesan atau upload minimal 1 gambar'); return; }
   if(!fbDb){ showToast('Firestore tidak tersambung'); return; }
-  var data = {title:title, message:msg, style:style, mode:mode, createdAt:Date.now()};
-  if(expiry) data.expiresAt = new Date(expiry).getTime();
-  fbDb.collection('announcements').add(data).then(function(){ showToast('📢 Pengumuman dikirim!'); document.getElementById('dpAnnTitle').value=''; document.getElementById('dpAnnMessage').innerHTML=''; dpAnnLoadList(); }).catch(function(e){ showToast('❌ Gagal: '+e.message); });
+  // Cek total ukuran base64 aman untuk Firestore (doc limit ~1MB)
+  var totalB64Len = (_dpAnnImgPortrait ? _dpAnnImgPortrait.length : 0) + (_dpAnnImgLandscape ? _dpAnnImgLandscape.length : 0);
+  if(totalB64Len > 900 * 1024){
+    showToast('⚠️ Total gambar terlalu besar (maks ~900KB). Upload salah satu saja atau perkecil gambar.');
+    return;
+  }
+  var btn = document.getElementById('dpAnnSubmitBtn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Menyimpan...'; }
+  var data = {
+    title: title, message: msg, style: style,
+    displayMode: mode, active: true,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    createdBy: fbUser ? fbUser.uid : null,
+    expiresAt: expiry ? firebase.firestore.Timestamp.fromDate(new Date(expiry)) : null,
+    // Dua gambar terpisah: portrait (mobile) & landscape (desktop)
+    imagePortrait:  _dpAnnImgPortrait  || null,
+    imageLandscape: _dpAnnImgLandscape || null,
+    // Compat: imageBase64 = portrait atau landscape (fallback)
+    imageBase64: (_dpAnnImgPortrait || _dpAnnImgLandscape) || null,
+    imageMode:   hasImg ? 'fullimage' : 'thumbnail',
+    imageOrient: _dpAnnImgLandscape ? 'landscape' : 'portrait'
+  };
+  fbDb.collection('announcements').add(data).then(function(){
+    showToast('📢 Pengumuman dikirim ke semua user!');
+    document.getElementById('dpAnnTitle').value='';
+    document.getElementById('dpAnnMessage').innerHTML='';
+    dpAnnRemoveImg('portrait');
+    dpAnnRemoveImg('landscape');
+    if(btn){ btn.disabled=false; btn.textContent='📢 Kirim Pengumuman'; }
+    dpAnnLoadList();
+  }).catch(function(e){
+    showToast('❌ Gagal: '+e.message);
+    if(btn){ btn.disabled=false; btn.textContent='📢 Kirim Pengumuman'; }
+  });
 }
+
 function dpAnnLoadList(){
   if(!fbDb){ return; }
   var listEl = document.getElementById('dpAnnList');
@@ -24802,13 +25130,33 @@ function dpAnnLoadList(){
   fbDb.collection('announcements').orderBy('createdAt','desc').limit(20).get().then(function(snap){
     if(snap.empty){ listEl.innerHTML='<div style="color:rgba(255,255,255,0.2);font-size:12px;padding:12px 0;text-align:center">— Belum ada —</div>'; return; }
     var html='';
-    snap.forEach(function(doc){ var d=doc.data(); var ts=d.createdAt?new Date(d.createdAt).toLocaleString('id-ID'):'—'; html+='<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="min-width:0"><div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.title+'</div><div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:2px">'+ts+' · '+d.style+'</div></div><button onclick="dpAnnDelete(\''+doc.id+'\')" style="flex-shrink:0;padding:4px 9px;border:1px solid rgba(239,68,68,0.3);border-radius:7px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">🗑</button></div>'; });
+    snap.forEach(function(doc){
+      var d=doc.data();
+      var ts=d.createdAt&&d.createdAt.toDate?d.createdAt.toDate().toLocaleString('id-ID'):'—';
+      var imgBadge='';
+      if(d.imagePortrait&&d.imageLandscape) imgBadge='<span style="font-size:9px;padding:2px 6px;border-radius:8px;background:rgba(168,85,247,0.15);color:#c084fc;border:1px solid rgba(168,85,247,0.3);margin-left:5px">📸 P+L</span>';
+      else if(d.imagePortrait) imgBadge='<span style="font-size:9px;padding:2px 6px;border-radius:8px;background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.25);margin-left:5px">📱 Portrait</span>';
+      else if(d.imageLandscape||d.imageBase64) imgBadge='<span style="font-size:9px;padding:2px 6px;border-radius:8px;background:rgba(34,197,94,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.25);margin-left:5px">🖥 Landscape</span>';
+      html+='<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px;margin-bottom:7px;display:flex;align-items:center;justify-content:space-between;gap:8px">'
+        +'<div style="min-width:0"><div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.title+imgBadge+'</div>'
+        +'<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:2px">'+ts+' · '+d.style+' · '+(d.active?'<span style="color:#4ade80">aktif</span>':'<span style="color:#f87171">nonaktif</span>')+'</div></div>'
+        +'<div style="display:flex;gap:5px;flex-shrink:0">'
+        +'<button onclick="dpAnnToggle(\''+doc.id+'\','+(!d.active)+')" style="padding:4px 9px;border:1px solid rgba(255,255,255,0.12);border-radius:7px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:10px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+(d.active?'🔕':'✅')+'</button>'
+        +'<button onclick="dpAnnDelete(\''+doc.id+'\')" style="padding:4px 9px;border:1px solid rgba(239,68,68,0.3);border-radius:7px;background:rgba(239,68,68,0.08);color:#f87171;font-size:11px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">🗑</button>'
+        +'</div></div>';
+    });
     listEl.innerHTML = html;
   }).catch(function(){ listEl.innerHTML='<div style="color:rgba(255,80,80,0.5);font-size:12px;padding:8px 0;text-align:center">Gagal memuat</div>'; });
 }
 function dpAnnDelete(id){
   if(!fbDb||!confirm('Hapus pengumuman ini?')) return;
   fbDb.collection('announcements').doc(id).delete().then(function(){ showToast('🗑 Dihapus'); dpAnnLoadList(); });
+}
+function dpAnnToggle(id, newActive){
+  if(!fbDb) return;
+  fbDb.collection('announcements').doc(id).update({ active: newActive }).then(function(){
+    showToast(newActive ? '✅ Diaktifkan' : '🔕 Dinonaktifkan'); dpAnnLoadList();
+  });
 }
 
 // ── Debug ──
@@ -25000,8 +25348,13 @@ function dpResetConfig(){
 
 // ── Announcement list ──
 function _devAnnLoadList(){
+  // Bridge ke sistem baru dpAnn
+  if(typeof dpAnnLoadList === 'function') dpAnnLoadList();
+}
+function _devAnnLoadList_UNUSED(){
   if(!fbDb){ showToast('Firestore belum tersambung'); return; }
   var listEl = document.getElementById('devAnnList');
+  if(!listEl) return;
   listEl.innerHTML = '<div style="color:rgba(255,255,255,0.25);font-size:12px;padding:8px 0;text-align:center">⏳ Memuat...</div>';
   fbDb.collection('announcements').orderBy('createdAt','desc').limit(20).get().then(function(snap){
     if(snap.empty){ listEl.innerHTML = '<div style="color:rgba(255,255,255,0.2);font-size:12px;padding:12px 0;text-align:center">— Belum ada pengumuman —</div>'; return; }
@@ -25027,82 +25380,27 @@ function _devAnnLoadList(){
     });
     listEl.innerHTML = html;
   }).catch(function(e){ listEl.innerHTML = '<div style="color:#f87171;font-size:11px">Error: '+e.message+'</div>'; });
-}
+} // end _devAnnLoadList_UNUSED
 
+// Bridge: devAnnSubmit → dpAnnSubmit (sistem baru)
 function devAnnSubmit(){
-  if(!isDeveloper() || !fbDb) return;
-  var title     = document.getElementById('devAnnTitle').value.trim();
-  var msgEl     = document.getElementById('devAnnMessage');
-  var message   = msgEl.innerHTML.trim();
-  var plainText = (msgEl.innerText || msgEl.textContent || '').trim();
-  var mode      = document.getElementById('devAnnMode').value;
-  var expiryVal = document.getElementById('devAnnExpiry').value;
-  var linkVal   = (document.getElementById('devAnnLink') && document.getElementById('devAnnLink').value.trim()) || '';
-  var imgModeVal= (document.getElementById('devAnnImgMode') && document.getElementById('devAnnImgMode').value) || 'thumbnail';
-  var orientVal = (document.getElementById('devAnnImgOrient') && document.getElementById('devAnnImgOrient').value) || 'portrait';
-  var cbEnabled = document.getElementById('devAnnCustomBtnEnabled') ? document.getElementById('devAnnCustomBtnEnabled').checked : false;
-  var cbText    = (document.getElementById('devAnnCustomBtnText') && document.getElementById('devAnnCustomBtnText').value.trim()) || '';
-  var cbUrl     = (document.getElementById('devAnnCustomBtnUrl') && document.getElementById('devAnnCustomBtnUrl').value.trim()) || '';
-  var cbAction  = (document.getElementById('devAnnCustomBtnAction') && document.getElementById('devAnnCustomBtnAction').value) || 'link';
-  // Mode fullimage: boleh tanpa teks
-  var isFullImage = imgModeVal === 'fullimage' && _devAnnImgBase64;
-  if(!title){ showToast('⚠️ Judul harus diisi!'); return; }
-  if(!isFullImage && !plainText){ showToast('⚠️ Pesan harus diisi (atau pilih mode Full Gambar dengan gambar ter-upload)!'); return; }
-
-  var btn = document.getElementById('devAnnSubmitBtn');
-  btn.disabled = true; btn.textContent = '⏳ Menyimpan...';
-
-  function _saveAnnToFirestore(imageBase64Val){
-    var data = {
-      title: title, message: message, style: _devAnnSelectedStyle||'info',
-      displayMode: mode, active: true,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      createdBy: fbUser.uid,
-      expiresAt: expiryVal ? firebase.firestore.Timestamp.fromDate(new Date(expiryVal)) : null,
-      imageBase64: imageBase64Val || null,
-      imageLink:   linkVal || null,
-      imageMode:   imgModeVal,
-      imageOrient: orientVal,
-      customBtnEnabled: cbEnabled,
-      customBtnText:    cbEnabled ? cbText : null,
-      customBtnUrl:     (cbEnabled && cbAction === 'link') ? cbUrl : null,
-      customBtnAction:  cbEnabled ? cbAction : null
-    };
-    fbDb.collection('announcements').add(data).then(function(){
-      showToast('✅ Pengumuman dikirim ke semua user!');
-      document.getElementById('devAnnTitle').value = '';
-      msgEl.innerHTML = '';
-      document.getElementById('devAnnExpiry').value = '';
-      var cnt = document.getElementById('devAnnCharCount'); if(cnt) cnt.textContent = '0';
-      devAnnRemoveImg();
-      var linkEl2 = document.getElementById('devAnnLink'); if(linkEl2) linkEl2.value = '';
-      var cbTxtEl = document.getElementById('devAnnCustomBtnText'); if(cbTxtEl) cbTxtEl.value = '';
-      var cbUrlEl = document.getElementById('devAnnCustomBtnUrl'); if(cbUrlEl) cbUrlEl.value = '';
-      var cbEnEl  = document.getElementById('devAnnCustomBtnEnabled'); if(cbEnEl){ cbEnEl.checked = false; _devAnnToggleCustomBtn(false); }
-      btn.disabled = false; btn.textContent = '📢 Kirim Pengumuman';
-      _devAnnLoadList();
-    }).catch(function(e){
-      showToast('❌ Error: ' + e.message);
-      btn.disabled = false; btn.textContent = '📢 Kirim Pengumuman';
-    });
-  }
-
-  // Simpan langsung ke Firestore (base64 sudah dikompres saat upload)
-  _saveAnnToFirestore(_devAnnImgBase64 || null);
+  if(typeof dpAnnSubmit === 'function') dpAnnSubmit();
 }
 
 function _devAnnToggle(id, newActive){
+  if(!fbDb) return;
   fbDb.collection('announcements').doc(id).update({ active: newActive }).then(function(){
     showToast(newActive ? '✅ Pengumuman diaktifkan' : '🔕 Pengumuman dinonaktifkan');
-    _devAnnLoadList();
+    dpAnnLoadList();
   });
 }
 
 function _devAnnDelete(id){
   if(!confirm('Hapus pengumuman ini permanen?')) return;
+  if(!fbDb) return;
   fbDb.collection('announcements').doc(id).delete().then(function(){
     showToast('🗑 Pengumuman dihapus');
-    _devAnnLoadList();
+    dpAnnLoadList();
   });
 }
 
@@ -25125,51 +25423,13 @@ function devRefreshUserInfo(){
 // PRESENCE SYSTEM — deteksi user online
 // ════════════════════════════════════════════
 
-var _presenceHeartbeatTimer = null;
-
-function _writePresence(user){
-  if(!fbDb || !user || user._isGuest) return;
-  var isGuest = !!(user._isGuest);
-  fbDb.collection('presence').doc(user.uid).set({
-    uid:      user.uid,
-    email:    user.email || '',
-    name:     user.displayName || user.email || '',
-    photoURL: user.photoURL || '',
-    isGuest:  isGuest,
-    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-  }, { merge: true }).catch(function(e){
-    console.warn('Presence write failed:', e.message);
-  });
-}
-
-function _startPresenceHeartbeat(user){
-  if(!user || user._isGuest) return;
-  // Tulis segera saat login
-  _writePresence(user);
-  // Clear timer lama jika ada (misalnya user login ulang)
-  if(_presenceHeartbeatTimer) clearInterval(_presenceHeartbeatTimer);
-  // Heartbeat tiap 2 menit
-  _presenceHeartbeatTimer = setInterval(function(){
-    if(fbUser && !fbUser._isGuest) _writePresence(fbUser);
-    else clearInterval(_presenceHeartbeatTimer);
-  }, 2 * 60 * 1000);
-  // Juga update saat user kembali ke tab (visibility change)
-  document.removeEventListener('visibilitychange', _onVisibilityForPresence);
-  document.addEventListener('visibilitychange', _onVisibilityForPresence);
-}
-
-function _onVisibilityForPresence(){
-  if(document.visibilityState === 'visible' && fbUser && !fbUser._isGuest){
-    _writePresence(fbUser);
-  }
-}
-
 
 function devShowAllUsers(){
   var modal = document.getElementById('devAllUsersModal');
   if(!modal) return;
   modal.style.display = 'flex';
-  devLoadAllUsers();
+  // Reset ke tab Google by default
+  devSwitchUsersTab('google');
 }
 
 function devCloseAllUsersModal(){
@@ -25177,14 +25437,42 @@ function devCloseAllUsersModal(){
   if(modal) modal.style.display = 'none';
 }
 
+// Tab switcher: 'google' | 'guest'
+var _devUsersActiveTab = 'google';
+function devSwitchUsersTab(tab){
+  _devUsersActiveTab = tab;
+  var btnG = document.getElementById('devUsersTabGoogle');
+  var btnGuest = document.getElementById('devUsersTabGuest');
+  if(btnG){
+    btnG.style.background  = tab==='google' ? 'rgba(99,102,241,0.85)' : 'transparent';
+    btnG.style.color       = tab==='google' ? '#fff' : 'rgba(255,255,255,0.35)';
+  }
+  if(btnGuest){
+    btnGuest.style.background = tab==='guest' ? 'rgba(245,158,11,0.75)' : 'transparent';
+    btnGuest.style.color      = tab==='guest' ? '#1c1200' : 'rgba(255,255,255,0.35)';
+  }
+  devLoadAllUsers();
+}
+
 function devLoadAllUsers(){
   var listEl  = document.getElementById('devAllUsersList');
   var countEl = document.getElementById('devAllUsersCount');
   if(!listEl) return;
 
-  listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">⏳ Memuat data presence...</div>';
+  var isGuestTab = _devUsersActiveTab === 'guest';
+
+  listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">⏳ Memuat...</div>';
   if(countEl) countEl.textContent = 'Memuat...';
 
+  if(isGuestTab){
+    // ── Guest tab: baca dari chitask_guest_presence di localStorage semua key ──
+    // Guest presence disimpan di localStorage dengan key: chitask_guest_presence_{deviceId}
+    // Atau bisa juga dari Firestore collection 'presence' filter isGuest=true
+    _devLoadGuestUsers(listEl, countEl);
+    return;
+  }
+
+  // ── Google tab: dari Firestore presence, filter isGuest=false ──
   if(!fbDb){
     listEl.innerHTML = '<div style="text-align:center;color:#f87171;font-size:12px;padding:20px 0">❌ Firestore belum tersambung</div>';
     return;
@@ -25197,72 +25485,30 @@ function devLoadAllUsers(){
       return;
     }
 
-    var now       = Date.now();
-    var onlineMs  = 5 * 60 * 1000;  // online = lastSeen dalam 5 menit terakhir
-    var online    = [];
-    var offline   = [];
+    var now      = Date.now();
+    var onlineMs = 5 * 60 * 1000;
+    var online   = [];
+    var offline  = [];
 
     snap.forEach(function(doc){
       var d        = doc.data();
+      var isGuest  = d.isGuest || false;
+      if(isGuest) return; // skip guest di tab Google
       var email    = d.email || '—';
       var name     = d.displayName || '';
-      var isGuest  = d.isGuest || false;
       var lastSeen = d.lastSeen ? d.lastSeen.toDate() : null;
       var diffMs   = lastSeen ? (now - lastSeen.getTime()) : Infinity;
       var isOnline = diffMs <= onlineMs;
-
-      var entry = { email: email, name: name, isGuest: isGuest, lastSeen: lastSeen, diffMs: diffMs, isOnline: isOnline };
+      var uid      = doc.id;
+      var entry = { email:email, name:name, isGuest:false, lastSeen:lastSeen, diffMs:diffMs, isOnline:isOnline, uid:uid };
       if(isOnline) online.push(entry); else offline.push(entry);
     });
 
-    // Sort: online terbaru dulu, offline terbaru dulu
     online.sort(function(a,b){ return a.diffMs - b.diffMs; });
     offline.sort(function(a,b){ return a.diffMs - b.diffMs; });
 
-    function fmtAgo(ms){
-      if(!isFinite(ms)) return 'tidak diketahui';
-      var s = Math.floor(ms/1000);
-      if(s < 60)  return s+'d lalu';
-      var m = Math.floor(s/60);
-      if(m < 60)  return m+'m lalu';
-      var h = Math.floor(m/60);
-      if(h < 24)  return h+'j lalu';
-      return Math.floor(h/24)+'h lalu';
-    }
-
-    function buildCard(u){
-      var showName = u.name && u.name !== u.email;
-      return '<div style="background:rgba(255,255,255,0.03);border:1px solid '+(u.isOnline?'rgba(74,222,128,0.2)':'rgba(255,255,255,0.07)')+';border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:11px">'
-        + '<div style="position:relative;flex-shrink:0">'
-        +   '<div style="width:36px;height:36px;border-radius:50%;background:'+(u.isOnline?'rgba(74,222,128,0.12)':'rgba(255,255,255,0.05)')+';border:1px solid '+(u.isOnline?'rgba(74,222,128,0.3)':'rgba(255,255,255,0.1)')+';display:flex;align-items:center;justify-content:center;font-size:16px">'+(u.isGuest?'🎭':'👤')+'</div>'
-        +   '<div style="position:absolute;bottom:0;right:0;width:11px;height:11px;border-radius:50%;background:'+(u.isOnline?'#4ade80':'#6b7280')+';border:2px solid #1c1917"></div>'
-        + '</div>'
-        + '<div style="flex:1;min-width:0">'
-        +   '<div style="font-size:12px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📧 '+u.email+'</div>'
-        +   (showName ? '<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:1px">👤 '+u.name+'</div>' : '')
-        +   '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">'
-        +     '<span style="font-size:10px;font-weight:700;color:'+(u.isOnline?'#4ade80':'#9ca3af')+';background:'+(u.isOnline?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)')+';border:1px solid '+(u.isOnline?'rgba(74,222,128,0.25)':'rgba(255,255,255,0.1)')+';border-radius:20px;padding:1px 8px">'+(u.isOnline?'🟢 Online':'⚫ Offline')+'</span>'
-        +     '<span style="font-size:10px;color:rgba(255,255,255,0.25)">'+fmtAgo(u.diffMs)+'</span>'
-        +     (u.isGuest ? '<span style="font-size:10px;color:#fbbf24;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:20px;padding:1px 7px">Guest</span>' : '')
-        +   '</div>'
-        + '</div>'
-        + '</div>';
-    }
-
-    var html = '';
-    if(online.length){
-      html += '<div style="font-size:9px;font-weight:800;color:rgba(74,222,128,0.6);text-transform:uppercase;letter-spacing:0.6px;margin:4px 2px 6px">🟢 Online sekarang ('+online.length+')</div>';
-      online.forEach(function(u){ html += buildCard(u); });
-    }
-    if(offline.length){
-      html += '<div style="font-size:9px;font-weight:800;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.6px;margin:'+(online.length?'14px':'4px')+' 2px 6px">⚫ Offline ('+offline.length+')</div>';
-      offline.forEach(function(u){ html += buildCard(u); });
-    }
-
-    listEl.innerHTML = html;
-    var totalOnline = online.length;
-    if(countEl) countEl.textContent = totalOnline + ' online · ' + (online.length+offline.length) + ' total user';
-    _devLog('Presence loaded: '+totalOnline+' online, '+offline.length+' offline','ok');
+    _devRenderUserList(listEl, countEl, online, offline, '📧');
+    _devLog('Presence loaded: '+online.length+' online, '+offline.length+' offline','ok');
 
   }).catch(function(e){
     listEl.innerHTML = '<div style="text-align:center;color:#f87171;font-size:12px;padding:20px 0">❌ Error: '+e.message+'</div>';
@@ -25270,6 +25516,134 @@ function devLoadAllUsers(){
   });
 }
 
+function _devLoadGuestUsers(listEl, countEl){
+  // Guest presence: dari Firestore collection 'presence' filter isGuest=true
+  // + jika ada data lokal (device sendiri yang sedang guest)
+  var now      = Date.now();
+  var onlineMs = 5 * 60 * 1000;
+  var online   = [];
+  var offline  = [];
+
+  // Tambahkan device sendiri jika sedang guest
+  var selfIsGuest = (typeof fbUser !== 'undefined') && fbUser && fbUser._isGuest;
+  if(selfIsGuest){
+    var selfEntry = {
+      email: fbUser.displayName || 'Tamu',
+      name: 'Perangkat ini · ' + navigator.userAgent.substring(0, 30),
+      isGuest: true,
+      diffMs: 0,
+      isOnline: true,
+      uid: fbUser.uid,
+      deviceId: 'self'
+    };
+    online.push(selfEntry);
+  }
+
+  if(!fbDb){
+    // Hanya tampilkan self jika ada
+    if(online.length === 0 && offline.length === 0){
+      listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">🎭 Tidak ada data guest.<br><br>Guest tidak menyimpan data presence ke cloud \u2014 hanya perangkat yang sedang aktif yang bisa terdeteksi.</div>';
+      if(countEl) countEl.textContent = '0 guest';
+      return;
+    }
+    _devRenderUserList(listEl, countEl, online, offline, '🎭');
+    return;
+  }
+
+  // Load dari Firestore collection 'users' yang _isGuest=true
+  fbDb.collection('users').where('_isGuest','==',true).get().then(function(snap){
+    snap.forEach(function(doc){
+      var d        = doc.data();
+      var uid      = doc.id;
+      // Hindari duplikat self
+      if(selfIsGuest && uid === (fbUser && fbUser.uid)) return;
+      var lastSaved = d.lastSaved ? new Date(d.lastSaved) : null;
+      var diffMs    = lastSaved ? (now - lastSaved.getTime()) : Infinity;
+      var isOnline  = diffMs <= onlineMs;
+      var guestName = d._userName || 'Tamu';
+      var entry = {
+        email: guestName,
+        name: uid.substring(0, 16) + '…',
+        isGuest: true,
+        diffMs: diffMs,
+        isOnline: isOnline,
+        uid: uid
+      };
+      if(isOnline) online.push(entry); else offline.push(entry);
+    });
+
+    if(online.length===0 && offline.length===0){
+      listEl.innerHTML = '<div style="padding:20px 14px;text-align:center">'
+        +'<div style="font-size:24px;margin-bottom:8px">🎭</div>'
+        +'<div style="font-size:12px;color:rgba(255,255,255,0.4);line-height:1.6">'
+        +'Belum ada user guest yang terdaftar.<br>'
+        +'<span style="font-size:10px;color:rgba(255,255,255,0.2)">Data guest tersimpan di Firestore setelah mereka menyimpan task pertama.</span>'
+        +'</div></div>';
+      if(countEl) countEl.textContent = '0 guest';
+      return;
+    }
+
+    online.sort(function(a,b){ return a.diffMs - b.diffMs; });
+    offline.sort(function(a,b){ return a.diffMs - b.diffMs; });
+    _devRenderUserList(listEl, countEl, online, offline, '🎭');
+
+  }).catch(function(e){
+    // Fallback jika query gagal
+    if(online.length > 0){
+      _devRenderUserList(listEl, countEl, online, [], '🎭');
+    } else {
+      listEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;padding:20px 0">🎭 Tidak ada data guest di Firestore.<br><span style="font-size:10px;color:rgba(255,255,255,0.2)">'+e.message+'</span></div>';
+    }
+    if(countEl) countEl.textContent = '0 guest';
+  });
+}
+
+function _devRenderUserList(listEl, countEl, online, offline, typeIcon){
+  function fmtAgo(ms){
+    if(!isFinite(ms)) return 'tidak diketahui';
+    var s = Math.floor(ms/1000);
+    if(s < 60)  return s+'d lalu';
+    var m = Math.floor(s/60);
+    if(m < 60)  return m+'m lalu';
+    var h = Math.floor(m/60);
+    if(h < 24)  return h+'j lalu';
+    return Math.floor(h/24)+'h lalu';
+  }
+
+  function buildCard(u){
+    var showName = u.name && u.name !== u.email;
+    var icon = u.isGuest ? '🎭' : '👤';
+    return '<div style="background:rgba(255,255,255,0.03);border:1px solid '+(u.isOnline?'rgba(74,222,128,0.2)':'rgba(255,255,255,0.07)')+';border-radius:12px;padding:11px 13px;display:flex;align-items:center;gap:11px">'
+      + '<div style="position:relative;flex-shrink:0">'
+      +   '<div style="width:36px;height:36px;border-radius:50%;background:'+(u.isOnline?'rgba(74,222,128,0.12)':'rgba(255,255,255,0.05)')+';border:1px solid '+(u.isOnline?'rgba(74,222,128,0.3)':'rgba(255,255,255,0.1)')+';display:flex;align-items:center;justify-content:center;font-size:16px">'+icon+'</div>'
+      +   '<div style="position:absolute;bottom:0;right:0;width:11px;height:11px;border-radius:50%;background:'+(u.isOnline?'#4ade80':'#6b7280')+';border:2px solid #1c1917"></div>'
+      + '</div>'
+      + '<div style="flex:1;min-width:0">'
+      +   '<div style="font-size:12px;font-weight:700;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(u.isGuest?'🎭 ':'📧 ')+u.email+'</div>'
+      +   (showName ? '<div style="font-size:10px;color:rgba(255,255,255,0.3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+u.name+'</div>' : '')
+      +   '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">'
+      +     '<span style="font-size:10px;font-weight:700;color:'+(u.isOnline?'#4ade80':'#9ca3af')+';background:'+(u.isOnline?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)')+';border:1px solid '+(u.isOnline?'rgba(74,222,128,0.25)':'rgba(255,255,255,0.1)')+';border-radius:20px;padding:1px 8px">'+(u.isOnline?'🟢 Online':'⚫ Offline')+'</span>'
+      +     '<span style="font-size:10px;color:rgba(255,255,255,0.25)">'+fmtAgo(u.diffMs)+'</span>'
+      +     (u.uid ? '<span style="font-size:9px;color:rgba(255,255,255,0.15);font-family:monospace">'+u.uid.substring(0,10)+'…</span>' : '')
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  var html = '';
+  if(online.length){
+    html += '<div style="font-size:9px;font-weight:800;color:rgba(74,222,128,0.6);text-transform:uppercase;letter-spacing:0.6px;margin:4px 2px 6px">🟢 Online sekarang ('+online.length+')</div>';
+    online.forEach(function(u){ html += buildCard(u); });
+  }
+  if(offline.length){
+    html += '<div style="font-size:9px;font-weight:800;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.6px;margin:'+(online.length?'14px':'4px')+' 2px 6px">⚫ Offline ('+offline.length+')</div>';
+    offline.forEach(function(u){ html += buildCard(u); });
+  }
+
+  listEl.innerHTML = html || '<div style="text-align:center;color:rgba(255,255,255,0.2);font-size:12px;padding:20px 0">Tidak ada data</div>';
+  var totalOnline = online.length;
+  if(countEl) countEl.textContent = totalOnline + ' online · ' + (online.length+offline.length) + ' total';
+}
 function devClearLog(){ var el=document.getElementById('devConsoleLog'); if(el) el.innerHTML='<span style="color:rgba(255,255,255,0.2)">// Log cleared.</span>'; }
 
 function devForceShowAnn(){
@@ -25522,8 +25896,8 @@ function _downloadJson(data, filename){
   a.download=filename+'_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
 }
 function _devExport(collectionName, filename){
-  // ── Fallback localStorage untuk guest/offline ──
-  if(!fbDb||!fbUser||fbUser._isGuest||fbUser._isOffline){
+  // ── Fallback localStorage untuk offline ──
+  if(!fbDb||!fbUser||fbUser._isOffline){
     var ld=_getLocalData();
     if(!ld){ showToast('Tidak ada data lokal'); _devLog('No local data found','err'); return; }
     var data=[];
@@ -25549,8 +25923,8 @@ function devExportTasks(){ _devExport('tasks','chitask_tasks'); }
 function devExportHabits(){ _devExport('habits','chitask_habits'); }
 function devExportFinance(){ _devExport('transactions','chitask_finance'); }
 function devExportAll(){
-  // ── Fallback localStorage untuk guest/offline ──
-  if(!fbDb||!fbUser||fbUser._isGuest||fbUser._isOffline){
+  // ── Fallback localStorage untuk offline ──
+  if(!fbDb||!fbUser||fbUser._isOffline){
     var ld=_getLocalData();
     if(!ld){ showToast('Tidak ada data lokal'); _devLog('No local data found','err'); return; }
     var allData={
@@ -25585,7 +25959,7 @@ function devExportAll(){
   });
 }
 function devLoadFirestoreStats(){
-  if(!fbDb||!fbUser||fbUser._isGuest){ showToast('Butuh login Firebase'); return; }
+  if(!fbDb||!fbUser||fbUser._isOffline){ showToast('Butuh koneksi Firebase'); return; }
   var el=document.getElementById('devFirestoreStats'); if(el) el.innerHTML='⏳ Memuat...';
   var cols=['tasks','habits','transactions','journals','wallets']; var stats={}; var pending=cols.length;
   cols.forEach(function(col){
@@ -25931,7 +26305,7 @@ function devWipeUserData(){
   <div style="flex:1;overflow-y:auto;padding:14px 14px 32px">
 
     <!-- ══ TAB: ANNOUNCE ══ -->
-    <div id="dpContent-ann">
+    <div id="dpContent-ann" style="display:block">
       <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:16px;margin-bottom:14px">
         <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:14px;display:flex;align-items:center;gap:7px"><span style="font-size:14px">✏️</span> Buat Pengumuman Baru</div>
         <div style="margin-bottom:12px">
@@ -25946,7 +26320,7 @@ function devWipeUserData(){
         </div>
         <div style="margin-bottom:10px">
           <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Judul <span style="color:rgba(255,80,80,0.6)">*</span></div>
-          <input id="dpAnnTitle" data-alias="devAnnTitle" type="text" placeholder="Contoh: Update Versi 2.1 🎉" maxlength="80"
+          <input id="dpAnnTitle" type="text" placeholder="Contoh: Update Versi 2.1 🎉" maxlength="80"
             style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 13px;color:#fff;font-size:13px;font-family:'DM Sans',sans-serif;outline:none"
             onfocus="this.style.borderColor='rgba(217,119,6,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
         </div>
@@ -25980,76 +26354,77 @@ function devWipeUserData(){
           </div>
         </div>
 
-        <!-- ── Gambar Iklan ── -->
-        <div style="margin-bottom:12px">
-          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🖼 Gambar Iklan <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none">(opsional)</span></div>
-
-          <!-- Mode Gambar -->
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <button id="devAnnImgModeBtn-thumbnail"  onclick="_devAnnSetImgMode('thumbnail')"  style="flex:1;padding:6px 4px;border-radius:8px;border:1.5px solid rgba(217,119,6,0.5);background:rgba(217,119,6,0.12);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🖼 Thumbnail</button>
-            <button id="devAnnImgModeBtn-fullimage-portrait"  onclick="_devAnnSetImgMode('fullimage-portrait')"  style="flex:1;padding:6px 4px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📱 Portrait</button>
-            <button id="devAnnImgModeBtn-fullimage-landscape" onclick="_devAnnSetImgMode('fullimage-landscape')" style="flex:1;padding:6px 4px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🖥 Landscape</button>
+        <!-- ══ GAMBAR IKLAN: Portrait + Landscape ══ -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">🖼 Gambar Iklan <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none;font-size:9px">(opsional)</span></div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.25);margin-bottom:10px;line-height:1.5">
+            Upload 2 versi gambar: <b style="color:rgba(59,130,246,0.8)">📱 Portrait</b> tampil di HP, <b style="color:rgba(34,197,94,0.8)">🖥 Landscape</b> tampil di desktop. Bisa upload salah satu saja.
           </div>
-          <input type="hidden" id="devAnnImgMode" value="thumbnail">
-          <input type="hidden" id="devAnnImgOrient" value="portrait">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
 
-          <!-- Panduan ukuran -->
-          <div id="devAnnImgGuide" style="font-size:10px;color:rgba(255,255,255,0.3);background:rgba(255,255,255,0.03);border-radius:8px;padding:7px 10px;margin-bottom:8px;line-height:1.6">
-            📐 <b>Thumbnail</b> — Gambar kecil di atas teks. Ukuran bebas, maks ~400KB.
-          </div>
-
-          <!-- Drop zone / upload area -->
-          <div id="devAnnImgDropzone" onclick="document.getElementById('devAnnImgInput').click()"
-            ondragover="event.preventDefault();this.style.borderColor='rgba(217,119,6,0.7)'"
-            ondragleave="this.style.borderColor='rgba(255,255,255,0.1)'"
-            ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,0.1)';devAnnHandleImg(event.dataTransfer.files[0])"
-            style="position:relative;border:1.5px dashed rgba(255,255,255,0.1);border-radius:10px;overflow:hidden;cursor:pointer;min-height:80px;transition:border-color 0.2s">
-            <!-- Placeholder -->
-            <div id="devAnnImgPlaceholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px;gap:5px">
-              <div style="font-size:22px">🖼</div>
-              <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4)">Klik atau drag gambar ke sini</div>
-              <div style="font-size:10px;color:rgba(255,255,255,0.2)">JPG, PNG, WEBP · Auto-kompres aman untuk Firestore</div>
+            <!-- Portrait (Mobile) -->
+            <div style="background:rgba(59,130,246,0.05);border:1.5px dashed rgba(59,130,246,0.25);border-radius:12px;overflow:hidden">
+              <div style="padding:8px 10px;border-bottom:1px solid rgba(59,130,246,0.15);display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:10px;font-weight:800;color:rgba(59,130,246,0.8)">📱 PORTRAIT</span>
+                <span style="font-size:9px;color:rgba(255,255,255,0.25)">Mobile · 9:16</span>
+              </div>
+              <div style="padding:8px;position:relative">
+                <input type="file" id="dpAnnImgPortraitInput" accept="image/*" style="display:none"
+                  onchange="dpAnnHandleImg('portrait',this.files[0])">
+                <!-- Placeholder klik -->
+                <div id="dpAnnImgPortraitPh" onclick="document.getElementById('dpAnnImgPortraitInput').click()"
+                  style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90px;cursor:pointer;gap:5px;padding:8px">
+                  <div style="font-size:22px">📱</div>
+                  <div style="font-size:10px;color:rgba(59,130,246,0.7);font-weight:700">Upload Portrait</div>
+                  <div style="font-size:9px;color:rgba(255,255,255,0.2);text-align:center">750×1334px<br>Cocok untuk HP</div>
+                </div>
+                <!-- Preview -->
+                <img id="dpAnnImgPortraitPreview" src="" alt="portrait" style="display:none;width:100%;max-height:160px;object-fit:cover;border-radius:8px">
+                <!-- Hapus -->
+                <button id="dpAnnImgPortraitRm" onclick="dpAnnRemoveImg('portrait')" style="display:none;position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(239,68,68,0.85);color:#fff;font-size:12px;cursor:pointer;line-height:1;padding:0">✕</button>
+                <!-- Info -->
+                <div id="dpAnnImgPortraitInfo" style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:4px;word-break:break-all;line-height:1.4"></div>
+                <!-- Klik area jika sudah ada gambar -->
+                <div id="dpAnnImgPortraitChange" onclick="document.getElementById('dpAnnImgPortraitInput').click()" style="display:none;text-align:center;margin-top:5px;font-size:9px;color:rgba(59,130,246,0.6);cursor:pointer;font-weight:700">↻ Ganti gambar</div>
+              </div>
             </div>
-            <!-- Preview gambar -->
-            <img id="devAnnImgPreview" src="" alt="" style="display:none;width:100%;object-fit:cover;border-radius:10px">
-          </div>
-          <input type="file" id="devAnnImgInput" accept="image/*" style="display:none" onchange="devAnnHandleImg(this.files[0])">
 
-          <!-- Info ukuran + tombol hapus -->
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;min-height:20px">
-            <div id="devAnnImgInfo" style="font-size:10px;color:rgba(255,255,255,0.35);flex:1"></div>
-            <button id="devAnnImgRemove" onclick="devAnnRemoveImg()" style="display:none;padding:3px 9px;border:1px solid rgba(239,68,68,0.3);border-radius:6px;background:rgba(239,68,68,0.07);color:#f87171;font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✕ Hapus</button>
-          </div>
+            <!-- Landscape (Desktop) -->
+            <div style="background:rgba(34,197,94,0.05);border:1.5px dashed rgba(34,197,94,0.25);border-radius:12px;overflow:hidden">
+              <div style="padding:8px 10px;border-bottom:1px solid rgba(34,197,94,0.15);display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:10px;font-weight:800;color:rgba(34,197,94,0.8)">🖥 LANDSCAPE</span>
+                <span style="font-size:9px;color:rgba(255,255,255,0.25)">Desktop · 16:9</span>
+              </div>
+              <div style="padding:8px;position:relative">
+                <input type="file" id="dpAnnImgLandscapeInput" accept="image/*" style="display:none"
+                  onchange="dpAnnHandleImg('landscape',this.files[0])">
+                <!-- Placeholder klik -->
+                <div id="dpAnnImgLandscapePh" onclick="document.getElementById('dpAnnImgLandscapeInput').click()"
+                  style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90px;cursor:pointer;gap:5px;padding:8px">
+                  <div style="font-size:22px">🖥</div>
+                  <div style="font-size:10px;color:rgba(34,197,94,0.7);font-weight:700">Upload Landscape</div>
+                  <div style="font-size:9px;color:rgba(255,255,255,0.2);text-align:center">1280×720px<br>Cocok untuk laptop</div>
+                </div>
+                <!-- Preview -->
+                <img id="dpAnnImgLandscapePreview" src="" alt="landscape" style="display:none;width:100%;max-height:90px;object-fit:cover;border-radius:8px;aspect-ratio:16/9">
+                <!-- Hapus -->
+                <button id="dpAnnImgLandscapeRm" onclick="dpAnnRemoveImg('landscape')" style="display:none;position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(239,68,68,0.85);color:#fff;font-size:12px;cursor:pointer;line-height:1;padding:0">✕</button>
+                <!-- Info -->
+                <div id="dpAnnImgLandscapeInfo" style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:4px;word-break:break-all;line-height:1.4"></div>
+              </div>
+            </div>
 
-          <!-- Link gambar (tampil setelah gambar diupload) -->
-          <div id="devAnnLinkWrap" style="display:none;margin-top:8px">
-            <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">🔗 Link saat gambar diklik <span style="color:rgba(255,255,255,0.2);font-weight:400;text-transform:none">(opsional)</span></div>
-            <input id="devAnnLink" type="url" placeholder="https://..." style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 11px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none" onfocus="this.style.borderColor='rgba(217,119,6,0.4)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+          </div>
+          <!-- Info hint -->
+          <div style="margin-top:7px;padding:8px 10px;background:rgba(217,119,6,0.06);border:1px solid rgba(217,119,6,0.15);border-radius:8px;font-size:10px;color:rgba(255,255,255,0.35);line-height:1.5">
+            💡 <b style="color:rgba(217,119,6,0.7)">Auto-detect:</b> HP → Portrait, Desktop → Landscape. Jika hanya 1 yang di-upload, gambar itu yang dipakai di semua device. Jika pakai gambar, isi pesan jadi opsional.
           </div>
         </div>
+        <!-- /GAMBAR IKLAN -->
 
-        <!-- ── Custom Button ── -->
-        <div style="margin-bottom:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.5)">🔘 Tombol Custom</div>
-            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-              <input type="checkbox" id="devAnnCustomBtnEnabled" onchange="_devAnnToggleCustomBtn(this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:#d97706">
-              <span style="font-size:10px;color:rgba(255,255,255,0.35)">Aktifkan</span>
-            </label>
-          </div>
-          <div id="devAnnCustomBtnFields" style="display:none;display:flex;flex-direction:column;gap:7px">
-            <input id="devAnnCustomBtnText" type="text" placeholder="Label tombol, cth: Lihat Promo 🎁" maxlength="40"
-              style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 11px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none">
-            <select id="devAnnCustomBtnAction" onchange="_devAnnToggleCustomBtn(document.getElementById('devAnnCustomBtnEnabled').checked)"
-              style="width:100%;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;padding:8px 10px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:auto">
-              <option value="link"  style="background:#1c1917">🔗 Buka Link</option>
-              <option value="close" style="background:#1c1917">✕ Tutup saja</option>
-            </select>
-            <input id="devAnnCustomBtnUrl" type="url" placeholder="https://..." style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 11px;color:#fff;font-size:12px;font-family:'DM Sans',sans-serif;outline:none">
-          </div>
-        </div>
-          <button onclick="devAnnPreview()" style="flex:1;padding:11px;border:1.5px solid rgba(217,119,6,0.4);border-radius:10px;background:rgba(217,119,6,0.08);color:#f59e0b;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Preview</button>
-          <button id="devAnnSubmitBtn" onclick="devAnnSubmit()"  style="flex:2;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 14px rgba(217,119,6,0.35)">📢 Kirim Pengumuman</button>
+        <div style="display:flex;gap:8px">
+          <button onclick="dpAnnPreview()" style="flex:1;padding:11px;border:1.5px solid rgba(217,119,6,0.4);border-radius:10px;background:rgba(217,119,6,0.08);color:#f59e0b;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">👁 Preview</button>
+          <button id="dpAnnSubmitBtn" onclick="dpAnnSubmit()"  style="flex:2;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 4px 14px rgba(217,119,6,0.35)">📢 Kirim Pengumuman</button>
         </div>
       </div>
       <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:14px">
@@ -26272,12 +26647,13 @@ function devWipeUserData(){
 
 <!-- ══ SEMUA USER MODAL (dipindah ke luar devPage agar z-index benar) ══ -->
 <div id="devAllUsersModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center" onclick="if(event.target===this)devCloseAllUsersModal()">
-  <div style="background:#1c1917;border:1px solid rgba(99,102,241,0.3);border-radius:20px;padding:20px;width:90%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+  <div style="background:#1c1917;border:1px solid rgba(99,102,241,0.3);border-radius:20px;padding:20px;width:90%;max-width:440px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:34px;height:34px;border-radius:10px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);display:flex;align-items:center;justify-content:center;font-size:17px">👥</div>
         <div>
-          <div style="font-size:14px;font-weight:800;color:#a5b4fc">Semua User Aktif</div>
+          <div style="font-size:14px;font-weight:800;color:#a5b4fc">Monitor User</div>
           <div id="devAllUsersCount" style="font-size:10px;color:rgba(255,255,255,0.3)">Memuat...</div>
         </div>
       </div>
@@ -26286,6 +26662,18 @@ function devWipeUserData(){
         <button onclick="devCloseAllUsersModal()" style="width:28px;height:28px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;line-height:1">✕</button>
       </div>
     </div>
+    <!-- Tab selector: Google | Guest -->
+    <div style="display:flex;gap:6px;margin-bottom:12px;background:rgba(255,255,255,0.04);border-radius:10px;padding:4px">
+      <button id="devUsersTabGoogle" onclick="devSwitchUsersTab('google')"
+        style="flex:1;padding:7px 10px;border:none;border-radius:7px;background:rgba(99,102,241,0.85);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+        📧 Google / Login
+      </button>
+      <button id="devUsersTabGuest" onclick="devSwitchUsersTab('guest')"
+        style="flex:1;padding:7px 10px;border:none;border-radius:7px;background:transparent;color:rgba(255,255,255,0.35);font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all 0.15s">
+        🎭 Guest
+      </button>
+    </div>
+    <!-- Konten list -->
     <div id="devAllUsersList" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-right:2px">
       <div style="text-align:center;color:rgba(255,255,255,0.25);font-size:12px;padding:20px 0">⏳ Memuat...</div>
     </div>
