@@ -124,10 +124,9 @@ var _STRINGS = {
     btn_add_task_mobile: '＋ Tambah Task',
     // ── Guest username modal ──
     guest_username_title: 'Halo! Siapa namamu? 👋',
-    guest_username_sub: 'Nama ini akan ditampilkan di sidebar. Bisa diganti kapan saja.',
+    guest_username_sub: 'Nama ini akan ditampilkan di aplikasi.',
     guest_username_placeholder: 'Masukkan namamu...',
     guest_username_btn: '✓ Mulai Pakai ChiTask',
-    guest_username_skip: 'Lewati (pakai "Tamu")',
     // ── Tour ──
     tour_step_badge: 'Langkah {0} dari {1}',
     tour_skip: 'Lewati tutorial',
@@ -463,10 +462,9 @@ var _STRINGS = {
     sync_activate: '☁️ Enable sync → Sign in with Google',
     // ── Guest username modal ──
     guest_username_title: 'Hello! What\'s your name? 👋',
-    guest_username_sub: 'This name will be shown in the sidebar. You can change it anytime.',
+    guest_username_sub: 'This name will be shown in the app.',
     guest_username_placeholder: 'Enter your name...',
     guest_username_btn: '✓ Start Using ChiTask',
-    guest_username_skip: 'Skip (use "Guest")',
     confirm_logout: 'Are you sure you want to log out?',
     btn_logout: 'Logout',
     // ── Mobile sidebar mode badge ──
@@ -956,6 +954,7 @@ document.addEventListener('DOMContentLoaded', function(){ applyLang(getLang()); 
 var fbAuth = null, fbDb = null, fbUser = null, fbStorage = null;
 var _fbSyncTimer = null, _fbInitialized = false;
 var _offlineMode = false;
+var _redirectInProgress = false; // flag: sedang proses balik dari signInWithRedirect
 // Guard: true setelah initApp() selesai load data dari cloud/localStorage
 // Selama false, fbSaveData TIDAK boleh push ke Firestore (mencegah overwrite dengan data kosong)
 var _appReady = false;
@@ -1060,7 +1059,23 @@ function _startFirebase() {
       });
 
     // ── Tangkap hasil signInWithRedirect (dari loginGoogle) ──
-    fbAuth.getRedirectResult().catch(function(e) {
+    // Deteksi: apakah halaman ini dibuka karena balik dari redirect OAuth?
+    try {
+      if (document.referrer.indexOf('accounts.google.com') !== -1 ||
+          document.referrer.indexOf('google.com/o/oauth2') !== -1) {
+        _redirectInProgress = true;
+      }
+    } catch(e) {}
+    fbAuth.getRedirectResult().then(function(result) {
+      if (result && result.user) {
+        // Berhasil balik dari redirect — onAuthStateChanged akan handle user-nya
+        _redirectInProgress = false;
+      } else {
+        // Tidak ada pending redirect
+        _redirectInProgress = false;
+      }
+    }).catch(function(e) {
+      _redirectInProgress = false;
       if (e && e.code !== 'auth/no-current-user') {
         console.warn('[ChiTask] getRedirectResult error:', e.message);
       }
@@ -1211,6 +1226,10 @@ function _startFirebase() {
           if (_hasPrevLogin) {
             // Ada data user sebelumnya (Google atau Guest) → masuk offline mode
             _enterOfflineMode();
+          } else if (_redirectInProgress) {
+            // Sedang proses balik dari redirect OAuth — tunggu, jangan tampil login
+            // onAuthStateChanged akan fire lagi dengan user yang benar
+            console.log('[ChiTask] Redirect in progress, skipping showLoginScreen');
           } else {
             updateAuthUI(null);
             showLoginScreen();
@@ -1278,6 +1297,9 @@ function loginGoogle() {
   if (!fbAuth) { alert('Koneksi internet diperlukan untuk login pertama kali.'); return; }
   var provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
+  // Tandai bahwa kita akan redirect — supaya saat balik, onAuthStateChanged
+  // tidak salah mengira user = null dan memanggil showLoginScreen()
+  _redirectInProgress = true;
   // Gunakan redirect — popup menyebabkan COOP error di browser modern
   fbAuth.signInWithRedirect(provider);
 }
@@ -1285,23 +1307,41 @@ function loginGoogle() {
 // gcalReauth sudah dipindah ke blok Google Calendar state di bawah
 
 var _guestLoginInProgress = false; // flag cegah race onAuthStateChanged vs _proceedAsGuest
+// Menyimpan Promise hasil signInAnonymously yang dimulai lebih awal (pre-warm)
+var _anonSignInPromise = null;
+
 function loginAsGuest() {
   var savedData = null;
   try { savedData = localStorage.getItem('chitask_v6_data'); } catch(e) {}
   var savedParsed = null;
   if (savedData) { try { savedParsed = JSON.parse(savedData); } catch(e) {} }
-  var isGuestData = !savedParsed || !savedParsed._userName || savedParsed._isGuest;
   // Kalau sudah punya username guest sebelumnya, langsung lanjut tanpa modal
   var existingGuestName = (savedParsed && savedParsed._isGuest && savedParsed._userName
-    && savedParsed._userName !== 'Tamu' && savedParsed._userName !== 'Guest')
+    && savedParsed._userName !== 'Tamu' && savedParsed._userName !== 'Guest'
+    && savedParsed._userName !== 'Guest')
     ? savedParsed._userName : null;
+
+  // ── Mulai signInAnonymously SEGERA (paralel dengan user mengetik) ──
+  // Ini menghilangkan delay: saat user klik Confirm, auth sudah selesai di background
+  _guestLoginInProgress = true;
+  if (fbAuth && typeof fbAuth.signInAnonymously === 'function') {
+    _anonSignInPromise = fbAuth.signInAnonymously().catch(function(err) {
+      console.warn('[ChiTask] Anonymous sign-in gagal, fallback offline:', err.message);
+      _offlineMode = true;
+      return { user: { uid: 'guest_user' } }; // fallback aman
+    });
+  } else {
+    _offlineMode = true;
+    _anonSignInPromise = Promise.resolve({ user: { uid: 'guest_user' } });
+  }
 
   function _proceedAsGuest(anonUid, guestDisplayName) {
     _guestLoginInProgress = false;
+    _anonSignInPromise = null;
     _offlineMode = false;
     var guestUser = {
       uid: anonUid || 'guest_user',
-      displayName: guestDisplayName || 'Tamu',
+      displayName: guestDisplayName,
       photoURL: null,
       email: '',
       _isOffline: false,
@@ -1335,30 +1375,19 @@ function loginAsGuest() {
     }
   }
 
-  function _doAnonSignIn(onSuccess) {
-    if (fbAuth && typeof fbAuth.signInAnonymously === 'function') {
-      fbAuth.signInAnonymously().then(function(result) {
-        onSuccess(result.user ? result.user.uid : 'guest_anon');
-      }).catch(function(err) {
-        console.warn('[ChiTask] Anonymous sign-in gagal, fallback offline:', err.message);
-        _guestLoginInProgress = false;
-        _offlineMode = true;
-        onSuccess('guest_user');
-      });
-    } else {
-      _guestLoginInProgress = false;
-      _offlineMode = true;
-      onSuccess('guest_user');
-    }
-  }
-
-  _guestLoginInProgress = true;
+  // Kalau sudah punya nama, tinggal tunggu promise (harusnya sudah selesai)
   if (existingGuestName) {
-    _doAnonSignIn(function(anonUid) { _proceedAsGuest(anonUid, existingGuestName); });
+    _anonSignInPromise.then(function(result) {
+      _proceedAsGuest(result && result.user ? result.user.uid : 'guest_user', existingGuestName);
+    });
     return;
   }
+
+  // User baru: tampilkan modal sambil auth jalan di background
   _showGuestUsernameModal(function(chosenName) {
-    _doAnonSignIn(function(anonUid) { _proceedAsGuest(anonUid, chosenName); });
+    _anonSignInPromise.then(function(result) {
+      _proceedAsGuest(result && result.user ? result.user.uid : 'guest_user', chosenName);
+    });
   });
 }
 
@@ -1386,14 +1415,13 @@ function _showGuestUsernameModal(onConfirm) {
         ' style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,rgba(217,119,6,0.9),rgba(180,83,9,0.85));color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;opacity:0.45;transition:opacity 0.15s"',
         ' onclick="_guestUsernameConfirm()">'+t('guest_username_btn'),
       '</button>',
-      '<button style="width:100%;padding:9px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;background:transparent;color:rgba(255,255,255,0.3);font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif"',
-        ' onclick="_guestUsernameSkip()">'+t('guest_username_skip'),
-      '</button>',
     '</div>'
   ].join('');
   document.body.appendChild(modal);
   window._guestUsernameCallback = onConfirm;
-  setTimeout(function() { var inp = document.getElementById('guestUsernameInput'); if (inp) inp.focus(); }, 200);
+  // Auto-focus langsung, tanpa setTimeout — modal sudah di DOM
+  var inp = document.getElementById('guestUsernameInput');
+  if (inp) { inp.focus(); }
 }
 
 function _guestUsernameConfirm() {
@@ -1408,15 +1436,8 @@ function _guestUsernameConfirm() {
   }
 }
 
-function _guestUsernameSkip() {
-  var modal = document.getElementById('guestUsernameModal');
-  if (modal) modal.remove();
-  var skipName = (getLang() === 'en') ? 'Guest' : 'Tamu';
-  if (typeof window._guestUsernameCallback === 'function') {
-    window._guestUsernameCallback(skipName);
-    window._guestUsernameCallback = null;
-  }
-}
+
+
 
 // ── Presence writer: catat lastSeen ke Firestore untuk Google & Guest ──
 var _presenceHeartbeatTimer = null;
