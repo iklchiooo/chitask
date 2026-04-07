@@ -949,9 +949,8 @@ document.addEventListener('DOMContentLoaded', function(){ applyLang(getLang()); 
 <script>
 // ═══════════════════════════════════════════════════════
 // FIREBASE — v6 OFFLINE-READY
-// SDK di-load dari CDN dengan fallback offline mode.
-// Untuk full offline support: jalankan bundle_firebase.py
-// lalu uncomment tag <script src="firebase-bundle.js">
+// Prioritas load: firebase-bundle.js (lokal) → CDN gstatic → CDN jsdelivr
+// Untuk buat firebase-bundle.js: jalankan bundle_firebase.py (sekali saja)
 // ═══════════════════════════════════════════════════════
 var fbAuth = null, fbDb = null, fbUser = null, fbStorage = null;
 var _fbSyncTimer = null, _fbInitialized = false;
@@ -1234,7 +1233,7 @@ function _loadFirebaseWithFallback(cdnList, idx) {
   var _cdnTimeout = setTimeout(function() {
     console.warn('[ChiTask] CDN ' + cdnList[idx] + ' timeout (6s), coba berikutnya...');
     _loadFirebaseWithFallback(cdnList, idx + 1);
-  }, 6000);
+  }, 3000); // diperkecil dari 6s — bundle lokal sudah jadi jalur utama
 
   _initFirebase(cdnList[idx], function(err) {
     clearTimeout(_cdnTimeout);
@@ -1565,7 +1564,19 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
   }
-  _loadFirebaseWithFallback(FIREBASE_CDNS, 0);
+  // ── Coba load firebase-bundle.js lokal dulu (paling cepat, Service Worker friendly) ──
+  // Kalau gagal (file belum dibuat), fallback ke CDN seperti biasa.
+  var _bundleScript = document.createElement('script');
+  _bundleScript.src = 'firebase-bundle.js';
+  _bundleScript.onload = function() {
+    console.log('[ChiTask] ✅ Firebase bundle lokal berhasil di-load');
+    _startFirebase();
+  };
+  _bundleScript.onerror = function() {
+    console.warn('[ChiTask] firebase-bundle.js tidak ditemukan — fallback ke CDN');
+    _loadFirebaseWithFallback(FIREBASE_CDNS, 0);
+  };
+  document.head.appendChild(_bundleScript);
 });
 </script>
 <style>
@@ -6917,11 +6928,7 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
   <!-- Brand name -->
   <div style="text-align:center">
     <div class="brand-name" style="font-size:52px;letter-spacing:-2px;line-height:1">
-      <span class="chi">
-        <span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.00s both">C</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.08s both">h</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.16s both">i</span>
-      </span><span class="tsk">
-        <span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.55s both">T</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.63s both">a</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.71s both">s</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.79s both">k</span>
-      </span>
+      <span class="chi"><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.00s both">C</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.08s both">h</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.16s both">i</span></span><span class="tsk"><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.55s both">T</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.63s both">a</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.71s both">s</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.79s both">k</span></span>
     </div>
     <div class="brand-sub" style="font-size:12px;letter-spacing:2px;text-align:center;margin-top:10px;animation:splash-sub 0.45s ease 1.10s both;opacity:0">Task · Keuangan · Hidup</div>
   </div>
@@ -23601,7 +23608,7 @@ function initNavMode(){
       }
     }, 150);
     // Safety timeout
-    setTimeout(function(){ clearInterval(_poll); showNavOnboarding(); }, 6000);
+    setTimeout(function(){ clearInterval(_poll); showNavOnboarding(); }, 3000); // diperkecil dari 6s — bundle lokal sudah jadi jalur utama
   } else {
     // Load saved preference
     var saved = loadNavMode();
@@ -23850,7 +23857,7 @@ function initGamificationMode(){
           setTimeout(function(){ showGamificationOnboarding(); }, 800);
         }
       }, 150);
-      setTimeout(function(){ clearInterval(_poll2); showGamificationOnboarding(); }, 6000);
+      setTimeout(function(){ clearInterval(_poll2); showGamificationOnboarding(); }, 3000); // diperkecil dari 6s — bundle lokal sudah jadi jalur utama
     }
     // Mobile: shown after nav onboarding (in onbConfirm)
   }
