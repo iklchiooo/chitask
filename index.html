@@ -127,7 +127,7 @@ var _STRINGS = {
     guest_username_sub: 'Nama ini akan ditampilkan di sidebar. Bisa diganti kapan saja.',
     guest_username_placeholder: 'Masukkan namamu...',
     guest_username_btn: '✓ Mulai Pakai ChiTask',
-    guest_username_skip: 'Lewati (pakai "Tamu")',
+
     // ── Tour ──
     tour_step_badge: 'Langkah {0} dari {1}',
     tour_skip: 'Lewati tutorial',
@@ -466,7 +466,7 @@ var _STRINGS = {
     guest_username_sub: 'This name will be shown in the sidebar. You can change it anytime.',
     guest_username_placeholder: 'Enter your name...',
     guest_username_btn: '✓ Start Using ChiTask',
-    guest_username_skip: 'Skip (use "Guest")',
+
     confirm_logout: 'Are you sure you want to log out?',
     btn_logout: 'Logout',
     // ── Mobile sidebar mode badge ──
@@ -1066,12 +1066,20 @@ function _startFirebase() {
           return; // skip flow Google login
         }
         // Anonymous user — HANYA proses kalau memang sedang dalam alur loginAsGuest()
-        // Jangan sampai sisa sesi anonymous lama mengganggu login Google dan bikin doc ganda
+        // KECUALI: saat reload, localStorage punya data guest → proses sebagai guest (bukan dibuang)
         if (user.isAnonymous && (!fbUser || !fbUser._isGuest)) {
           if (!_guestLoginInProgress) {
-            // Bukan dari loginAsGuest() — abaikan, tunggu Google auth masuk
-            console.warn('[ChiTask] Anonymous user terdeteksi tapi bukan dari loginAsGuest() — diabaikan untuk mencegah doc ganda');
-            return;
+            // Cek apakah ini reload dari sesi guest sebelumnya
+            var _reloadSaved = null;
+            try { _reloadSaved = JSON.parse(localStorage.getItem('chitask_v6_data') || '{}'); } catch(e) { _reloadSaved = {}; }
+            var _isReloadGuest = _reloadSaved && _reloadSaved._isGuest;
+            if (!_isReloadGuest) {
+              // Bukan guest reload — abaikan, tunggu Google auth masuk
+              console.warn('[ChiTask] Anonymous user terdeteksi tapi bukan dari loginAsGuest() — diabaikan untuk mencegah doc ganda');
+              return;
+            }
+            // Guest reload: set flag dan lanjutkan proses normal di bawah
+            console.log('[ChiTask] Anonymous user dari sesi guest sebelumnya — proses sebagai guest reload');
           }
           var _savedAnon = null;
           try { _savedAnon = JSON.parse(localStorage.getItem('chitask_v6_data') || '{}'); } catch(e) { _savedAnon = {}; }
@@ -1085,16 +1093,13 @@ function _startFirebase() {
             _isGuest: true
           };
           _offlineMode = false;
+          // Guest reload: gunakan localStorage saja, tidak ada baca/tulis Firestore untuk data utama
           if (!_fbInitialized) {
             _appReady = false;
             window._initAppRunning = false;
             _fbInitialized = true;
-            fbLoadData(function(cloudData) {
-              if (cloudData && cloudData._userName) fbUser.displayName = cloudData._userName;
-              if (cloudData) { try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {} }
-              updateAuthUI(fbUser);
-              if (typeof initApp === 'function') initApp();
-            });
+            updateAuthUI(fbUser);
+            if (typeof initApp === 'function') initApp();
           } else {
             updateAuthUI(fbUser);
           }
@@ -1201,8 +1206,8 @@ function _startFirebase() {
           if (_savedForOffline) {
             try {
               var _sp = JSON.parse(_savedForOffline);
-              // Hanya masuk offline mode kalau sebelumnya login Google (bukan guest)
-              _hasPrevLogin = _sp && _sp._userName && !_sp._isGuest;
+              // Masuk offline mode untuk user Google DAN guest yang punya data lokal
+              _hasPrevLogin = _sp && _sp._userName;
             } catch(e) {}
           }
           if (_hasPrevLogin) {
@@ -1335,27 +1340,9 @@ function loginAsGuest() {
     dataToSave._isGuest = true;
     dataToSave._userName = guestUser.displayName;
     try { localStorage.setItem('chitask_v6_data', JSON.stringify(dataToSave)); } catch(e) {}
-    if (fbDb && anonUid && anonUid !== 'guest_user') {
-      fbDb.collection('users').doc(anonUid).get().then(function(doc) {
-        if (doc.exists) {
-          var cloudData = doc.data();
-          try { localStorage.setItem('chitask_v6_data', JSON.stringify(cloudData)); } catch(e) {}
-          if (!cloudData._userName || cloudData._userName === 'Tamu' || cloudData._userName === 'Guest') {
-            fbDb.collection('users').doc(anonUid).update({ _userName: guestUser.displayName });
-          }
-        } else {
-          fbDb.collection('users').doc(anonUid).set(dataToSave);
-        }
-        updateAuthUI(guestUser);
-        if (typeof initApp === 'function') initApp();
-      }).catch(function() {
-        updateAuthUI(guestUser);
-        if (typeof initApp === 'function') initApp();
-      });
-    } else {
-      updateAuthUI(guestUser);
-      if (typeof initApp === 'function') initApp();
-    }
+    // Guest data hanya disimpan di localStorage — tidak ada baca/tulis ke Firestore
+    updateAuthUI(guestUser);
+    if (typeof initApp === 'function') initApp();
   }
 
   function _doAnonSignIn(onSuccess) {
@@ -1428,15 +1415,6 @@ function _guestUsernameConfirm() {
   }
 }
 
-function _guestUsernameSkip() {
-  var modal = document.getElementById('guestUsernameModal');
-  if (modal) modal.remove();
-  var skipName = (getLang() === 'en') ? 'Guest' : 'Tamu';
-  if (typeof window._guestUsernameCallback === 'function') {
-    window._guestUsernameCallback(skipName);
-    window._guestUsernameCallback = null;
-  }
-}
 
 // ── Presence writer: catat lastSeen ke Firestore untuk Google & Guest ──
 var _presenceHeartbeatTimer = null;
@@ -6944,6 +6922,20 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
     <div style="font-size:12px;color:rgba(255,255,255,0.55);font-weight:700;letter-spacing:0.3px;font-family:'DM Sans',sans-serif;margin-top:3px">Iklil Chio Constanta</div>
   </div>
 </div>
+<script>
+// Splash timeout — paksa hilang setelah 8 detik kalau Firebase lambat (misal sinyal lemah)
+setTimeout(function() {
+  var splash = document.getElementById('chitask-splash');
+  if (splash && splash.style.display !== 'none') {
+    splash.style.opacity = '0';
+    splash.style.transform = 'scale(1.04)';
+    setTimeout(function() {
+      splash.style.display = 'none';
+      window._splashDismissed = true;
+    }, 520);
+  }
+}, 8000);
+</script>
 <style>
 @keyframes splash-popchar{0%{opacity:0;transform:scale(0) translateY(20px)}70%{transform:scale(1.2) translateY(-4px);opacity:1}100%{transform:scale(1) translateY(0);opacity:1}}
 @keyframes splash-sub{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
@@ -7990,26 +7982,6 @@ function getStatLevelThreshold(level){
 function getStatLevel(key){var p=charStatProgress[key]||0,lv=0;while(p>=getStatLevelThreshold(lv+1)&&lv<99)lv++;return lv;}
 function getStatLevelPct(key){var lv=getStatLevel(key),cur=charStatProgress[key]||0,prev=getStatLevelThreshold(lv),next=getStatLevelThreshold(lv+1);if(next===prev)return 100;return Math.round((cur-prev)/(next-prev)*100);}
 function getStatNextNeeded(key){var lv=getStatLevel(key),cur=charStatProgress[key]||0,next=getStatLevelThreshold(lv+1);return Math.max(0,next-cur);}
-function matchTaskToStat(t){
-  var grp=(t.group||'').toLowerCase().trim();
-  var nm=(t.name||'').toLowerCase();
-  // Priority: match GROUP first (exact or contains), then task name keywords
-  for(var i=0;i<CHAR_STAT_DEF.length-1;i++){
-    var d=CHAR_STAT_DEF[i];
-    for(var j=0;j<d.groups.length;j++){
-      if(d.groups[j]&&grp.indexOf(d.groups[j])>=0)return d.key;
-    }
-  }
-  // No group match — try task name keywords
-  for(var i=0;i<CHAR_STAT_DEF.length-1;i++){
-    var d=CHAR_STAT_DEF[i];
-    for(var j=0;j<d.groups.length;j++){
-      if(d.groups[j]&&nm.indexOf(d.groups[j])>=0)return d.key;
-    }
-  }
-  // Fallback: Habit with no matching group → Discipline, Task → Intelligence
-  return t.type==='Habit'?'discipline':'intelligence';
-}
 function awardStatProgress(t){var key=matchTaskToStat(t),prevLv=getStatLevel(key);charStatProgress[key]=(charStatProgress[key]||0)+1;charStatLastActivity[key]=todayStr;var newLv=getStatLevel(key);if(newLv>prevLv){var def=CHAR_STAT_DEF.filter(function(d){return d.key===key;})[0];setTimeout(function(){showToast('⬆️ '+def.icon+' '+def.name+' naik ke Lv '+newLv+'!');},400);}}
 function revokeStatProgress(t){var key=matchTaskToStat(t);charStatProgress[key]=Math.max(0,(charStatProgress[key]||0)-1);}
 function getCharClass(){var top=CHAR_STAT_DEF.slice().sort(function(a,b){return getStatLevel(b.key)-getStatLevel(a.key);})[0];var cls={intelligence:'Scholar',strength:'Warrior',wisdom:'Sage',vitality:'Guardian',charisma:'Leader',discipline:'Monk'};return cls[top.key]||'Adventurer';}
@@ -11678,14 +11650,6 @@ function detectHabitContext(habit) {
 }
 
 // Ambil tip kontekstual berdasarkan tipe dan level
-function getContextTip(habit, tipKey) {
-  var ctx = detectHabitContext(habit);
-  if(ctx !== 'general' && HABIT_CONTEXT_MAP[ctx] && HABIT_CONTEXT_MAP[ctx].tips && HABIT_CONTEXT_MAP[ctx].tips[tipKey]) {
-    return HABIT_CONTEXT_MAP[ctx].tips[tipKey];
-  }
-  return null;
-}
-
 // Ambil emoji dan label konteks
 function getContextMeta(habit) {
   var ctx = detectHabitContext(habit);
@@ -15610,91 +15574,6 @@ function setupPWA(){
     showInstallBanner(window._earlyCapturedInstallPrompt);
   }
 
-  // LEGACY BLOCK — tidak dipakai lagi, dipertahankan untuk struktur
-  if(false){
-  if('serviceWorker' in navigator){
-    var swCode=[
-      'const CACHE_NAME = "chitask-v4";',
-      'const FIREBASE_CDNS = [',
-      '  "www.gstatic.com",',
-      '  "firestore.googleapis.com",',
-      '  "identitytoolkit.googleapis.com",',
-      '  "securetoken.googleapis.com",',
-      '  "accounts.google.com"',
-      '];',
-      'const CDN_HOSTS = [',
-      '  "cdnjs.cloudflare.com",',
-      '  "fonts.googleapis.com",',
-      '  "fonts.gstatic.com"',
-      '];',
-
-      // INSTALL — cache app shell
-      'self.addEventListener("install", e => {',
-      '  self.skipWaiting();',
-      '  e.waitUntil(',
-      '    caches.open(CACHE_NAME).then(c => c.addAll([',
-      '      self.location.origin + "/"',
-      '    ])).catch(() => {})',
-      '  );',
-      '});',
-
-      // ACTIVATE — hapus cache lama
-      'self.addEventListener("activate", e => {',
-      '  e.waitUntil(',
-      '    caches.keys().then(keys => Promise.all(',
-      '      keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))',
-      '    )).then(() => self.clients.claim())',
-      '  );',
-      '});',
-
-      // FETCH — strategi cerdas per jenis request
-      'self.addEventListener("fetch", e => {',
-      '  const url = new URL(e.request.url);',
-
-      // Skip non-GET
-      '  if (e.request.method !== "GET") return;',
-
-      // Firebase API — network only, jangan di-cache
-      '  if (FIREBASE_CDNS.some(h => url.hostname.includes(h))) return;',
-
-      // Google Calendar API — network only
-      '  if (url.hostname === "www.googleapis.com") return;',
-
-      // CDN assets (fonts, cdnjs) — cache first, fallback network
-      '  if (CDN_HOSTS.some(h => url.hostname.includes(h))) {',
-      '    e.respondWith(',
-      '      caches.match(e.request).then(cached => {',
-      '        if (cached) return cached;',
-      '        return fetch(e.request).then(res => {',
-      '          if (res && res.status === 200) {',
-      '            const clone = res.clone();',
-      '            caches.open(CACHE_NAME).then(c => c.put(e.request, clone));',
-      '          }',
-      '          return res;',
-      '        }).catch(() => cached);',
-      '      })',
-      '    );',
-      '    return;',
-      '  }',
-
-      // App shell (same origin) — network first, fallback cache
-      '  if (url.origin === self.location.origin) {',
-      '    e.respondWith(',
-      '      fetch(e.request).then(res => {',
-      '        if (res && res.status === 200) {',
-      '          const clone = res.clone();',
-      '          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));',
-      '        }',
-      '        return res;',
-      '      }).catch(() => caches.match(e.request))',
-      '    );',
-      '    return;',
-      '  }',
-      '});'
-    ].join('\n');
-    // end legacy block
-    }
-  } // end if(false)
 
   // Add to homescreen prompt — listener sudah dipasang lebih awal (early capture di <body>)
   // Tidak perlu daftar ulang di sini; cukup gunakan window._earlyCapturedInstallPrompt
@@ -25557,8 +25436,6 @@ function dpLogFilter(mode){
   dpRenderLiveLogs();
 }
 function dpClearLiveLogs(){ _dpLiveLogs=[]; dpRenderLiveLogs(); }
-function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
 // ── App Stats ──
 function dpLoadStats(){
   var todayStr2 = (new Date()).toISOString().slice(0,10);
