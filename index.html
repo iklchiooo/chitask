@@ -7150,7 +7150,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
         </span>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:10px;color:rgba(255,255,255,0.25)">v8.0 ☁️ Firebase</span>
+        <span style="font-size:10px;color:rgba(255,255,255,0.25)">v1.0 ☁️ Firebase</span>
         <span class="save-indicator" id="saveIndicator">✓ Tersimpan</span>
       </div>
     </div>
@@ -11401,7 +11401,7 @@ function _callHabitAI(habitStats,avgPct30,topStreak,needsWork,improving,declinin
     loading.style.display='none'; textEl.style.display='block';
   })
   .catch(function(e){
-    errEl.textContent='Koneksi ke AI gagal. Pastikan sudah deploy dan GROQ_API_KEY sudah diset di Netlify.';
+    errEl.textContent='Koneksi ke AI gagal. Coba reload ChiTask atau hubungi Developer.';
     loading.style.display='none'; errEl.style.display='block';
   });
 }
