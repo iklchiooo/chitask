@@ -9422,14 +9422,43 @@ function renderMain(){
   // Task repeat tetap tersimpan (myday=true) — processRepeatReset reset besok.
   if(currentView==='myday'){
     // FIX: Kumpulkan task overdue (due < hari ini, belum selesai, bukan habit) meski myday=false
-    var overdueTasks=tasks.filter(function(t){
-      if(t.done||t.myday)return false;
-      if(!t.due||t.due>=todayStr)return false;
-      if(t.type==='Habit')return false;
-      // Exclude task yang sudah efektif selesai via history (repeat reschedule)
-      if(isEffectiveDone(t))return false;
-      return true;
-    });
+// Helper: cek apakah habit scheduled untuk suatu tanggal (sama logika dgn isHabitDueToday tapi paramnya dateStr)
+function isHabitDueOnDate(t, dateStr){
+  if(t.type!=='Habit')return false;
+  if(isRepeatSkipToday(t.repeat||'Harian'))return false;
+  var days=getRepeatDays(t.repeat||'Harian');
+  var anchor=t.due;
+  if(!anchor&&t.history&&t.history.length) anchor=t.history.slice().sort()[0];
+  if(!anchor) anchor=dateStr;
+  var anchorD=new Date(anchor+'T00:00:00');
+  var checkD=new Date(dateStr+'T00:00:00');
+  var diff=Math.round((checkD-anchorD)/86400000);
+  if(diff<0)return false;
+  return days<=1||diff%days===0;
+}
+
+// Cari habit overdue: myday=true, belum done hari itu (tidak ada di history), scheduled untuk hari tsb
+var overdueHabits=tasks.filter(function(t){
+  if(t.type!=='Habit'||!t.myday)return false;
+  if(isEffectiveDone(t))return false; // sudah selesai hari ini
+  // Cek 7 hari ke belakang apakah ada hari yang terlewat
+  for(var i=1;i<=7;i++){
+    var d=new Date(today); d.setDate(d.getDate()-i);
+    var ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    if(isHabitDueOnDate(t,ds)&&(!t.history||t.history.indexOf(ds)<0)){
+      return true; // ada hari yang terlewat
+    }
+  }
+  return false;
+});
+
+var overdueTasks=tasks.filter(function(t){
+  if(t.done||t.myday)return false;
+  if(!t.due||t.due>=todayStr)return false;
+  if(t.type==='Habit')return false;
+  if(isEffectiveDone(t))return false;
+  return true;
+}).concat(overdueHabits);
     var mydayTasks=tasks.filter(function(t){
       if(t.due&&t.due>todayStr)return false;
       if(!t.myday&&t.due!==todayStr)return false;
@@ -12609,7 +12638,16 @@ function setSegDimulaiWindow(minutes){
 // ── Upcoming task reminders (reminder waktu dalam window yg dipilih, belum lewat) ──
 function getUpcomingTaskReminderHTML(){
   var now=new Date();
-  var nowMs=now.getTime();
+  var timeLabel;
+if(diffMin<=1){
+  timeLabel='Sekarang!';
+} else if(diffMin<60){
+  timeLabel=diffMin+' menit lagi';
+} else {
+  var jamnya=Math.floor(diffMin/60);
+  var sisaMenit=diffMin%60;
+  timeLabel=sisaMenit>0?(jamnya+' jam '+sisaMenit+' menit lagi'):(jamnya+' jam lagi');
+}
   var windowMs=getSegDimulaiWindowMs();
   var upcoming=tasks.filter(function(t){
     if(t.done||!t.reminder||!t.myday)return false;
