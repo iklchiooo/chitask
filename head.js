@@ -1550,3 +1550,62 @@ document.addEventListener('DOMContentLoaded', function() {
   };
   document.head.appendChild(_bundleScript);
 });
+
+
+
+// ══ EARLY PWA INSTALL PROMPT CAPTURE ══════════════════════════════════
+// HARUS dipasang SEBELUM Firebase & semua script async load.
+// beforeinstallprompt di Chrome Android bisa tembak dalam ~1-3 detik
+// setelah halaman load — jauh sebelum initApp() / setupPWA() jalan.
+// Kalau listener baru dipasang di setupPWA(), event sudah kelewat → prompt hilang.
+(function() {
+  window._earlyCapturedInstallPrompt = null;
+  window._pwaDebugLog = [];
+  function pwaLog(msg) {
+    var t = new Date().toISOString().substr(11,8);
+    window._pwaDebugLog.push('['+t+'] '+msg);
+    console.log('[PWA] '+msg);
+  }
+  window._pwaLog = pwaLog;
+  pwaLog('Early listener dipasang');
+
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    window._earlyCapturedInstallPrompt = e;
+    window._installPrompt = e;
+    pwaLog('✅ beforeinstallprompt TERTANGKAP!');
+    if (window.innerWidth <= 700) {
+      setTimeout(function() {
+        if (typeof showInstallBanner === 'function') {
+          showInstallBanner(e);
+        }
+      }, 3000);
+    }
+  });
+
+  window.addEventListener('appinstalled', function() {
+    pwaLog('✅ appinstalled event tembak');
+  });
+  // Sembunyikan tombol install jika sudah ter-install (standalone mode)
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+    document.addEventListener('DOMContentLoaded', function() {
+      var navInstall = document.getElementById('nav-install');
+      if (navInstall) navInstall.style.display = 'none';
+      var sdiInstall = document.getElementById('sdi-install-btn');
+      if (sdiInstall) sdiInstall.style.display = 'none';
+    });
+  }
+})();
+
+// Splash timeout — paksa hilang setelah 8 detik kalau Firebase lambat (misal sinyal lemah)
+setTimeout(function() {
+  var splash = document.getElementById('chitask-splash');
+  if (splash && splash.style.display !== 'none') {
+    splash.style.opacity = '0';
+    splash.style.transform = 'scale(1.04)';
+    setTimeout(function() {
+      splash.style.display = 'none';
+      window._splashDismissed = true;
+    }, 520);
+  }
+}, 8000);
