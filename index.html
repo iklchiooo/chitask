@@ -118,8 +118,8 @@ var _STRINGS = {
     sub_journal_all: 'Semua entri jurnal harian',
     sub_journal_search: 'Cari by kata kunci atau tag',
     // ── Add bar ──
-    placeholder_task: 'Tambah task atau habit baru...',
-    placeholder_task_mobile: 'Nama task atau habit...',
+    placeholder_task: 'Tambah task... cth: "beli susu besok jam 8"',
+    placeholder_task_mobile: 'Nama task... cth: "besok jam 8 beli susu"',
     btn_add_task: '+ Tambah',
     btn_add_task_mobile: '＋ Tambah Task',
     // ── Guest username modal ──
@@ -2788,6 +2788,12 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 .myday-drag-handle{cursor:grab;color:var(--muted);font-size:15px;padding:0 8px 0 2px;user-select:none;display:inline-flex;align-items:center;opacity:0.5;transition:opacity 0.15s}
 .group-header:hover .myday-drag-handle{opacity:1}
 .myday-drag-handle:active{cursor:grabbing}
+/* Individual task drag-to-reorder */
+.task-drag-handle{cursor:grab;color:var(--muted);font-size:13px;padding:0 6px 0 0;user-select:none;flex-shrink:0;opacity:0;transition:opacity 0.15s;align-self:center;display:inline-flex;align-items:center}
+.task-draggable:hover .task-drag-handle{opacity:0.5}
+.task-drag-handle:active,.task-drag-handle:hover{cursor:grabbing;opacity:1!important}
+.task-draggable.task-dragging{opacity:0.4;box-shadow:0 0 0 2px var(--accent)!important}
+.task-draggable.task-drag-over{box-shadow:0 -2px 0 0 var(--accent)!important;background:var(--hover)!important}
 
 /* Calendar */
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:10px;overflow:visible;padding-top:12px}
@@ -6760,8 +6766,9 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
   <div class="mobile-add-handle" style="width:48px;height:5px;background:rgba(255,255,255,0.35);border-radius:3px;margin:10px auto 6px;cursor:grab;flex-shrink:0;touch-action:none;-webkit-tap-highlight-color:transparent;padding:8px 18px;box-sizing:content-box;background-clip:content-box"></div>
   <div class="mobile-add-inner">
     <div class="mobile-add-row1">
-      <input type="text" id="mobileTaskInput" placeholder="Nama task atau habit..." onkeydown="if(event.key==='Enter')addTaskMobile()">
+      <input type="text" id="mobileTaskInput" placeholder="Nama task... (cth: besok jam 8 beli susu)" onkeydown="if(event.key==='Enter')nlpApplyAndAdd('mobileTaskInput',addTaskMobile)" oninput="nlpInputChangeMobile(this.value)">
     </div>
+    <div id="nlpPreviewMobile" style="display:none;align-items:center;gap:5px;flex-wrap:wrap;padding:4px 2px 0;margin-top:0"></div>
     <!-- Option chips — always visible in mobile add bar -->
     <div class="mobile-add-chips">
       <span class="mchip" id="mchip-habit" onclick="toggleChip('habit');syncMobileChips()"><span class="chip-habit-label">🔥 Habit</span></span>
@@ -6814,7 +6821,7 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
   </div>
   <div style="padding:10px 14px calc(72px + env(safe-area-inset-bottom,0));display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.1);flex-shrink:0">
     <button id="mobileAddCancelBtn" class="mobile-add-cancel" onclick="closeMobileAddBar()">Batal</button>
-    <button class="mobile-add-submit" id="addTaskMobileBtn" onclick="addTaskMobile()">＋ Tambah Task</button>
+    <button class="mobile-add-submit" id="addTaskMobileBtn" onclick="nlpApplyAndAdd('mobileTaskInput',addTaskMobile)">＋ Tambah Task</button>
   </div>
 </div>
 <div class="mobile-add-overlay" id="mobileAddOverlay" onclick="closeMobileAddBar()"></div>
@@ -7201,9 +7208,10 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
     <div class="add-bar" id="addBar">
       <div class="add-row1">
         <span style="color:var(--accent);font-size:20px;flex-shrink:0;line-height:1;font-weight:300">+</span>
-        <input type="text" id="taskInput" placeholder="Tambah task atau habit baru..." onkeydown="if(event.key==='Enter')addTask()" onfocus="if(typeof ftCheckAndStart==='function')ftCheckAndStart(false)" onblur="setTimeout(function(){if(typeof _ftActive!=='undefined'&&_ftActive&&document.activeElement&&document.activeElement.closest&&!document.activeElement.closest('#ftCard'))ftFinish();},200)">
-        <button class="btn-add" id="addTaskBtn" onclick="addTask()">+ Tambah</button>
+        <input type="text" id="taskInput" placeholder="Tambah task atau habit baru... (cth: beli susu besok jam 8)" onkeydown="if(event.key==='Enter')nlpApplyAndAdd('taskInput',addTask)" oninput="nlpInputChange(this.value)" onfocus="if(typeof ftCheckAndStart==='function')ftCheckAndStart(false)" onblur="setTimeout(function(){if(typeof _ftActive!=='undefined'&&_ftActive&&document.activeElement&&document.activeElement.closest&&!document.activeElement.closest('#ftCard'))ftFinish();},200)">
+        <button class="btn-add" id="addTaskBtn" onclick="nlpApplyAndAdd('taskInput',addTask)">+ Tambah</button>
       </div>
+      <div id="nlpPreview" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 4px 0;margin-top:2px"></div>
       <div class="add-opts" id="addOpts">
         <span class="chip" id="chip-habit" onclick="toggleChip('habit')"><span class="chip-habit-label">🔥 Habit</span></span>
         <span class="chip" id="chip-important" onclick="toggleChip('important')"><span class="chip-important-label">⭐ Penting</span></span>
@@ -9662,7 +9670,15 @@ function taskCard(t){
   var goldTag='<span style="font-size:10px;color:#d97706;font-family:DM Mono,monospace;font-weight:700">🪙'+taskGold+'</span>';
   var priceTag=t.isShopping&&t.price?'<span style="font-size:10px;color:#15803d;font-weight:600">'+fmtRp(t.price)+'</span>':'';
 
-  return '<div class="'+cardClass+'" onclick="openDetail('+t.id+')">'+colorStrip
+  var dragHandle='<span class="task-drag-handle" onclick="event.stopPropagation()" title="Drag untuk ubah urutan">⠿</span>';
+  return '<div class="'+cardClass+' task-draggable" draggable="true" data-task-id="'+t.id+'"'
+    +' ondragstart="taskItemDragStart(event,'+t.id+')"'
+    +' ondragend="taskItemDragEnd(event)"'
+    +' ondragover="taskItemDragOver(event)"'
+    +' ondragleave="taskItemDragLeave(event)"'
+    +' ondrop="taskItemDrop(event,'+t.id+')"'
+    +' onclick="openDetail('+t.id+')">'+colorStrip
+    +dragHandle
     +'<div class="'+checkClass+'" onclick="event.stopPropagation();'+checkClick+'">'+checkIcon+'</div>'
     +'<div class="task-body">'
       +'<div class="task-name">'+t.name+'</div>'
@@ -14619,6 +14635,187 @@ function toggleSubtask(taskId,subId){
   checkAchievements();saveData(true);render();
 }
 
+// ═══════════════════════════════════════════════════════
+// NATURAL LANGUAGE INPUT PARSER
+// Contoh: "beli susu besok jam 8" → task + due date + reminder
+// ═══════════════════════════════════════════════════════
+function nlpParseTask(raw) {
+  var text = raw;
+  var result = { name: raw, due: '', reminder: '', nlpHints: [] };
+  var today = new Date(); today.setHours(0,0,0,0);
+
+  // ── 1. Parse TIME ──
+  // "jam 8", "jam 08:30", "jam 8 pagi", "jam 9 malam", "pukul 10", "09.00", "@08:00"
+  var timePatterns = [
+    /\bjam\s+(\d{1,2})(?:[:\.](\d{2}))?\s*(pagi|siang|sore|malam)?\b/i,
+    /\bpukul\s+(\d{1,2})(?:[:\.](\d{2}))?\s*(pagi|siang|sore|malam)?\b/i,
+    /@(\d{1,2})(?::(\d{2}))?\s*(pagi|siang|sore|malam)?\b/i,
+    /\b(\d{1,2})[:\.](\d{2})\s*(pagi|siang|sore|malam)?\b/i
+  ];
+  var parsedHour = -1, parsedMin = 0;
+  for (var tp = 0; tp < timePatterns.length; tp++) {
+    var tm = text.match(timePatterns[tp]);
+    if (tm) {
+      parsedHour = parseInt(tm[1]);
+      parsedMin = tm[2] ? parseInt(tm[2]) : 0;
+      var period = (tm[3] || '').toLowerCase();
+      if (period === 'malam' || period === 'sore') { if (parsedHour < 12) parsedHour += 12; }
+      else if (period === 'pagi') { if (parsedHour === 12) parsedHour = 0; }
+      else {
+        // Heuristic: jam 1-6 tanpa keterangan → anggap siang/sore jika > 6
+        if (parsedHour >= 1 && parsedHour <= 6) parsedHour += 12;
+      }
+      text = text.replace(tm[0], '').trim();
+      result.reminder = String(parsedHour).padStart(2,'0') + ':' + String(parsedMin).padStart(2,'0');
+      result.nlpHints.push('⏰ ' + String(parsedHour % 12 || 12).padStart(2,'0') + ':' + String(parsedMin).padStart(2,'0') + (parsedHour >= 12 ? ' PM' : ' AM'));
+      break;
+    }
+  }
+
+  // ── 2. Parse DATE ──
+  var datePatterns = [
+    // Hari spesifik
+    { re: /\bhari\s+ini\b/i, fn: function() { return _nlpOffset(0); } },
+    { re: /\bsekarang\b/i, fn: function() { return _nlpOffset(0); } },
+    { re: /\bbesok\b/i, fn: function() { return _nlpOffset(1); } },
+    { re: /\blusa\b/i, fn: function() { return _nlpOffset(2); } },
+    { re: /\btumben\b/i, fn: function() { return null; } },
+    // "minggu depan"
+    { re: /\bminggu\s+depan\b/i, fn: function() { return _nlpOffset(7); } },
+    // "bulan depan"
+    { re: /\bbulan\s+depan\b/i, fn: function() {
+      var d = new Date(today); d.setMonth(d.getMonth()+1); return _nlpDateStr(d);
+    }},
+    // "tanggal 15", "tgl 5"
+    { re: /\b(?:tanggal|tgl)\s+(\d{1,2})\b/i, fn: function(m) {
+      var d = new Date(today); d.setDate(parseInt(m[1]));
+      if (d < today) d.setMonth(d.getMonth()+1);
+      return _nlpDateStr(d);
+    }},
+    // "15 april", "5 mei"
+    { re: /\b(\d{1,2})\s+(jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|jun(?:i)?|jul(?:i)?|agu(?:stus)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|des(?:ember)?)\b/i, fn: function(m) {
+      var months = {jan:0,feb:1,mar:2,apr:3,mei:4,jun:5,jul:6,agu:7,sep:8,okt:9,nov:10,des:11};
+      var key = m[2].slice(0,3).toLowerCase();
+      var d = new Date(today.getFullYear(), months[key], parseInt(m[1]));
+      if (d < today) d.setFullYear(d.getFullYear()+1);
+      return _nlpDateStr(d);
+    }},
+    // Nama hari: "senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "minggu"
+    { re: /\b(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i, fn: function(m) {
+      var days = {minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
+      var target = days[m[1].toLowerCase()];
+      var d = new Date(today); var cur = d.getDay();
+      var diff = (target - cur + 7) % 7 || 7;
+      d.setDate(d.getDate() + diff);
+      return _nlpDateStr(d);
+    }},
+    // "2 hari lagi", "3 hari ke depan"
+    { re: /\b(\d+)\s+hari\s+(?:lagi|ke\s*depan)\b/i, fn: function(m) { return _nlpOffset(parseInt(m[1])); } },
+    // "2 minggu lagi"
+    { re: /\b(\d+)\s+minggu\s+lagi\b/i, fn: function(m) { return _nlpOffset(parseInt(m[1])*7); } },
+  ];
+
+  for (var dp = 0; dp < datePatterns.length; dp++) {
+    var dm = text.match(datePatterns[dp].re);
+    if (dm) {
+      var dateVal = datePatterns[dp].fn(dm);
+      if (dateVal) {
+        result.due = dateVal;
+        // Friendly label
+        var dd = new Date(dateVal + 'T00:00:00');
+        var diff2 = Math.round((dd - today) / 86400000);
+        var lbl = diff2 === 0 ? 'Hari ini' : diff2 === 1 ? 'Besok' : diff2 === 2 ? 'Lusa' : dateVal;
+        result.nlpHints.push('📅 ' + lbl);
+      }
+      text = text.replace(dm[0], '').trim();
+      break;
+    }
+  }
+
+  // ── 3. Detect important keywords ──
+  if (/\b(penting|urgent|segera|asap|prioritas)\b/i.test(text)) {
+    result.important = true;
+    text = text.replace(/\b(penting|urgent|segera|asap|prioritas)\b/gi, '').trim();
+    result.nlpHints.push('⭐ Penting');
+  }
+  // ── 4. Clean up extra spaces/punctuation ──
+  result.name = text.replace(/\s{2,}/g,' ').replace(/[,\-–]+$/,'').trim() || raw;
+  return result;
+}
+function _nlpOffset(n) {
+  var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+n);
+  return _nlpDateStr(d);
+}
+function _nlpDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+// NLP Preview: tampil di bawah input saat user mengetik
+var _nlpPreviewTimer = null;
+function nlpInputChange(val) {
+  clearTimeout(_nlpPreviewTimer);
+  _nlpPreviewTimer = setTimeout(function() {
+    nlpShowPreview(val);
+  }, 300);
+}
+function nlpShowPreview(val) {
+  var previewEl = document.getElementById('nlpPreview');
+  if (!previewEl) return;
+  if (!val || val.length < 4) { previewEl.style.display='none'; return; }
+  var p = nlpParseTask(val);
+  if (!p.nlpHints || !p.nlpHints.length) { previewEl.style.display='none'; return; }
+  previewEl.innerHTML = '<span style="color:var(--muted);font-size:11px">✨ Terdeteksi: </span>'
+    + p.nlpHints.map(function(h){ return '<span style="background:var(--pill);border:1px solid var(--border);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600;color:var(--accent)">' + h + '</span>'; }).join(' ');
+  previewEl.style.display = 'flex';
+}
+function nlpApplyAndAdd(inputId, addFn) {
+  var inp = document.getElementById(inputId);
+  if (!inp) return;
+  var raw = inp.value.trim();
+  if (!raw) { showToast('Ketik nama task dulu 😊'); return; }
+  var p = nlpParseTask(raw);
+  // Apply parsed name
+  inp.value = p.name;
+  // Also sync to main taskInput if this is mobile/sqa input
+  var mainInp = document.getElementById('taskInput');
+  if (mainInp && inputId !== 'taskInput') mainInp.value = p.name;
+  // Apply due date if not already set
+  if (p.due) {
+    var dueEls = ['chip-due', 'mchip-due'];
+    dueEls.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && !el.value) {
+        el.value = p.due;
+        taskbarDateUpdateLabel(id, p.due);
+      }
+    });
+  }
+  // Apply reminder if not already set
+  if (p.reminder) {
+    var remEls = ['chip-reminder', 'mchip-reminder'];
+    remEls.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && !el.value) {
+        el.value = p.reminder;
+        taskbarReminderUpdateLabel(id, p.reminder);
+      }
+    });
+  }
+  // Apply important flag
+  if (p.important && !chipState.important) {
+    chipState.important = true;
+    var ci = document.getElementById('chip-important'); if(ci) ci.classList.add('active');
+    var mi = document.getElementById('mchip-important'); if(mi) mi.classList.add('active');
+  }
+  // Hide preview
+  var prev = document.getElementById('nlpPreview');
+  if (prev) prev.style.display = 'none';
+  var prevM = document.getElementById('nlpPreviewMobile');
+  if (prevM) prevM.style.display = 'none';
+  // Call original add function
+  addFn();
+}
+
 function addTask(){
   var inp=document.getElementById('taskInput'),name=inp.value.trim();
   if(!name){showToast('Ketik nama task dulu 😊');return;}
@@ -15245,6 +15442,140 @@ function mdGrpDrop(e,el){
     _touchSrcEl=null;_touchSrcGrp=null;_touchLastOver=null;
   });
 })();
+
+// ══════════════════════════════════════════════
+// INDIVIDUAL TASK DRAG-TO-REORDER
+// ══════════════════════════════════════════════
+var _taskDragSrcId = null;
+function taskItemDragStart(e, taskId) {
+  _taskDragSrcId = taskId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', String(taskId));
+  // Stop group drag from firing
+  e.stopPropagation();
+  setTimeout(function(){ 
+    var el = e.target.closest('.task-draggable');
+    if(el) el.classList.add('task-dragging');
+  }, 0);
+}
+function taskItemDragEnd(e) {
+  var el = e.target.closest('.task-draggable');
+  if(el) el.classList.remove('task-dragging');
+  document.querySelectorAll('.task-draggable').forEach(function(n){ n.classList.remove('task-drag-over'); });
+  _taskDragSrcId = null;
+}
+function taskItemDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.dataTransfer.dropEffect = 'move';
+  var el = e.currentTarget;
+  document.querySelectorAll('.task-draggable').forEach(function(n){ n.classList.remove('task-drag-over'); });
+  if(_taskDragSrcId !== null) el.classList.add('task-drag-over');
+}
+function taskItemDragLeave(e) {
+  e.currentTarget.classList.remove('task-drag-over');
+}
+function taskItemDrop(e, targetId) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.classList.remove('task-drag-over');
+  if(_taskDragSrcId === null || _taskDragSrcId === targetId) return;
+  var si = tasks.findIndex(function(t){ return t.id === _taskDragSrcId; });
+  var ti = tasks.findIndex(function(t){ return t.id === targetId; });
+  if(si < 0 || ti < 0) return;
+  var moved = tasks.splice(si, 1)[0];
+  tasks.splice(ti, 0, moved);
+  _taskDragSrcId = null;
+  saveData(true); render();
+  showToast('Urutan task diperbarui ✓');
+}
+
+// Touch drag for individual tasks (mobile)
+(function(){
+  var _tSrcId=null, _tSrcEl=null, _tClone=null;
+  var _tOffX=0, _tOffY=0, _tLastOver=null;
+  function getTaskElFromPoint(x,y){
+    var els=document.querySelectorAll('.task-draggable');
+    for(var i=0;i<els.length;i++){
+      var r=els[i].getBoundingClientRect();
+      if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom)return els[i];
+    }
+    return null;
+  }
+  document.addEventListener('touchstart',function(e){
+    var handle=e.target.closest('.task-drag-handle');
+    if(!handle)return;
+    var card=handle.closest('.task-draggable');
+    if(!card)return;
+    e.preventDefault(); e.stopPropagation();
+    _tSrcEl=card;
+    _tSrcId=parseInt(card.getAttribute('data-task-id')||0);
+    var t=e.touches[0], r=card.getBoundingClientRect();
+    _tOffX=t.clientX-r.left; _tOffY=t.clientY-r.top;
+    _tClone=card.cloneNode(true);
+    _tClone.style.cssText='position:fixed;z-index:9999;pointer-events:none;opacity:0.85;width:'+r.width+'px;box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:10px;left:'+(t.clientX-_tOffX)+'px;top:'+(t.clientY-_tOffY)+'px;background:var(--card);';
+    document.body.appendChild(_tClone);
+    card.classList.add('task-dragging');
+  },{passive:false});
+  document.addEventListener('touchmove',function(e){
+    if(!_tSrcEl)return; e.preventDefault();
+    var t=e.touches[0];
+    if(_tClone){_tClone.style.left=(t.clientX-_tOffX)+'px';_tClone.style.top=(t.clientY-_tOffY)+'px';}
+    var over=getTaskElFromPoint(t.clientX,t.clientY);
+    if(over&&over!==_tSrcEl){
+      if(over!==_tLastOver){
+        document.querySelectorAll('.task-draggable').forEach(function(n){n.classList.remove('task-drag-over');});
+        over.classList.add('task-drag-over'); _tLastOver=over;
+      }
+    } else {
+      document.querySelectorAll('.task-draggable').forEach(function(n){n.classList.remove('task-drag-over');}); _tLastOver=null;
+    }
+  },{passive:false});
+  document.addEventListener('touchend',function(e){
+    if(!_tSrcEl)return;
+    if(_tClone){_tClone.remove();_tClone=null;}
+    _tSrcEl.classList.remove('task-dragging');
+    document.querySelectorAll('.task-draggable').forEach(function(n){n.classList.remove('task-drag-over');});
+    var t=e.changedTouches[0];
+    var targetEl=getTaskElFromPoint(t.clientX,t.clientY);
+    if(targetEl&&targetEl!==_tSrcEl){
+      var targetId=parseInt(targetEl.getAttribute('data-task-id')||0);
+      var srcId=_tSrcId;
+      if(srcId&&targetId&&srcId!==targetId){
+        var si=tasks.findIndex(function(x){return x.id===srcId;});
+        var ti=tasks.findIndex(function(x){return x.id===targetId;});
+        if(si>=0&&ti>=0){
+          var moved=tasks.splice(si,1)[0]; tasks.splice(ti,0,moved);
+          saveData(true); render(); showToast('Urutan task diperbarui ✓');
+        }
+      }
+    }
+    _tSrcEl=null;_tSrcId=null;_tLastOver=null;
+  },{passive:false});
+  document.addEventListener('touchcancel',function(){
+    if(_tClone){_tClone.remove();_tClone=null;}
+    if(_tSrcEl)_tSrcEl.classList.remove('task-dragging');
+    document.querySelectorAll('.task-draggable').forEach(function(n){n.classList.remove('task-drag-over');});
+    _tSrcEl=null;_tSrcId=null;_tLastOver=null;
+  });
+})();
+
+// ══════════════════════════════════════════════
+// NLP MOBILE PREVIEW
+// ══════════════════════════════════════════════
+var _nlpPreviewTimerM = null;
+function nlpInputChangeMobile(val) {
+  clearTimeout(_nlpPreviewTimerM);
+  _nlpPreviewTimerM = setTimeout(function() {
+    var p = nlpParseTask(val);
+    var el = document.getElementById('nlpPreviewMobile');
+    if (!el) return;
+    if (!val || val.length < 4 || !p.nlpHints || !p.nlpHints.length) { el.style.display='none'; return; }
+    el.innerHTML = '<span style="color:rgba(255,255,255,0.5);font-size:11px">✨ </span>'
+      + p.nlpHints.map(function(h){ return '<span style="background:rgba(255,255,255,0.15);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600;color:#fff">' + h + '</span>'; }).join(' ');
+    el.style.display = 'flex';
+  }, 300);
+}
 
 function refreshGroupSelects(){
   var all=getAllGroups();
@@ -16856,7 +17187,7 @@ function exportFinPDF(){
     +(catKeys.length?'<div class="section-title">🏷️ Pengeluaran per Kategori</div>'
     +'<div style="margin-bottom:8px">'+barSVG+'</div>'
     +'<table><thead><tr><th>Kategori</th><th style="text-align:right">Jumlah</th><th style="text-align:right">%</th></tr></thead><tbody>'
-    +catKeys.map(function(k){return'<tr><td>'+k+'</td><td style="text-align:right;font-family:monospace;font-weight:600;color:#dc2626">'+fmtRp(cats[k])+'</td><td style="text-align:right;color:#78716c">'+s.expense?(cats[k]/s.expense*100).toFixed(1)+'%':'—'+'</td></tr>';}).join('')
+    +catKeys.map(function(k){return'<tr><td>'+k+'</td><td style="text-align:right;font-family:monospace;font-weight:600;color:#dc2626">'+fmtRp(cats[k])+'</td><td style="text-align:right;color:#78716c">'+(s.expense?(cats[k]/s.expense*100).toFixed(1)+'%':'—')+'</td></tr>';}).join('')
     +'</tbody></table>':'')
 
     +(budgetRows?'<div class="section-title">💰 Budget vs Aktual</div>'
@@ -18665,13 +18996,13 @@ function getRadarThemeConfig(){
       animation:'pulse',decorationType:'none',textLight:true
     },
     'theme-light':{
-      cardBg:'linear-gradient(135deg,#1e1a12 0%,#272115 50%,#1e1a12 100%)',
-      cardBorder:'rgba(217,119,6,0.45)',cardGlow:'0 4px 28px rgba(0,0,0,0.35),0 0 16px rgba(217,119,6,0.15)',
-      cardTopLine:'linear-gradient(90deg,transparent,rgba(217,119,6,0.7),rgba(251,191,36,1),rgba(217,119,6,0.7),transparent)',
-      polyStroke:'#f59e0b',polyGlow:'rgba(245,158,11,0.55)',ringStroke:'rgba(255,255,255,0.1)',axisStroke:'rgba(255,255,255,0.08)',
-      centerBg:'rgba(12,10,6,0.95)',centerRing:'rgba(245,158,11,0.6)',centerTextColor:'#fbbf24',
-      labelBg:'rgba(12,10,6,0.88)',classBg:'linear-gradient(135deg,#d97706,#b45309)',
-      animation:'pulse',decorationType:'none',textLight:true
+      cardBg:'linear-gradient(135deg,#faf8f5 0%,#f5f1eb 50%,#faf8f5 100%)',
+      cardBorder:'rgba(180,130,50,0.3)',cardGlow:'0 4px 20px rgba(0,0,0,0.08),0 0 12px rgba(217,119,6,0.08)',
+      cardTopLine:'linear-gradient(90deg,transparent,rgba(180,130,50,0.4),rgba(217,119,6,0.6),rgba(180,130,50,0.4),transparent)',
+      polyStroke:'#b45309',polyGlow:'rgba(180,83,9,0.35)',ringStroke:'rgba(0,0,0,0.08)',axisStroke:'rgba(0,0,0,0.07)',
+      centerBg:'rgba(255,255,255,0.97)',centerRing:'rgba(180,83,9,0.35)',centerTextColor:'#92400e',
+      labelBg:'rgba(255,255,255,0.95)',classBg:'linear-gradient(135deg,#d97706,#b45309)',
+      animation:'pulse',decorationType:'none',textLight:false
     },
     'theme-sololeveling':{
       cardBg:'linear-gradient(135deg,#04040f 0%,#090920 50%,#04040f 100%)',
@@ -18723,15 +19054,15 @@ function getRadarThemeConfig(){
   if(configs[t]) return configs[t];
   // Fallback: beda config untuk light vs dark mode (untuk tema tanpa config khusus seperti forest, ocean, rose)
   if(!darkMode){
-    // Light mode — pakai card gelap warm agar radar tetap readable
+    // Light mode — pakai card terang netral agar menyatu dengan UI light
     return {
-      cardBg:'linear-gradient(135deg,#1e1a12 0%,#272115 50%,#1e1a12 100%)',
-      cardBorder:'rgba(217,119,6,0.45)',cardGlow:'0 4px 28px rgba(0,0,0,0.35),0 0 16px rgba(217,119,6,0.15)',
-      cardTopLine:'linear-gradient(90deg,transparent,rgba(217,119,6,0.7),rgba(251,191,36,1),rgba(217,119,6,0.7),transparent)',
-      polyStroke:'#f59e0b',polyGlow:'rgba(245,158,11,0.55)',ringStroke:'rgba(255,255,255,0.1)',axisStroke:'rgba(255,255,255,0.08)',
-      centerBg:'rgba(12,10,6,0.95)',centerRing:'rgba(245,158,11,0.6)',centerTextColor:'#fbbf24',
-      labelBg:'rgba(12,10,6,0.88)',classBg:'linear-gradient(135deg,#d97706,#b45309)',
-      animation:'pulse',decorationType:'none',textLight:true
+      cardBg:'linear-gradient(135deg,#faf8f5 0%,#f5f1eb 50%,#faf8f5 100%)',
+      cardBorder:'rgba(180,130,50,0.3)',cardGlow:'0 4px 20px rgba(0,0,0,0.08),0 0 12px rgba(217,119,6,0.08)',
+      cardTopLine:'linear-gradient(90deg,transparent,rgba(180,130,50,0.4),rgba(217,119,6,0.6),rgba(180,130,50,0.4),transparent)',
+      polyStroke:'#b45309',polyGlow:'rgba(180,83,9,0.35)',ringStroke:'rgba(0,0,0,0.08)',axisStroke:'rgba(0,0,0,0.07)',
+      centerBg:'rgba(255,255,255,0.97)',centerRing:'rgba(180,83,9,0.35)',centerTextColor:'#92400e',
+      labelBg:'rgba(255,255,255,0.95)',classBg:'linear-gradient(135deg,#d97706,#b45309)',
+      animation:'pulse',decorationType:'none',textLight:false
     };
   }
   return {
@@ -18893,7 +19224,8 @@ function buildCharStatsCard(){
   // ── BACKGROUND HEX ──
   var bgPts=[];
   for(var i=0;i<sides;i++){var bp=polarPt(i,maxLv,maxLv,r);bgPts.push(bp[0]+','+bp[1]);}
-  svg+='<polygon points="'+bgPts.join(' ')+'" fill="rgba(0,0,0,0.2)" stroke="'+cfg.ringStroke+'" stroke-width="0.8"/>';
+  var _hexBgFill=cfg.textLight?'rgba(0,0,0,0.04)':'rgba(0,0,0,0.2)';
+  svg+='<polygon points="'+bgPts.join(' ')+'" fill="'+_hexBgFill+'" stroke="'+cfg.ringStroke+'" stroke-width="0.8"/>';
 
   // ── GRID RINGS ──
   for(var ring=1;ring<=5;ring++){
@@ -18929,11 +19261,14 @@ function buildCharStatsCard(){
     var p=polarPt(i,lv,maxLv,r),hasPoints=lv>0;
     if(hasPoints){
       svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="10" fill="url(#vg'+uid+i+')" opacity="0.55"/>';
-      svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="5" fill="'+def.color+'" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" filter="url(#gl'+uid+')">';
+      var _dotStroke=cfg.textLight?'rgba(255,255,255,0.5)':'rgba(255,255,255,0.9)';
+      svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="5" fill="'+def.color+'" stroke="'+_dotStroke+'" stroke-width="1.5" filter="url(#gl'+uid+')">';
       svg+='<animate attributeName="r" values="4.5;5.8;4.5" dur="'+(1.6+i*0.25)+'s" repeatCount="indefinite"/>';
       svg+='</circle>';
     } else {
-      svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="2.5" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>';
+      var _emptyDotFill=cfg.textLight?'rgba(0,0,0,0.06)':'rgba(255,255,255,0.1)';
+      var _emptyDotStroke=cfg.textLight?'rgba(0,0,0,0.15)':'rgba(255,255,255,0.18)';
+      svg+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="2.5" fill="'+_emptyDotFill+'" stroke="'+_emptyDotStroke+'" stroke-width="1"/>';
     }
   }
 
@@ -26286,7 +26621,8 @@ function devWipeUserData(){
   if(!confirm('Konfirmasi sekali lagi — semua data Firebase user ini akan dihapus?')) return;
   showToast('⚠️ Wipe diblokir — lakukan manual via Firebase Console untuk keamanan');
   _devLog('⚠️ Wipe blocked — gunakan Firebase Console','warn');
-}</script>
+}
+</script>
 
 
 <!-- ══ ANNOUNCEMENT POPUP — tampil ke semua user ══════════════════ -->
