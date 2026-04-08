@@ -9425,7 +9425,8 @@ function renderMain(){
 // Helper: cek apakah habit scheduled untuk suatu tanggal (sama logika dgn isHabitDueToday tapi paramnya dateStr)
 function isHabitDueOnDate(t, dateStr){
   if(t.type!=='Habit')return false;
-  if(isRepeatSkipToday(t.repeat||'Harian'))return false;
+  var skipDay=getExceptDay(t.repeat||'Harian');
+  if(skipDay>=0&&new Date(dateStr+'T00:00:00').getDay()===skipDay)return false;
   var days=getRepeatDays(t.repeat||'Harian');
   var anchor=t.due;
   if(!anchor&&t.history&&t.history.length) anchor=t.history.slice().sort()[0];
@@ -12638,16 +12639,7 @@ function setSegDimulaiWindow(minutes){
 // ── Upcoming task reminders (reminder waktu dalam window yg dipilih, belum lewat) ──
 function getUpcomingTaskReminderHTML(){
   var now=new Date();
-  var timeLabel;
-if(diffMin<=1){
-  timeLabel='Sekarang!';
-} else if(diffMin<60){
-  timeLabel=diffMin+' menit lagi';
-} else {
-  var jamnya=Math.floor(diffMin/60);
-  var sisaMenit=diffMin%60;
-  timeLabel=sisaMenit>0?(jamnya+' jam '+sisaMenit+' menit lagi'):(jamnya+' jam lagi');
-}
+  var nowMs=now.getTime();
   var windowMs=getSegDimulaiWindowMs();
   var upcoming=tasks.filter(function(t){
     if(t.done||!t.reminder||!t.myday)return false;
@@ -12676,7 +12668,10 @@ if(diffMin<=1){
     remDate.setHours(parseInt(parts[0]),parseInt(parts[1]),0,0);
     var diffMs=remDate-now;
     var diffMin=Math.round(diffMs/60000);
-    var timeLabel=diffMin<=1?'Sekarang!':diffMin+' menit lagi';
+    var timeLabel;
+    if(diffMin<=1){timeLabel='Sekarang!';}
+    else if(diffMin<60){timeLabel=diffMin+' menit lagi';}
+    else{var jamnya=Math.floor(diffMin/60);var sisaMenit=diffMin%60;timeLabel=sisaMenit>0?(jamnya+' jam '+sisaMenit+' menit lagi'):(jamnya+' jam lagi');}
     var color='#3b82f6';
     var bgBadge='#dbeafe';
     if(diffMin<=10){color='#dc2626';bgBadge='#fee2e2';}
