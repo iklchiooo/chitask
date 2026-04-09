@@ -2,6 +2,8 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
+<!-- ⚡ Anti-white-flash: dark bg before CSS loads, overrideable by theme vars -->
+<style>html{background:#1c1917;}body{background:#1c1917;margin:0;padding:0;}</style>
 <script>
 // ═══════════════════════════════════════════════════════
 // LANGUAGE SYSTEM — Full App i18n
@@ -2566,8 +2568,13 @@ function _tourUpdateDots(idx) {
 <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
 <link rel="shortcut icon" href="/icons/icon-96x96.png">
+<!-- Font preconnect (non-blocking) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap"></noscript>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+/* Font @import removed — loaded via non-blocking <link> above */
 /* ═══ CRITICAL MOBILE OVERFLOW FIX ═══ */
 @media(max-width:700px){
   html, body {
@@ -6508,6 +6515,45 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
 <!-- Google Identity Services dihapus — diganti Cloudflare Worker -->
 </head>
 <body>
+<!-- ⚡ SPLASH FIRST — rendered before any JS/CSS to eliminate white flash -->
+<style>
+@keyframes splash-popchar{0%{opacity:0;transform:scale(0) translateY(20px)}70%{transform:scale(1.2) translateY(-4px);opacity:1}100%{transform:scale(1) translateY(0);opacity:1}}
+@keyframes splash-sub{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
+@keyframes splash-dot{0%,80%,100%{transform:scale(0.5);opacity:0.25}40%{transform:scale(1);opacity:1}}
+#chitask-splash{background:var(--sidebar,#1c1917)}
+#chitask-splash .brand-name{font-size:52px;letter-spacing:-2px;line-height:1;font-family:sans-serif;font-weight:800;color:#f5f0eb}
+#chitask-splash .brand-sub{font-size:12px;letter-spacing:2px;text-align:center;margin-top:10px;color:rgba(255,255,255,0.5)}
+body.sololeveling-theme #chitask-splash{background:#0d0b1a}
+body.fluffytown-theme #chitask-splash{background:#2d1a2e}
+body.slytherin-theme #chitask-splash{background:#0a1a0f}
+</style>
+<div id="chitask-splash" style="position:fixed;inset:0;z-index:9999;background:#1c1917;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity 0.5s ease,transform 0.5s ease;">
+  <div style="text-align:center">
+    <div class="brand-name" style="font-size:52px;letter-spacing:-2px;line-height:1">
+      <span class="chi"><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.00s both">C</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.08s both">h</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.16s both">i</span></span><span class="tsk"><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.55s both">T</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.63s both">a</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.71s both">s</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.79s both">k</span></span>
+    </div>
+    <div class="brand-sub" style="font-size:12px;letter-spacing:2px;text-align:center;margin-top:10px;animation:splash-sub 0.45s ease 1.10s both;opacity:0">Task · Keuangan · Hidup</div>
+  </div>
+  <div style="display:flex;gap:6px;animation:splash-sub 0.4s ease 1.25s both;opacity:0;margin-top:4px">
+    <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;animation:splash-dot 1.1s 1.3s ease-in-out infinite"></span>
+    <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;animation:splash-dot 1.1s 1.45s ease-in-out infinite"></span>
+    <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;animation:splash-dot 1.1s 1.6s ease-in-out infinite"></span>
+  </div>
+  <div style="position:absolute;bottom:calc(32px + env(safe-area-inset-bottom,0));text-align:center;animation:splash-sub 0.5s ease 1.20s both;opacity:0">
+    <div style="font-size:10px;color:rgba(255,255,255,0.3);font-weight:500;letter-spacing:0.8px;font-family:'DM Sans',sans-serif;text-transform:uppercase">Made by</div>
+    <div style="font-size:12px;color:rgba(255,255,255,0.55);font-weight:700;letter-spacing:0.3px;font-family:'DM Sans',sans-serif;margin-top:3px">Iklil Chio Constanta</div>
+  </div>
+</div>
+<script>
+// Splash auto-dismiss fallback after 8s (e.g. Firebase slow on weak signal)
+setTimeout(function() {
+  var s = document.getElementById('chitask-splash');
+  if (s && s.style.display !== 'none') {
+    s.style.opacity = '0'; s.style.transform = 'scale(1.04)';
+    setTimeout(function(){ s.style.display='none'; window._splashDismissed=true; }, 520);
+  }
+}, 8000);
+</script>
 <script>
 // ══ EARLY PWA INSTALL PROMPT CAPTURE ══════════════════════════════════
 // HARUS dipasang SEBELUM Firebase & semua script async load.
@@ -6634,6 +6680,9 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
     </div>
     <div class="subdrawer-item" id="sdi-task-groups" onclick="switchView('task-groups');closeSubDrawer()">
       <span class="sdi-ic">🗂️</span><span class="sdi-lbl">Kelola Grup</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-collab" onclick="CT_Collab.showProjectsView();closeSubDrawer()">
+      <span class="sdi-ic">🤝</span><span class="sdi-lbl">Collaboration</span>
     </div>
 
     <div class="subdrawer-item" id="sdi-shop" onclick="openShop();closeSubDrawer()">
@@ -6780,10 +6829,15 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
       <select id="mchip-repeat" class="mchip-select" onchange="handleRepeatChange(this)">
         <option value="">🔄 Repeat</option>
         <option value="Harian">Harian</option>
+        <option value="WEEKDAYS">Hari Kerja (Sen–Jum)</option>
+        <option value="WEEKEND">Weekend (Sab–Min)</option>
         <option value="__daily_except__">Harian kecuali hari...</option>
+        <option value="__dow__">📅 Pilih hari tertentu...</option>
         <option value="Mingguan">Mingguan</option>
+        <option value="Tiap 2 Minggu">Tiap 2 Minggu</option>
         <option value="Bulanan">Bulanan</option>
-        <option value="__custom__">✏️ Custom...</option>
+        <option value="__monthly_date__">📆 Tanggal tertentu tiap bulan...</option>
+        <option value="__custom__">✏️ Custom interval...</option>
       </select>
       <select id="mchip-group" class="mchip-select">
         <option value="">📁 Grup</option>
@@ -6807,7 +6861,10 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
         <span style="font-size:12px">🔔</span><span id="mchip-reminder-label" style="color:rgba(255,255,255,0.75);font-size:12px;font-weight:600">Reminder</span>
       </button>
       <input type="number" id="mchip-steps" class="mchip-select" placeholder="🔢 Langkah" min="2" max="20" style="flex-shrink:0">
-      <span class="mchip" id="mchip-pomo" onclick="toggleChip('pomo');syncMobileChips()">🍅 Pomodoro Timer</span>
+      <!-- Pomodoro chip removed from taskbar — use Chip Timer or detail panel -->
+      <span class="mchip" id="mchip-timer" onclick="openTimerChip('mchip')">⏱ Timer</span>
+      <input type="hidden" id="mchip-duration" value="">
+      <span class="mchip" id="mchip-subtask" onclick="openSubtaskChip('mchip')">✅ Sub-task <span id="mchip-subtask-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:0 5px;font-size:10px;margin-left:2px">0</span></span>
     </div>
     <div class="mobile-add-chips" style="margin-top:4px">
       <input type="number" id="mchip-xp" class="mchip-select" placeholder="⚡ XP" min="1" max="200" style="display:none">
@@ -6904,57 +6961,6 @@ body.slytherin-theme .mobile-back-btn:active { color: #2dbb5d; }
   </button>
 </nav>
 
-<div id="chitask-splash" style="
-  position:fixed;inset:0;z-index:9999;
-  background:#1c1917;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
-  transition:opacity 0.5s ease, transform 0.5s ease;
-">
-  <!-- Brand name -->
-  <div style="text-align:center">
-    <div class="brand-name" style="font-size:52px;letter-spacing:-2px;line-height:1">
-      <span class="chi"><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.00s both">C</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.08s both">h</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.16s both">i</span></span><span class="tsk"><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.55s both">T</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.63s both">a</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.71s both">s</span><span style="display:inline-block;animation:splash-popchar 0.5s cubic-bezier(.34,1.8,.64,1) 0.79s both">k</span></span>
-    </div>
-    <div class="brand-sub" style="font-size:12px;letter-spacing:2px;text-align:center;margin-top:10px;animation:splash-sub 0.45s ease 1.10s both;opacity:0">Task · Keuangan · Hidup</div>
-  </div>
-  <!-- Loading dots -->
-  <div style="display:flex;gap:6px;animation:splash-sub 0.4s ease 1.25s both;opacity:0;margin-top:4px">
-    <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;animation:splash-dot 1.1s 1.3s ease-in-out infinite"></span>
-    <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;animation:splash-dot 1.1s 1.45s ease-in-out infinite"></span>
-    <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;animation:splash-dot 1.1s 1.6s ease-in-out infinite"></span>
-  </div>
-  <!-- Made by -->
-  <div style="position:absolute;bottom:calc(32px + env(safe-area-inset-bottom,0));text-align:center;animation:splash-sub 0.5s ease 1.20s both;opacity:0">
-    <div style="font-size:10px;color:rgba(255,255,255,0.3);font-weight:500;letter-spacing:0.8px;font-family:'DM Sans',sans-serif;text-transform:uppercase">Made by</div>
-    <div style="font-size:12px;color:rgba(255,255,255,0.55);font-weight:700;letter-spacing:0.3px;font-family:'DM Sans',sans-serif;margin-top:3px">Iklil Chio Constanta</div>
-  </div>
-</div>
-<script>
-// Splash timeout — paksa hilang setelah 8 detik kalau Firebase lambat (misal sinyal lemah)
-setTimeout(function() {
-  var splash = document.getElementById('chitask-splash');
-  if (splash && splash.style.display !== 'none') {
-    splash.style.opacity = '0';
-    splash.style.transform = 'scale(1.04)';
-    setTimeout(function() {
-      splash.style.display = 'none';
-      window._splashDismissed = true;
-    }, 520);
-  }
-}, 8000);
-</script>
-<style>
-@keyframes splash-popchar{0%{opacity:0;transform:scale(0) translateY(20px)}70%{transform:scale(1.2) translateY(-4px);opacity:1}100%{transform:scale(1) translateY(0);opacity:1}}
-@keyframes splash-sub{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
-@keyframes splash-dot{0%,80%,100%{transform:scale(0.5);opacity:0.25}40%{transform:scale(1);opacity:1}}
-#chitask-splash{background:var(--sidebar,#1c1917)}
-#chitask-splash .brand-name{font-size:52px;letter-spacing:-2px;line-height:1}
-#chitask-splash .brand-sub{font-size:12px;letter-spacing:2px;text-align:center;margin-top:10px}
-body.sololeveling-theme #chitask-splash{background:#0d0b1a}
-body.fluffytown-theme #chitask-splash{background:#2d1a2e}
-body.slytherin-theme #chitask-splash{background:#0a1a0f}
-</style>
-
 <!-- ═══ LOGIN SCREEN ═══ -->
 <div id="fbLoginScreen" style="display:none">
   <div class="fb-login-card">
@@ -7035,6 +7041,9 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
       </div>
       <div class="nav-item" onclick="switchView('task-groups')" id="nav-task-groups">
         <div class="ic">🗂️</div><div class="lbl">Kelola Grup</div>
+      </div>
+      <div class="nav-item" onclick="CT_Collab.showProjectsView()" id="nav-collab">
+        <div class="ic">🤝</div><div class="lbl">Collaboration</div>
       </div>
     </div>
 
@@ -7219,10 +7228,15 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
         <select id="chip-repeat" class="chip-select" onchange="handleRepeatChange(this)">
           <option value="">🔄 Repeat</option>
           <option value="Harian">Harian</option>
+          <option value="WEEKDAYS">Hari Kerja (Sen–Jum)</option>
+          <option value="WEEKEND">Weekend (Sab–Min)</option>
           <option value="__daily_except__">Harian kecuali hari...</option>
+          <option value="__dow__">📅 Pilih hari tertentu...</option>
           <option value="Mingguan">Mingguan</option>
+          <option value="Tiap 2 Minggu">Tiap 2 Minggu</option>
           <option value="Bulanan">Bulanan</option>
-          <option value="__custom__">✏️ Custom...</option>
+          <option value="__monthly_date__">📆 Tanggal tertentu tiap bulan...</option>
+          <option value="__custom__">✏️ Custom interval...</option>
         </select>
         <span class="chip" id="chip-nodue" onclick="toggleChip('nodue')" title="Tanpa due date"><span class="chip-nodue-label">📌 No Due</span></span>
         <select id="chip-group" class="chip-select">
@@ -7243,7 +7257,10 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
         <input type="hidden" id="chip-reminder">
         <button type="button" onclick="openReminderPicker('chip-reminder')" id="chip-reminder-btn" class="chip-select" title="Pengingat" style="cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;white-space:nowrap;-webkit-tap-highlight-color:transparent">🔔 <span id="chip-reminder-label">Reminder</span></button>
         <input type="number" id="chip-steps" class="chip-select" placeholder="🔢 Langkah" min="2" max="20" style="width:105px">
-        <span class="chip" id="chip-pomo" onclick="toggleChip('pomo')">🍅 Pomodoro Timer</span>
+        <!-- Pomodoro chip removed from taskbar — available in task detail panel -->
+        <span class="chip" id="chip-timer" onclick="openTimerChip('chip')">⏱ Timer</span>
+        <input type="hidden" id="chip-duration" value="">
+        <span class="chip" id="chip-subtask" onclick="openSubtaskChip('chip')">✅ Sub-task <span id="chip-subtask-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:0 5px;font-size:10px;margin-left:2px">0</span></span>
         <input type="number" id="chip-xp" class="chip-select" placeholder="⚡ XP" min="1" max="200" style="width:80px;display:none" title="XP per task (default 10)">
         <input type="number" id="chip-gold" class="chip-select" placeholder="🪙 Gold" min="0" max="999" style="width:80px;display:none" title="Gold per task (default 2)">
         <div style="display:flex;gap:4px;align-items:center;padding:2px 6px;border:1px solid var(--border);border-radius:20px;background:var(--card)">
@@ -7281,10 +7298,15 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
           <select id="sqa-repeat" class="sqa-select" onchange="handleRepeatChange(this)">
             <option value="">🔄 Repeat</option>
             <option value="Harian">Harian</option>
+            <option value="WEEKDAYS">Hari Kerja (Sen–Jum)</option>
+            <option value="WEEKEND">Weekend (Sab–Min)</option>
             <option value="__daily_except__">Harian kecuali hari...</option>
+            <option value="__dow__">📅 Pilih hari tertentu...</option>
             <option value="Mingguan">Mingguan</option>
+            <option value="Tiap 2 Minggu">Tiap 2 Minggu</option>
             <option value="Bulanan">Bulanan</option>
-            <option value="__custom__">✏️ Custom...</option>
+            <option value="__monthly_date__">📆 Tanggal tertentu tiap bulan...</option>
+            <option value="__custom__">✏️ Custom interval...</option>
           </select>
           <select id="sqa-group" class="sqa-select">
             <option value="">📁 Grup</option>
@@ -7308,7 +7330,10 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
             <span style="font-size:12px">🔔</span><span id="sqa-reminder-label" style="font-size:11px;font-weight:600">Reminder</span>
           </button>
           <input type="number" id="sqa-steps" class="sqa-select" placeholder="🔢 Langkah" min="2" max="20" style="width:110px">
-          <span class="sqa-chip" id="sqachip-pomo" onclick="toggleSqaChip('pomo')">🍅 Pomodoro Timer</span>
+          <!-- Pomodoro chip removed from taskbar —  use task detail panel -->
+          <span class="sqa-chip" id="sqachip-timer" onclick="openTimerChip('sqachip')">⏱ Timer</span>
+          <input type="hidden" id="sqachip-duration" value="">
+          <span class="sqa-chip" id="sqachip-subtask" onclick="openSubtaskChip('sqachip')">✅ Sub-task <span id="sqachip-subtask-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:0 5px;font-size:10px;margin-left:2px">0</span></span>
           <input type="number" id="sqa-xp" class="sqa-select" placeholder="⚡ XP" min="1" max="200" style="width:80px;display:none">
           <input type="number" id="sqa-gold" class="sqa-select" placeholder="🪙 Gold" min="0" max="999" style="width:80px;display:none">
         </div>
@@ -7387,7 +7412,10 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
     <select class="det-input" id="det-repeat" onchange="handleDetRepeatChange(this)">
       <option value="">Tidak ada</option>
       <option value="Harian">Harian</option>
+      <option value="WEEKDAYS">Hari Kerja (Sen–Jum)</option>
+      <option value="WEEKEND">Weekend (Sab–Min)</option>
       <option value="__daily_except__">Harian kecuali hari...</option>
+      <option value="__dow__">📅 Pilih hari tertentu...</option>
       <option value="Tiap 2 Hari">Tiap 2 Hari</option>
       <option value="Tiap 3 Hari">Tiap 3 Hari</option>
       <option value="Tiap 4 Hari">Tiap 4 Hari</option>
@@ -7396,6 +7424,7 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
       <option value="Tiap 2 Minggu">Tiap 2 Minggu</option>
       <option value="Tiap 3 Minggu">Tiap 3 Minggu</option>
       <option value="Bulanan">Bulanan</option>
+      <option value="__monthly_date__">📆 Tanggal tertentu tiap bulan...</option>
       <option value="__custom__">✏️ Custom...</option>
     </select>
     <div id="det-repeat-daily-except" style="display:none;margin-top:6px">
@@ -7438,6 +7467,57 @@ body.slytherin-theme #chitask-splash{background:#0a1a0f}
       <input type="number" class="det-input" id="det-steps" min="0" max="20" placeholder="0 = tidak bertahap" oninput="liveDetail()" style="flex:1">
       <span id="det-steps-preview" style="font-size:11px;color:var(--accent);white-space:nowrap;font-weight:600"></span>
     </div>
+  </div>
+
+  <!-- ⏱ TIMER SECTION: Estimasi Durasi + Pomodoro (improved) -->
+  <div class="det-field" id="det-timer-section">
+    <div class="det-label" style="display:flex;align-items:center;justify-content:space-between">
+      <span>⏱ Timer</span>
+      <span id="det-timer-toggle" onclick="toggleDetTimerExpand()" style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:600;user-select:none" title="Buka/Tutup">▼ Buka</span>
+    </div>
+    <div id="det-timer-body" style="display:none;flex-direction:column;gap:12px;margin-top:8px">
+
+      <!-- Estimation Timer -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px">
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:8px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">⏳ Estimasi Durasi</div>
+          <span onclick="ctTimerInfo('est')" style="width:15px;height:15px;background:var(--accent);color:#fff;border-radius:50%;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;line-height:1" title="Info Estimasi Timer">i</span>
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px" id="det-dur-chips">
+          <button class="det-dur-chip" data-min="5"   onclick="setDetDurChip(this,5)">5m</button>
+          <button class="det-dur-chip" data-min="15"  onclick="setDetDurChip(this,15)">15m</button>
+          <button class="det-dur-chip" data-min="30"  onclick="setDetDurChip(this,30)">30m</button>
+          <button class="det-dur-chip" data-min="45"  onclick="setDetDurChip(this,45)">45m</button>
+          <button class="det-dur-chip" data-min="60"  onclick="setDetDurChip(this,60)">1j</button>
+          <button class="det-dur-chip" data-min="90"  onclick="setDetDurChip(this,90)">1.5j</button>
+          <button class="det-dur-chip" data-min="120" onclick="setDetDurChip(this,120)">2j</button>
+          <button class="det-dur-chip" data-min="0"   onclick="setDetDurChip(this,0)">—</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px">
+          <input type="number" id="det-duration" class="det-input" min="0" max="480" placeholder="menit..." oninput="liveDetail();syncDetDurChips()" style="width:90px;flex-shrink:0">
+          <span style="font-size:12px;color:var(--muted)">menit</span>
+          <span id="det-dur-label" style="font-size:11px;color:var(--accent);font-weight:600"></span>
+        </div>
+      </div>
+
+      <!-- Pomodoro Timer -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px">
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:8px">
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">🍅 Pomodoro Timer</div>
+          <span onclick="ctTimerInfo('pomo')" style="width:15px;height:15px;background:var(--accent);color:#fff;border-radius:50%;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;line-height:1" title="Info Pomodoro">i</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5">Fokus 25 menit, istirahat 5 menit. Ulangi untuk produktivitas maksimal.</div>
+        <button onclick="if(selectedTask){openPomo();pomoSetTask(selectedTask.id);closeDetail();}" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%">▶ Mulai Sesi Pomodoro</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Timer Info Modal (shared) -->
+  <div id="ctTimerInfoOverlay" onclick="ctCloseTimerInfo()" style="display:none;position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;background:rgba(0,0,0,0.45);z-index:999998!important"></div>
+  <div id="ctTimerInfoModal" style="display:none;position:fixed!important;top:50%!important;left:50%!important;transform:translate(-50%,-50%)!important;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;width:min(320px,90vw);max-height:85vh;overflow-y:auto;z-index:999999!important;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+    <div id="ctTimerInfoContent"></div>
+    <button onclick="ctCloseTimerInfo()" style="margin-top:14px;width:100%;padding:9px;border:none;border-radius:9px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif">Mengerti ✓</button>
   </div>
   <!-- Shopping task fields -->
   <div id="det-shopping-field" style="display:none">
@@ -14644,6 +14724,48 @@ function nlpParseTask(raw) {
   var result = { name: raw, due: '', reminder: '', nlpHints: [] };
   var today = new Date(); today.setHours(0,0,0,0);
 
+  // ── NEW: Detect REPEAT pattern FIRST ──
+  // PRIORITAS: Pattern yang lebih spesifik dulu (ada "seminggu sekali" / "minggu sekali")
+  var repeatMatch = null;
+  
+  // Pattern 1: "seminggu sekali tiap/setiap/pada/di hari X"
+  repeatMatch = text.match(/\b(?:se)?minggu\s+sekali\s+(?:tiap|setiap|pada|di)?\s*(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
+  
+  // Pattern 2: "setiap minggu hari X" (tanpa "sekali")
+  if (!repeatMatch) {
+    repeatMatch = text.match(/\bsetiap\s+minggu\s+(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
+  }
+  
+  // Pattern 3: "tiap minggu hari X" (tanpa "sekali")
+  if (!repeatMatch) {
+    repeatMatch = text.match(/\btiap\s+minggu\s+(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
+  }
+  
+  if (repeatMatch) {
+    var dayName = repeatMatch[1].toLowerCase();
+    var days = {minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
+    var targetDay = days[dayName];
+    
+    // Set repeat
+    result.repeat = 'weekly';
+    result.nlpHints.push('🔁 Setiap minggu');
+    
+    // Set due to next occurrence of that day
+    var d = new Date(today);
+    var cur = d.getDay();
+    var diff = (targetDay - cur + 7) % 7;
+    if (diff === 0) diff = 7; // If today is that day, schedule for next week
+    d.setDate(d.getDate() + diff);
+    result.due = _nlpDateStr(d);
+    
+    // Capitalize day name for hint
+    var dayDisplay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+    result.nlpHints.push('📅 ' + dayDisplay);
+    
+    // Remove from text
+    text = text.replace(repeatMatch[0], '').trim();
+  }
+
   // ── 1. Parse TIME ──
   // "jam 8", "jam 08:30", "jam 8 pagi", "jam 9 malam", "pukul 10", "09.00", "@08:00"
   var timePatterns = [
@@ -14672,63 +14794,65 @@ function nlpParseTask(raw) {
     }
   }
 
-  // ── 2. Parse DATE ──
-  var datePatterns = [
-    // Hari spesifik
-    { re: /\bhari\s+ini\b/i, fn: function() { return _nlpOffset(0); } },
-    { re: /\bsekarang\b/i, fn: function() { return _nlpOffset(0); } },
-    { re: /\bbesok\b/i, fn: function() { return _nlpOffset(1); } },
-    { re: /\blusa\b/i, fn: function() { return _nlpOffset(2); } },
-    { re: /\btumben\b/i, fn: function() { return null; } },
-    // "minggu depan"
-    { re: /\bminggu\s+depan\b/i, fn: function() { return _nlpOffset(7); } },
-    // "bulan depan"
-    { re: /\bbulan\s+depan\b/i, fn: function() {
-      var d = new Date(today); d.setMonth(d.getMonth()+1); return _nlpDateStr(d);
-    }},
-    // "tanggal 15", "tgl 5"
-    { re: /\b(?:tanggal|tgl)\s+(\d{1,2})\b/i, fn: function(m) {
-      var d = new Date(today); d.setDate(parseInt(m[1]));
-      if (d < today) d.setMonth(d.getMonth()+1);
-      return _nlpDateStr(d);
-    }},
-    // "15 april", "5 mei"
-    { re: /\b(\d{1,2})\s+(jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|jun(?:i)?|jul(?:i)?|agu(?:stus)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|des(?:ember)?)\b/i, fn: function(m) {
-      var months = {jan:0,feb:1,mar:2,apr:3,mei:4,jun:5,jul:6,agu:7,sep:8,okt:9,nov:10,des:11};
-      var key = m[2].slice(0,3).toLowerCase();
-      var d = new Date(today.getFullYear(), months[key], parseInt(m[1]));
-      if (d < today) d.setFullYear(d.getFullYear()+1);
-      return _nlpDateStr(d);
-    }},
-    // Nama hari: "senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "minggu"
-    { re: /\b(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i, fn: function(m) {
-      var days = {minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
-      var target = days[m[1].toLowerCase()];
-      var d = new Date(today); var cur = d.getDay();
-      var diff = (target - cur + 7) % 7 || 7;
-      d.setDate(d.getDate() + diff);
-      return _nlpDateStr(d);
-    }},
-    // "2 hari lagi", "3 hari ke depan"
-    { re: /\b(\d+)\s+hari\s+(?:lagi|ke\s*depan)\b/i, fn: function(m) { return _nlpOffset(parseInt(m[1])); } },
-    // "2 minggu lagi"
-    { re: /\b(\d+)\s+minggu\s+lagi\b/i, fn: function(m) { return _nlpOffset(parseInt(m[1])*7); } },
-  ];
+  // ── 2. Parse DATE (only if not already set by repeat) ──
+  if (!result.due) {
+    var datePatterns = [
+      // Hari spesifik
+      { re: /\bhari\s+ini\b/i, fn: function() { return _nlpOffset(0); } },
+      { re: /\bsekarang\b/i, fn: function() { return _nlpOffset(0); } },
+      { re: /\bbesok\b/i, fn: function() { return _nlpOffset(1); } },
+      { re: /\blusa\b/i, fn: function() { return _nlpOffset(2); } },
+      { re: /\btumben\b/i, fn: function() { return null; } },
+      // "minggu depan"
+      { re: /\bminggu\s+depan\b/i, fn: function() { return _nlpOffset(7); } },
+      // "bulan depan"
+      { re: /\bbulan\s+depan\b/i, fn: function() {
+        var d = new Date(today); d.setMonth(d.getMonth()+1); return _nlpDateStr(d);
+      }},
+      // "tanggal 15", "tgl 5"
+      { re: /\b(?:tanggal|tgl)\s+(\d{1,2})\b/i, fn: function(m) {
+        var d = new Date(today); d.setDate(parseInt(m[1]));
+        if (d < today) d.setMonth(d.getMonth()+1);
+        return _nlpDateStr(d);
+      }},
+      // "15 april", "5 mei"
+      { re: /\b(\d{1,2})\s+(jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|jun(?:i)?|jul(?:i)?|agu(?:stus)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|des(?:ember)?)\b/i, fn: function(m) {
+        var months = {jan:0,feb:1,mar:2,apr:3,mei:4,jun:5,jul:6,agu:7,sep:8,okt:9,nov:10,des:11};
+        var key = m[2].slice(0,3).toLowerCase();
+        var d = new Date(today.getFullYear(), months[key], parseInt(m[1]));
+        if (d < today) d.setFullYear(d.getFullYear()+1);
+        return _nlpDateStr(d);
+      }},
+      // Nama hari: "senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "minggu"
+      { re: /\b(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i, fn: function(m) {
+        var days = {minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
+        var target = days[m[1].toLowerCase()];
+        var d = new Date(today); var cur = d.getDay();
+        var diff = (target - cur + 7) % 7 || 7;
+        d.setDate(d.getDate() + diff);
+        return _nlpDateStr(d);
+      }},
+      // "2 hari lagi", "3 hari ke depan"
+      { re: /\b(\d+)\s+hari\s+(?:lagi|ke\s*depan)\b/i, fn: function(m) { return _nlpOffset(parseInt(m[1])); } },
+      // "2 minggu lagi"
+      { re: /\b(\d+)\s+minggu\s+lagi\b/i, fn: function(m) { return _nlpOffset(parseInt(m[1])*7); } },
+    ];
 
-  for (var dp = 0; dp < datePatterns.length; dp++) {
-    var dm = text.match(datePatterns[dp].re);
-    if (dm) {
-      var dateVal = datePatterns[dp].fn(dm);
-      if (dateVal) {
-        result.due = dateVal;
-        // Friendly label
-        var dd = new Date(dateVal + 'T00:00:00');
-        var diff2 = Math.round((dd - today) / 86400000);
-        var lbl = diff2 === 0 ? 'Hari ini' : diff2 === 1 ? 'Besok' : diff2 === 2 ? 'Lusa' : dateVal;
-        result.nlpHints.push('📅 ' + lbl);
+    for (var dp = 0; dp < datePatterns.length; dp++) {
+      var dm = text.match(datePatterns[dp].re);
+      if (dm) {
+        var dateVal = datePatterns[dp].fn(dm);
+        if (dateVal) {
+          result.due = dateVal;
+          // Friendly label
+          var dd = new Date(dateVal + 'T00:00:00');
+          var diff2 = Math.round((dd - today) / 86400000);
+          var lbl = diff2 === 0 ? 'Hari ini' : diff2 === 1 ? 'Besok' : diff2 === 2 ? 'Lusa' : dateVal;
+          result.nlpHints.push('📅 ' + lbl);
+        }
+        text = text.replace(dm[0], '').trim();
+        break;
       }
-      text = text.replace(dm[0], '').trim();
-      break;
     }
   }
 
@@ -14800,6 +14924,13 @@ function nlpApplyAndAdd(inputId, addFn) {
         taskbarReminderUpdateLabel(id, p.reminder);
       }
     });
+  }
+  // Apply repeat if detected
+  if (p.repeat) {
+    var repeatEl = document.getElementById('chip-repeat');
+    if (repeatEl && !repeatEl.value) {
+      repeatEl.value = p.repeat;
+    }
   }
   // Apply important flag
   if (p.important && !chipState.important) {
@@ -24864,6 +24995,7 @@ function _annEnqueue(valid, readIds){
   var toShow = valid.filter(function(a){
     // FIX #2: mode 'always' hanya muncul sekali per sesi (bukan setiap kali snapshot)
     if(a.displayMode === 'always') return !_annSessionDismissed[a.id];
+    if(a.displayMode === 'once_per_session') return !_annSessionDismissed[a.id];
     return readIds.indexOf(a.id) < 0;
   });
   if(!toShow.length) return;
@@ -25176,7 +25308,8 @@ function _annDismiss(ann){
   // FIX #2: Tandai sudah dismiss di sesi ini (untuk mode 'always')
   _annSessionDismissed[ann.id] = true;
 
-  if(ann.displayMode !== 'always'){
+  // once_per_session: hanya simpan ke _annSessionDismissed (sudah done di atas), tidak ke Firestore/localStorage
+  if(ann.displayMode !== 'always' && ann.displayMode !== 'once_per_session'){
     var isGuest = fbUser && fbUser._isGuest;
     if(isGuest){
       // FIX #5: Guest — simpan ke localStorage (fresh read dulu agar tidak overwrite)
@@ -25941,7 +26074,7 @@ function devAnnSubmit(){
   var msgEl     = document.getElementById('devAnnMessage');
   var message   = msgEl.innerHTML.trim();
   var plainText = (msgEl.innerText || msgEl.textContent || '').trim();
-  var mode      = document.getElementById('devAnnMode').value;
+  var mode      = (document.getElementById('devAnnMode') || document.getElementById('dpAnnMode') || {value:'once'}).value;
   var expiryVal = document.getElementById('devAnnExpiry').value;
   var linkVal   = (document.getElementById('devAnnLink') && document.getElementById('devAnnLink').value.trim()) || '';
   var imgModeVal= (document.getElementById('devAnnImgMode') && document.getElementById('devAnnImgMode').value) || 'thumbnail';
@@ -26997,8 +27130,9 @@ function devWipeUserData(){
           <div>
             <div style="font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px">Mode Tampil</div>
             <select id="dpAnnMode" style="width:100%;background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:10px;color:#fff;padding:9px 10px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;-webkit-appearance:auto">
-              <option value="once"   style="background:#1c1917">1️⃣ Sekali per user</option>
-              <option value="always" style="background:#1c1917">🔄 Selalu tiap buka</option>
+              <option value="once"             style="background:#1c1917">1️⃣ Sekali per user (permanen)</option>
+              <option value="once_per_session" style="background:#1c1917">📲 Tiap buka app (per sesi)</option>
+              <option value="always"           style="background:#1c1917">🔄 Selalu (tiap ada update)</option>
             </select>
           </div>
           <div>
@@ -27553,6 +27687,3102 @@ function backupShowStatus(msg, type) {
   }
 }
 </script>
+<!-- ══════════════════════════════════════════════════════════
+     CHITASK FEATURE PATCH v2
+     1. Recurring Fleksibel (DOW, WEEKDAYS, WEEKEND, MONTHDATE)
+     2. Timer chip (Estimasi Durasi + Pomodoro) di semua addbar + detail panel
+     3. Sub-task chip di semua addbar
+══════════════════════════════════════════════════════════ -->
+<style>
+/* ── Duration chips di detail panel ── */
+.det-dur-chip {
+  padding:5px 10px; border-radius:20px;
+  border:1.5px solid var(--border); background:var(--bg);
+  color:var(--muted); font-size:11px; font-weight:600;
+  cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s;
+  -webkit-tap-highlight-color:transparent;
+}
+.det-dur-chip:hover  { border-color:var(--blue,#3b82f6); color:var(--blue,#3b82f6); }
+.det-dur-chip.active { background:rgba(59,130,246,0.15); border-color:var(--blue,#3b82f6); color:var(--blue,#3b82f6); }
+
+/* ── Timer chip popup ── */
+#timerChipPopup {
+  position:fixed; z-index:2000;
+  background:var(--card); border:1.5px solid var(--border);
+  border-radius:16px; padding:14px 16px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.18);
+  width:260px; display:none; flex-direction:column; gap:10px;
+}
+.timer-popup-section-label {
+  font-size:10px; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:0.5px; margin-bottom:5px;
+}
+.timer-dur-btn {
+  padding:5px 10px; border-radius:20px;
+  border:1.5px solid var(--border); background:var(--bg);
+  color:var(--muted); font-size:11px; font-weight:600;
+  cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.12s;
+  -webkit-tap-highlight-color:transparent;
+}
+.timer-dur-btn:hover  { border-color:var(--blue,#3b82f6); color:var(--blue,#3b82f6); }
+.timer-dur-btn.active { background:rgba(59,130,246,0.15); border-color:var(--blue,#3b82f6); color:var(--blue,#3b82f6); }
+.timer-pomo-btn {
+  padding:8px 12px; border-radius:10px;
+  border:1.5px solid var(--border); background:var(--bg);
+  color:var(--text); font-size:12px; font-weight:600;
+  cursor:pointer; font-family:'DM Sans',sans-serif;
+  display:flex; align-items:center; gap:6px;
+}
+.timer-pomo-btn:hover { border-color:var(--accent); }
+
+/* ── Subtask chip popup ── */
+#subtaskChipPopup {
+  position:fixed; z-index:2000;
+  background:var(--card); border:1.5px solid var(--border);
+  border-radius:16px; padding:14px 16px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.18);
+  width:280px; display:none; flex-direction:column; gap:8px;
+}
+.subtask-chip-item {
+  display:flex; align-items:center; gap:7px;
+  padding:4px 0; border-bottom:1px solid var(--border);
+}
+.subtask-chip-item:last-of-type { border-bottom:none; }
+.subtask-chip-check {
+  width:16px; height:16px; border-radius:4px;
+  border:1.5px solid var(--muted); flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; color:#fff;
+}
+/* ── DOW picker popup ── */
+#dowPickerPopup {
+  position:fixed; z-index:3000;
+  background:var(--card); border:1.5px solid var(--border);
+  border-radius:16px; padding:16px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.18);
+  width:280px; display:none; flex-direction:column; gap:12px;
+}
+.dow-day-btn {
+  padding:7px 10px; border-radius:10px;
+  border:1.5px solid var(--border); background:var(--bg);
+  color:var(--muted); font-size:12px; font-weight:700;
+  cursor:pointer; font-family:'DM Sans',sans-serif; flex:1; text-align:center;
+}
+.dow-day-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+/* ── Monthly date popup ── */
+#monthdatePopup {
+  position:fixed; z-index:3000;
+  background:var(--card); border:1.5px solid var(--border);
+  border-radius:16px; padding:16px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.18);
+  width:240px; display:none; flex-direction:column; gap:10px;
+}
+/* ── Task card extras ── */
+.task-dur-badge {
+  display:inline-flex; align-items:center; gap:2px;
+  font-size:10px; color:var(--blue,#3b82f6); font-weight:700;
+  font-family:'DM Mono',monospace;
+  background:rgba(59,130,246,0.1); border-radius:6px; padding:1px 5px;
+}
+.task-subtasks-mini { margin-top:6px; }
+.subtask-mini-progress {
+  height:3px; background:var(--border); border-radius:3px; overflow:hidden; margin-bottom:4px;
+}
+.subtask-mini-fill { height:100%; background:var(--accent); border-radius:3px; transition:width 0.3s; }
+.subtask-mini-row {
+  display:flex; align-items:center; gap:6px; padding:2px 0;
+}
+.subtask-mini-chk {
+  width:13px; height:13px; border-radius:3px;
+  border:1.5px solid var(--muted); flex-shrink:0;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  font-size:9px; color:#fff; transition:all 0.12s;
+  -webkit-tap-highlight-color:transparent;
+}
+.subtask-mini-chk.done { background:var(--accent); border-color:var(--accent); }
+.subtask-mini-name { font-size:11px; color:var(--muted); flex:1; line-height:1.3; }
+.subtask-mini-name.done { text-decoration:line-through; opacity:0.5; }
+
+/* Mobile: make popup scrollable-safe */
+@media(max-width:700px) {
+  #timerChipPopup, #subtaskChipPopup, #dowPickerPopup, #monthdatePopup {
+    position:fixed; left:50% !important; transform:translateX(-50%) !important;
+    bottom:calc(72px + env(safe-area-inset-bottom,0) + 8px) !important;
+    top:auto !important; width:min(290px, calc(100vw - 24px));
+  }
+}
+</style>
+
+<!-- POPUP OVERLAYS -->
+<div id="chipPopupOverlay" onclick="closeAllChipPopups()" style="display:none;position:fixed;inset:0;z-index:1999"></div>
+
+<!-- Timer Chip Popup -->
+<div id="timerChipPopup">
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <span style="font-size:13px;font-weight:800;color:var(--text)">⏱ Timer</span>
+    <button onclick="closeAllChipPopups()" style="border:none;background:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1">✕</button>
+  </div>
+
+  <!-- ── Estimasi Durasi section ── -->
+  <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:11px;padding:10px 11px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+      <div style="display:flex;align-items:center;gap:5px">
+        <span style="font-size:13px">⏳</span>
+        <span class="timer-popup-section-label" style="margin-bottom:0">Estimasi Durasi</span>
+      </div>
+      <!-- Info button -->
+      <button onclick="ctChipTimerInfo('est')"
+        style="width:17px;height:17px;background:var(--accent);color:#fff;border:none;border-radius:50%;font-size:9px;font-weight:800;cursor:pointer;flex-shrink:0;line-height:1;display:flex;align-items:center;justify-content:center;padding:0"
+        title="Apa itu Estimasi Durasi?">i</button>
+    </div>
+    <!-- Info blurb — always visible, compact -->
+    <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:8px;padding:5px 8px;background:var(--pill,rgba(0,0,0,0.03));border-radius:7px">
+      Perkirakan berapa lama task ini butuh waktu. Berguna untuk <b>mengatur jadwal</b> harianmu agar lebih realistis.
+    </div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px" id="timerDurBtns">
+      <button class="timer-dur-btn" data-min="5"   onclick="setTimerDur(5,this)">5m</button>
+      <button class="timer-dur-btn" data-min="15"  onclick="setTimerDur(15,this)">15m</button>
+      <button class="timer-dur-btn" data-min="30"  onclick="setTimerDur(30,this)">30m</button>
+      <button class="timer-dur-btn" data-min="45"  onclick="setTimerDur(45,this)">45m</button>
+      <button class="timer-dur-btn" data-min="60"  onclick="setTimerDur(60,this)">1j</button>
+      <button class="timer-dur-btn" data-min="90"  onclick="setTimerDur(90,this)">1.5j</button>
+      <button class="timer-dur-btn" data-min="120" onclick="setTimerDur(120,this)">2j</button>
+      <button class="timer-dur-btn" data-min="0"   onclick="setTimerDur(0,this)">—</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <input type="number" id="timerDurInput" min="0" max="480" placeholder="menit..."
+        oninput="syncTimerDurBtns()"
+        style="width:80px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600;text-align:center;outline:none;font-family:'DM Mono',monospace">
+      <span style="font-size:12px;color:var(--muted)">menit</span>
+      <span id="timerDurLabel" style="font-size:11px;color:var(--blue,#3b82f6);font-weight:700"></span>
+    </div>
+  </div>
+
+  <!-- ── Pomodoro section ── -->
+  <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:11px;padding:10px 11px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+      <div style="display:flex;align-items:center;gap:5px">
+        <span style="font-size:13px">🍅</span>
+        <span class="timer-popup-section-label" style="margin-bottom:0">Pomodoro Timer</span>
+      </div>
+      <!-- Info button -->
+      <button onclick="ctChipTimerInfo('pomo')"
+        style="width:17px;height:17px;background:#ef4444;color:#fff;border:none;border-radius:50%;font-size:9px;font-weight:800;cursor:pointer;flex-shrink:0;line-height:1;display:flex;align-items:center;justify-content:center;padding:0"
+        title="Apa itu Pomodoro?">i</button>
+    </div>
+    <!-- Info blurb — always visible, compact -->
+    <div style="font-size:10.5px;color:var(--muted);line-height:1.5;margin-bottom:8px;padding:5px 8px;background:var(--pill,rgba(0,0,0,0.03));border-radius:7px">
+      Teknik fokus: <b>kerja 25 menit</b> → <b>istirahat 5 menit</b>. Terbukti meningkatkan produktivitas dan mencegah burnout.
+    </div>
+    <button class="timer-pomo-btn" id="timerPomoBtn" onclick="activatePomoFromChip()">
+      <span style="font-size:16px">🍅</span>
+      <div style="text-align:left">
+        <div style="font-size:12px;font-weight:700">Aktifkan Pomodoro Timer</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:1px">25 menit fokus + 5 menit istirahat otomatis</div>
+      </div>
+    </button>
+    <div id="timerPomoActive" style="display:none;margin-top:6px;font-size:11px;color:var(--accent);font-weight:600;align-items:center;gap:5px">
+      ✅ Pomodoro aktif <button onclick="deactivatePomoFromChip()" style="margin-left:4px;border:none;background:none;color:var(--muted);cursor:pointer;font-size:11px">Nonaktifkan</button>
+    </div>
+  </div>
+
+  <!-- Confirm -->
+  <button onclick="confirmTimerChip()" style="width:100%;padding:9px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Terapkan</button>
+</div>
+
+<!-- ── Timer Info Detail Modal (from chip popup) ── -->
+<div id="ctChipTimerOverlay" onclick="ctCloseChipTimerInfo()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10010"></div>
+<div id="ctChipTimerModal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;width:min(310px,90vw);z-index:10011;box-shadow:0 12px 40px rgba(0,0,0,0.22)">
+  <div id="ctChipTimerContent"></div>
+  <button onclick="ctCloseChipTimerInfo()" style="margin-top:14px;width:100%;padding:10px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif">Oke, mengerti! ✓</button>
+</div>
+
+<script>
+// ── Timer chip info modal ──
+window.ctChipTimerInfo = function(type) {
+  var data = {
+    est: {
+      icon: '⏳', color: '#6366f1', bg: '#6366f120',
+      title: 'Estimasi Durasi',
+      rows: [
+        ['📌', 'Perkiraan berapa lama task ini akan selesai dikerjakan.'],
+        ['📅', 'Bantu kamu <b>merencanakan hari</b> agar tidak overload.'],
+        ['📊', 'Waktu aktual vs estimasi bisa kamu track buat evaluasi produktivitas.'],
+        ['💡', 'Contoh: task "nulis laporan" → estimasi 45 menit, jadi kamu tahu harus mulai jam berapa.']
+      ]
+    },
+    pomo: {
+      icon: '🍅', color: '#ef4444', bg: '#ef444420',
+      title: 'Pomodoro Timer',
+      rows: [
+        ['📌', 'Teknik fokus kerja berbasis interval waktu yang terbukti efektif.'],
+        ['⏱', '<b>25 menit kerja</b> penuh tanpa distraksi, lalu <b>5 menit istirahat</b>. Ini 1 sesi Pomodoro.'],
+        ['🔁', 'Ulangi 4× → istirahat panjang ~15–30 menit. Bantu otak tetap segar.'],
+        ['💡', 'Tips: matikan notifikasi HP saat sesi berlangsung agar fokus maksimal.']
+      ]
+    }
+  };
+  var d = data[type]; if (!d) return;
+  var el = document.getElementById('ctChipTimerContent');
+  if (!el) return;
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;gap:11px;margin-bottom:16px">'
+    + '<div style="width:40px;height:40px;border-radius:12px;background:'+d.bg+';display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">'+d.icon+'</div>'
+    + '<div><div style="font-size:16px;font-weight:800;color:var(--text)">'+d.title+'</div>'
+    + '<div style="font-size:10px;color:'+d.color+';font-weight:700;margin-top:1px;text-transform:uppercase;letter-spacing:0.5px">Penjelasan</div></div>'
+    + '</div>'
+    + d.rows.map(function(r){
+        return '<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:10px">'
+          + '<span style="font-size:14px;flex-shrink:0;margin-top:1px">'+r[0]+'</span>'
+          + '<span style="font-size:12.5px;color:var(--text);line-height:1.55">'+r[1]+'</span>'
+          + '</div>';
+      }).join('');
+  document.getElementById('ctChipTimerOverlay').style.display = 'block';
+  var m = document.getElementById('ctChipTimerModal');
+  m.style.display = 'block';
+  m.style.animation = 'ctModalIn 0.2s ease';
+};
+window.ctCloseChipTimerInfo = function() {
+  document.getElementById('ctChipTimerOverlay').style.display = 'none';
+  document.getElementById('ctChipTimerModal').style.display = 'none';
+};
+</script>
+
+<!-- Subtask Chip Popup -->
+<div id="subtaskChipPopup">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <span style="font-size:13px;font-weight:800;color:var(--text)">✅ Sub-task</span>
+    <button onclick="closeAllChipPopups()" style="border:none;background:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1">✕</button>
+  </div>
+  <div id="subtaskChipList" style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:0"></div>
+  <div style="display:flex;gap:6px;margin-top:6px">
+    <input type="text" id="subtaskChipInput" placeholder="Tambah sub-task..."
+      onkeydown="if(event.key==='Enter')addSubtaskChip()"
+      style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--bg);outline:none">
+    <button onclick="addSubtaskChip()" style="padding:7px 12px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer">+</button>
+  </div>
+  <button onclick="closeAllChipPopups()" style="width:100%;padding:8px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;margin-top:4px">✓ Selesai</button>
+</div>
+
+<!-- DOW Picker Popup -->
+<div id="dowPickerPopup">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <span style="font-size:13px;font-weight:800;color:var(--text)">📅 Pilih Hari</span>
+    <button onclick="closeDowPicker()" style="border:none;background:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1">✕</button>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Pilih hari-hari yang task ini harus dilakukan:</div>
+  <div style="display:flex;gap:5px;flex-wrap:wrap" id="dowDayBtns">
+    <button class="dow-day-btn" data-day="1" onclick="toggleDowBtn(this)">Sen</button>
+    <button class="dow-day-btn" data-day="2" onclick="toggleDowBtn(this)">Sel</button>
+    <button class="dow-day-btn" data-day="3" onclick="toggleDowBtn(this)">Rab</button>
+    <button class="dow-day-btn" data-day="4" onclick="toggleDowBtn(this)">Kam</button>
+    <button class="dow-day-btn" data-day="5" onclick="toggleDowBtn(this)">Jum</button>
+    <button class="dow-day-btn" data-day="6" onclick="toggleDowBtn(this)">Sab</button>
+    <button class="dow-day-btn" data-day="0" onclick="toggleDowBtn(this)">Min</button>
+  </div>
+  <div id="dowPreview" style="font-size:11px;color:var(--accent);font-weight:600;min-height:16px;margin-top:4px"></div>
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <button onclick="closeDowPicker()" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">Batal</button>
+    <button onclick="confirmDowPicker()" style="flex:2;padding:8px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Terapkan</button>
+  </div>
+</div>
+
+<!-- Monthly Date Popup -->
+<div id="monthdatePopup">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <span style="font-size:13px;font-weight:800;color:var(--text)">📆 Tanggal Tiap Bulan</span>
+    <button onclick="closeMonthdatePicker()" style="border:none;background:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0;line-height:1">✕</button>
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Task berulang tiap bulan pada tanggal:</div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <input type="number" id="monthdateInput" min="1" max="28" value="1"
+      oninput="updateMonthdatePreview()"
+      style="width:60px;padding:7px 8px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-size:16px;font-weight:700;text-align:center;outline:none;font-family:'DM Mono',monospace">
+    <span style="font-size:13px;color:var(--muted)">setiap bulan</span>
+  </div>
+  <div id="monthdatePreview" style="font-size:11px;color:var(--accent);font-weight:600;margin-top:4px"></div>
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <button onclick="closeMonthdatePicker()" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--muted);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">Batal</button>
+    <button onclick="confirmMonthdatePicker()" style="flex:2;padding:8px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Terapkan</button>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// CHIPSTATE EXTENSIONS — tambah duration & pendingSubtasks
+// ════════════════════════════════════════════════════════════════════
+// Extend chipState dengan field baru
+if (typeof chipState !== 'undefined') {
+  chipState.duration = 0;
+  chipState.pendingSubtasks = []; // [{id,name,done:false}]
+}
+
+// ════════════════════════════════════════════════════════════════════
+// RECURRING: DOW & MONTHDATE logic
+// ════════════════════════════════════════════════════════════════════
+var _dowTargetSel   = null; // <select> yang memanggil DOW picker
+var _mdTargetSel    = null; // <select> yang memanggil MONTHDATE picker
+
+function handleRepeatChange(sel) {
+  if (sel.value === '__dow__') {
+    _dowTargetSel = sel;
+    // Reset btns
+    document.querySelectorAll('#dowDayBtns .dow-day-btn').forEach(function(b){ b.classList.remove('active'); });
+    updateDowPreview();
+    showPopupNear(document.getElementById('dowPickerPopup'), sel);
+    return;
+  }
+  if (sel.value === '__monthly_date__') {
+    _mdTargetSel = sel;
+    document.getElementById('monthdateInput').value = 1;
+    updateMonthdatePreview();
+    showPopupNear(document.getElementById('monthdatePopup'), sel);
+    return;
+  }
+  if (sel.value === '__daily_except__') {
+    _dailyExceptTargetSel = sel;
+    openDailyExceptModal();
+    return;
+  }
+  if (sel.value === '__custom__') {
+    _customRepeatTargetSel = sel;
+    openCustomRepeatModal();
+    return;
+  }
+  // Plain value — sync all repeat selects
+  syncRepeatSelects(sel.value, sel);
+}
+
+function syncRepeatSelects(val, source) {
+  var allIds = ['chip-repeat','mchip-repeat','sqa-repeat'];
+  allIds.forEach(function(id) {
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el || el === source) return;
+    // Inject option if not present (for custom values like DOW:... MONTHDATE:...)
+    var found = false;
+    for (var i = 0; i < el.options.length; i++) {
+      if (el.options[i].value === val) { found = true; break; }
+    }
+    if (!found && val) {
+      var opt = document.createElement('option');
+      opt.value = val; opt.textContent = val;
+      el.insertBefore(opt, el.querySelector('option[value="__custom__"]') || el.lastElementChild);
+    }
+    el.value = val || '';
+  });
+}
+
+// DOW helpers
+function toggleDowBtn(btn) {
+  btn.classList.toggle('active');
+  updateDowPreview();
+}
+function updateDowPreview() {
+  var days = [];
+  document.querySelectorAll('#dowDayBtns .dow-day-btn.active').forEach(function(b){ days.push(b.textContent); });
+  var el = document.getElementById('dowPreview');
+  if (el) el.textContent = days.length ? '🔁 ' + days.join(', ') + ' setiap minggu' : '';
+}
+function confirmDowPicker() {
+  var days = [];
+  document.querySelectorAll('#dowDayBtns .dow-day-btn.active').forEach(function(b){ days.push(b.getAttribute('data-day')); });
+  if (!days.length) { closeDowPicker(); return; }
+  var val = 'DOW:' + days.join(',');
+  applyRepeatToSel(_dowTargetSel, val);
+  closeDowPicker();
+}
+function closeDowPicker() {
+  if (_dowTargetSel && _dowTargetSel.value === '__dow__') _dowTargetSel.value = '';
+  _dowTargetSel = null;
+  document.getElementById('dowPickerPopup').style.display = 'none';
+  document.getElementById('chipPopupOverlay').style.display = 'none';
+}
+
+// MONTHDATE helpers
+function updateMonthdatePreview() {
+  var d = parseInt(document.getElementById('monthdateInput').value) || 1;
+  d = Math.max(1, Math.min(28, d));
+  var el = document.getElementById('monthdatePreview');
+  if (el) el.textContent = '🔁 Setiap tanggal ' + d + ' tiap bulan';
+}
+function confirmMonthdatePicker() {
+  var d = parseInt(document.getElementById('monthdateInput').value) || 1;
+  d = Math.max(1, Math.min(28, d));
+  var val = 'MONTHDATE:' + d;
+  applyRepeatToSel(_mdTargetSel, val);
+  closeMonthdatePicker();
+}
+function closeMonthdatePicker() {
+  if (_mdTargetSel && _mdTargetSel.value === '__monthly_date__') _mdTargetSel.value = '';
+  _mdTargetSel = null;
+  document.getElementById('monthdatePopup').style.display = 'none';
+  document.getElementById('chipPopupOverlay').style.display = 'none';
+}
+
+function applyRepeatToSel(sel, val) {
+  if (!sel) return;
+  var allIds = ['chip-repeat','mchip-repeat','sqa-repeat'];
+  allIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var found = false;
+    for (var i = 0; i < el.options.length; i++) {
+      if (el.options[i].value === val) { found = true; break; }
+    }
+    if (!found) {
+      var opt = document.createElement('option');
+      opt.value = val; opt.textContent = _repeatLabel(val);
+      el.insertBefore(opt, el.querySelector('option[value="__custom__"]') || el.lastElementChild);
+    }
+    el.value = val;
+  });
+  // Also update detail panel repeat if open
+  var detRep = document.getElementById('det-repeat');
+  if (detRep) {
+    var found2 = false;
+    for (var j = 0; j < detRep.options.length; j++) {
+      if (detRep.options[j].value === val) { found2 = true; break; }
+    }
+    if (!found2) {
+      var opt2 = document.createElement('option');
+      opt2.value = val; opt2.textContent = _repeatLabel(val);
+      detRep.insertBefore(opt2, detRep.querySelector('option[value="__custom__"]') || detRep.lastElementChild);
+    }
+    detRep.value = val;
+    if (typeof liveDetail === 'function' && selectedTask) liveDetail();
+  }
+}
+
+function _repeatLabel(val) {
+  if (!val) return '';
+  if (val === 'WEEKDAYS') return 'Hari Kerja (Sen–Jum)';
+  if (val === 'WEEKEND')  return 'Weekend (Sab–Min)';
+  if (val.startsWith('DOW:')) {
+    var names = {0:'Min',1:'Sen',2:'Sel',3:'Rab',4:'Kam',5:'Jum',6:'Sab'};
+    return val.split(':')[1].split(',').map(function(d){ return names[d]||d; }).join(', ');
+  }
+  if (val.startsWith('MONTHDATE:')) return 'Tgl ' + val.split(':')[1] + ' tiap bulan';
+  return val;
+}
+
+// Patch handleDetRepeatChange to handle DOW and MONTHDATE from detail panel
+var _origHandleDetRepeatChange = handleDetRepeatChange;
+handleDetRepeatChange = function(sel) {
+  if (sel.value === '__dow__') {
+    _dowTargetSel = sel;
+    document.querySelectorAll('#dowDayBtns .dow-day-btn').forEach(function(b){ b.classList.remove('active'); });
+    // Pre-fill if selectedTask already has DOW
+    if (selectedTask && selectedTask.repeat && selectedTask.repeat.startsWith('DOW:')) {
+      var existing = selectedTask.repeat.split(':')[1].split(',').map(Number);
+      document.querySelectorAll('#dowDayBtns .dow-day-btn').forEach(function(b){
+        if (existing.indexOf(parseInt(b.getAttribute('data-day'))) >= 0) b.classList.add('active');
+      });
+    }
+    updateDowPreview();
+    showPopupNear(document.getElementById('dowPickerPopup'), sel);
+    return;
+  }
+  if (sel.value === '__monthly_date__') {
+    _mdTargetSel = sel;
+    var curD = (selectedTask && selectedTask.repeat && selectedTask.repeat.startsWith('MONTHDATE:'))
+      ? parseInt(selectedTask.repeat.split(':')[1]) : 1;
+    document.getElementById('monthdateInput').value = curD;
+    updateMonthdatePreview();
+    showPopupNear(document.getElementById('monthdatePopup'), sel);
+    return;
+  }
+  _origHandleDetRepeatChange(sel);
+};
+
+// Patch liveDetail to also handle WEEKDAYS/WEEKEND/DOW/MONTHDATE
+var _origLiveDetail = liveDetail;
+liveDetail = function() {
+  _origLiveDetail();
+  if (!selectedTask) return;
+  // Save duration
+  var durEl = document.getElementById('det-duration');
+  if (durEl) {
+    var dur = parseInt(durEl.value) || 0;
+    selectedTask.duration = dur > 0 ? dur : 0;
+    updateDetDurLabel(dur);
+  }
+  // Ensure repeat value for new types is saved correctly
+  var repSel = document.getElementById('det-repeat');
+  if (repSel) {
+    var rv = repSel.value;
+    if (rv && rv !== '__dow__' && rv !== '__monthly_date__' && rv !== '__custom__' && rv !== '__daily_except__') {
+      selectedTask.repeat = rv;
+    }
+  }
+};
+
+// Recurring logic: isHabitDueToday override
+var _origIsHabitDueToday = isHabitDueToday;
+isHabitDueToday = function(t) {
+  var rep = t.repeat || '';
+  if (rep === 'WEEKDAYS' || rep === 'WEEKEND' || rep.startsWith('DOW:') || rep.startsWith('MONTHDATE:')) {
+    if (t.type !== 'Habit') return true;
+    var dow = new Date().getDay();
+    if (rep === 'WEEKDAYS') return dow >= 1 && dow <= 5;
+    if (rep === 'WEEKEND')  return dow === 0 || dow === 6;
+    if (rep.startsWith('DOW:')) {
+      var days = rep.split(':')[1].split(',').map(Number);
+      return days.indexOf(dow) >= 0;
+    }
+    if (rep.startsWith('MONTHDATE:')) return new Date().getDate() === (parseInt(rep.split(':')[1])||1);
+  }
+  return _origIsHabitDueToday(t);
+};
+
+// getRepeatDays override for new formats
+var _origGetRepeatDays = getRepeatDays;
+getRepeatDays = function(repeat) {
+  if (!repeat) return 0;
+  if (repeat === 'WEEKDAYS') return 1;
+  if (repeat === 'WEEKEND')  return 3;
+  if (repeat.startsWith('DOW:')) {
+    var cnt = repeat.split(':')[1].split(',').length;
+    return Math.max(1, Math.round(7/cnt));
+  }
+  if (repeat.startsWith('MONTHDATE:')) return 30;
+  return _origGetRepeatDays(repeat);
+};
+
+// processRepeatReset override
+var _origProcessRepeatReset = processRepeatReset;
+processRepeatReset = function() {
+  tasks.forEach(function(t) {
+    if (!t.repeat) return;
+    var rep = t.repeat;
+    var isNew = rep==='WEEKDAYS'||rep==='WEEKEND'||rep.startsWith('DOW:')||rep.startsWith('MONTHDATE:');
+    if (!isNew || !t.done) return;
+    var doneDate = t.doneDate || offset(-1);
+    if (doneDate >= todayStr) return;
+    var dow = new Date().getDay();
+    var isDue = false;
+    if (rep==='WEEKDAYS') isDue = dow>=1&&dow<=5;
+    else if (rep==='WEEKEND') isDue = dow===0||dow===6;
+    else if (rep.startsWith('DOW:')) { var days=rep.split(':')[1].split(',').map(Number); isDue=days.indexOf(dow)>=0; }
+    else if (rep.startsWith('MONTHDATE:')) isDue = new Date().getDate()===(parseInt(rep.split(':')[1])||1);
+    if (isDue) {
+      t.done=false; t.due=todayStr; t.doneDate=null; delete t._nextDue;
+      if(t.subtasks&&t.subtasks.length)t.subtasks.forEach(function(s){s.done=false;});
+      if(t.steps&&t.steps>=2)t.stepsDone=0;
+    }
+  });
+  _origProcessRepeatReset();
+};
+
+// openDetail: sync new repeat values and duration
+var _origOpenDetail_repeat = openDetail;
+openDetail = function(id) {
+  _origOpenDetail_repeat(id);
+  // Wrap in setTimeout so selectedTask is populated before we read it
+  setTimeout(function() {
+    if (!selectedTask) return;
+    // Sync duration panel
+    var dur = selectedTask.duration || 0;
+    var durEl = document.getElementById('det-duration');
+    if (durEl) { durEl.value = dur > 0 ? dur : ''; }
+    if (typeof syncDetDurChips === 'function') syncDetDurChips();
+    if (typeof updateDetDurLabel === 'function') updateDetDurLabel(dur);
+    // Sync repeat: inject custom values if not present
+    var repSel = document.getElementById('det-repeat');
+    var repVal = selectedTask.repeat || '';
+    if (repVal && repSel) {
+      var found = false;
+      for (var i = 0; i < repSel.options.length; i++) {
+        if (repSel.options[i].value === repVal) { found = true; break; }
+      }
+      if (!found) {
+        var opt = document.createElement('option');
+        opt.value = repVal;
+        opt.textContent = (typeof _repeatLabel === 'function') ? _repeatLabel(repVal) : repVal;
+        repSel.insertBefore(opt, repSel.querySelector('option[value="__custom__"]') || repSel.lastElementChild);
+      }
+      repSel.value = repVal;
+    }
+  }, 50);
+};
+
+// ════════════════════════════════════════════════════════════════════
+// TIMER CHIP
+// ════════════════════════════════════════════════════════════════════
+var _timerChipSource = ''; // 'chip'|'mchip'|'sqachip'
+
+function openTimerChip(source) {
+  _timerChipSource = source;
+  // Restore current state
+  var dur = chipState.duration || 0;
+  var inp = document.getElementById('timerDurInput');
+  if (inp) { inp.value = dur > 0 ? dur : ''; }
+  syncTimerDurBtns();
+  updateTimerDurLabel();
+  // Pomodoro state
+  var isPomoOn = chipState.pomo || false;
+  var pomoBtn = document.getElementById('timerPomoBtn');
+  var pomoActive = document.getElementById('timerPomoActive');
+  if (pomoBtn)    pomoBtn.style.display    = isPomoOn ? 'none' : '';
+  if (pomoActive) pomoActive.style.display = isPomoOn ? 'flex' : 'none';
+  // Show popup
+  var btn = document.getElementById(source + '-timer');
+  var popup = document.getElementById('timerChipPopup');
+  if (!btn || !popup) return;
+  showPopupNear(popup, btn);
+}
+
+function setTimerDur(minutes, btn) {
+  chipState.duration = minutes;
+  var inp = document.getElementById('timerDurInput');
+  if (inp) { inp.value = minutes > 0 ? minutes : ''; }
+  syncTimerDurBtns();
+  updateTimerDurLabel();
+}
+
+function syncTimerDurBtns() {
+  var inp = document.getElementById('timerDurInput');
+  var cur = inp ? (parseInt(inp.value) || 0) : (chipState.duration || 0);
+  chipState.duration = cur;
+  document.querySelectorAll('#timerDurBtns .timer-dur-btn').forEach(function(b){
+    var v = parseInt(b.getAttribute('data-min'));
+    b.classList.toggle('active', v === cur || (v === 0 && cur === 0));
+  });
+  updateTimerDurLabel();
+}
+
+function updateTimerDurLabel() {
+  var cur = chipState.duration || 0;
+  var el = document.getElementById('timerDurLabel');
+  if (!el) return;
+  if (!cur || cur <= 0) { el.textContent = ''; return; }
+  if (cur < 60) { el.textContent = cur + ' menit'; return; }
+  var h = Math.floor(cur/60), m = cur%60;
+  el.textContent = h + ' jam' + (m > 0 ? ' ' + m + ' mnt' : '');
+}
+
+function activatePomoFromChip() {
+  chipState.pomo = true;
+  // Sync pomo chips
+  ['chip-pomo','mchip-pomo','sqachip-pomo'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.classList.add('active');
+  });
+  var pomoBtn    = document.getElementById('timerPomoBtn');
+  var pomoActive = document.getElementById('timerPomoActive');
+  if (pomoBtn)    pomoBtn.style.display    = 'none';
+  if (pomoActive) pomoActive.style.display = 'flex';
+}
+
+function deactivatePomoFromChip() {
+  chipState.pomo = false;
+  ['chip-pomo','mchip-pomo','sqachip-pomo'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.classList.remove('active');
+  });
+  var pomoBtn    = document.getElementById('timerPomoBtn');
+  var pomoActive = document.getElementById('timerPomoActive');
+  if (pomoBtn)    pomoBtn.style.display    = '';
+  if (pomoActive) pomoActive.style.display = 'none';
+}
+
+function confirmTimerChip() {
+  var inp = document.getElementById('timerDurInput');
+  chipState.duration = inp ? (parseInt(inp.value) || 0) : 0;
+  // Update chip label
+  var dur = chipState.duration;
+  var label = dur > 0
+    ? (dur < 60 ? dur + 'm' : Math.floor(dur/60) + 'j' + (dur%60 > 0 ? (dur%60)+'m' : ''))
+    : '';
+  ['chip-timer','mchip-timer','sqachip-timer'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (!el) return;
+    var isOn = chipState.pomo || dur > 0;
+    el.classList.toggle('active', isOn);
+    el.textContent = '⏱ Timer' + (label ? ' ('+label+')' : '') + (chipState.pomo ? ' 🍅' : '');
+    // restore badge span
+    el.innerHTML = '⏱ Timer' + (label ? ' <span style="opacity:0.75;font-size:10px">('+label+')</span>' : '') + (chipState.pomo ? ' 🍅' : '');
+  });
+  // Also write to hidden duration inputs
+  ['chip-duration','mchip-duration','sqachip-duration'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.value = dur || '';
+  });
+  closeAllChipPopups();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SUBTASK CHIP
+// ════════════════════════════════════════════════════════════════════
+var _subtaskChipSource = '';
+if (typeof chipState !== 'undefined') chipState.pendingSubtasks = chipState.pendingSubtasks || [];
+
+function openSubtaskChip(source) {
+  _subtaskChipSource = source;
+  renderSubtaskChipList();
+  var btn   = document.getElementById(source + '-subtask');
+  var popup = document.getElementById('subtaskChipPopup');
+  if (!btn || !popup) return;
+  document.getElementById('subtaskChipInput').value = '';
+  showPopupNear(popup, btn);
+  setTimeout(function(){ document.getElementById('subtaskChipInput').focus(); }, 100);
+}
+
+function renderSubtaskChipList() {
+  var list = document.getElementById('subtaskChipList');
+  if (!list) return;
+  var subs = chipState.pendingSubtasks || [];
+  if (!subs.length) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:10px 0">Belum ada sub-task. Tambahkan di bawah.</div>';
+    return;
+  }
+  list.innerHTML = subs.map(function(s, i) {
+    return '<div class="subtask-chip-item">'
+      + '<div class="subtask-chip-check" style="background:' + (s.done ? 'var(--accent)' : 'transparent') + '">'
+      + (s.done ? '✓' : '') + '</div>'
+      + '<span style="flex:1;font-size:12px;color:var(--text)">' + (typeof escHtml !== 'undefined' ? escHtml(s.name) : s.name) + '</span>'
+      + '<button onclick="removeSubtaskChip(' + i + ')" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 2px;line-height:1">×</button>'
+      + '</div>';
+  }).join('');
+}
+
+function addSubtaskChip() {
+  var inp = document.getElementById('subtaskChipInput');
+  var name = inp ? inp.value.trim() : '';
+  if (!name) return;
+  if (!chipState.pendingSubtasks) chipState.pendingSubtasks = [];
+  chipState.pendingSubtasks.push({ id: 's' + Date.now() + Math.random(), name: name, done: false });
+  if (inp) inp.value = '';
+  renderSubtaskChipList();
+  updateSubtaskChipBadges();
+}
+
+function removeSubtaskChip(idx) {
+  if (chipState.pendingSubtasks) chipState.pendingSubtasks.splice(idx, 1);
+  renderSubtaskChipList();
+  updateSubtaskChipBadges();
+}
+
+function updateSubtaskChipBadges() {
+  var cnt = (chipState.pendingSubtasks || []).length;
+  ['chip-subtask-badge','mchip-subtask-badge','sqachip-subtask-badge'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) { el.textContent = cnt; el.style.display = cnt > 0 ? '' : 'none'; }
+  });
+  ['chip-subtask','mchip-subtask','sqachip-subtask'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('active', cnt > 0);
+  });
+}
+
+// Patch addTask to inject pendingSubtasks & duration into new task
+var _origAddTask = addTask;
+addTask = function() {
+  _origAddTask();
+  var newT = tasks[0]; // addTask does unshift
+  if (!newT) return;
+  // Duration from chipState
+  if (chipState.duration && chipState.duration > 0) {
+    newT.duration = chipState.duration;
+  }
+  // Pending subtasks
+  if (chipState.pendingSubtasks && chipState.pendingSubtasks.length > 0) {
+    newT.subtasks = chipState.pendingSubtasks.map(function(s){
+      return { id: s.id, name: s.name, done: false };
+    });
+  }
+  // Reset
+  chipState.duration = 0;
+  chipState.pendingSubtasks = [];
+  updateSubtaskChipBadges();
+  // Reset timer chip labels
+  ['chip-timer','mchip-timer','sqachip-timer'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) { el.classList.remove('active'); el.innerHTML = '⏱ Timer'; }
+  });
+  ['chip-duration','mchip-duration','sqachip-duration'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.value = '';
+  });
+  saveData(true);
+};
+
+// ════════════════════════════════════════════════════════════════════
+// DETAIL PANEL: Timer section toggle & dur chip sync
+// ════════════════════════════════════════════════════════════════════
+var _detTimerExpanded = false;
+function toggleDetTimerExpand() {
+  _detTimerExpanded = !_detTimerExpanded;
+  var body   = document.getElementById('det-timer-body');
+  var toggle = document.getElementById('det-timer-toggle');
+  if (body)   body.style.display   = _detTimerExpanded ? 'flex' : 'none';
+  if (toggle) toggle.textContent   = _detTimerExpanded ? '▲ Tutup' : '▼ Buka';
+}
+
+function setDetDurChip(btn, minutes) {
+  document.querySelectorAll('#det-dur-chips .det-dur-chip').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  var inp = document.getElementById('det-duration');
+  if (inp) inp.value = minutes > 0 ? minutes : '';
+  if (selectedTask) selectedTask.duration = minutes > 0 ? minutes : 0;
+  updateDetDurLabel(minutes);
+  saveData(true);
+}
+
+function syncDetDurChips() {
+  var inp = document.getElementById('det-duration');
+  var cur = inp ? (parseInt(inp.value) || 0) : 0;
+  document.querySelectorAll('#det-dur-chips .det-dur-chip').forEach(function(b){
+    var v = parseInt(b.getAttribute('data-min'));
+    b.classList.toggle('active', v === cur || (v === 0 && cur === 0));
+  });
+  updateDetDurLabel(cur);
+}
+
+function updateDetDurLabel(minutes) {
+  var el = document.getElementById('det-dur-label');
+  if (!el) return;
+  if (!minutes || minutes <= 0) { el.textContent = ''; return; }
+  if (minutes < 60) { el.textContent = minutes + ' menit'; return; }
+  var h = Math.floor(minutes/60), m = minutes%60;
+  el.textContent = h + ' jam' + (m > 0 ? ' ' + m + ' mnt' : '');
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TASK CARD: Inject subtask mini-list + duration badge
+// ════════════════════════════════════════════════════════════════════
+var _origTaskCard = taskCard;
+taskCard = function(t) {
+  var html = _origTaskCard(t);
+
+  // Duration badge — inject into task-meta row (works with div.task-name structure)
+  if (t.duration && t.duration > 0) {
+    var dur = t.duration;
+    var durLabel = dur < 60 ? dur + 'm' : (Math.floor(dur/60) + 'j' + (dur%60>0 ? (dur%60)+'m' : ''));
+    var badge = '<span class="task-dur-badge">⏱\u202f' + durLabel + '</span>';
+    // Inject badge into task-meta div (after the opening tag)
+    html = html.replace(
+      /(<div class="task-meta">)/,
+      function(match) { return match + badge; }
+    );
+  }
+
+  // Subtask mini — inject before last closing div
+  if (t.subtasks && t.subtasks.length > 0) {
+    var done = t.subtasks.filter(function(s){ return s.done; }).length;
+    var total = t.subtasks.length;
+    var pct   = Math.round(done / total * 100);
+    var isFut = !!(t.due && t.due > todayStr && !t._nextDue);
+    var rows  = t.subtasks.map(function(s, i) {
+      return '<div class="subtask-mini-row">'
+        + '<div class="subtask-mini-chk' + (s.done?' done':'') + '"'
+        + (isFut ? ' style="opacity:0.4;cursor:not-allowed"'
+                 : ' onclick="event.stopPropagation();_toggleSubMini('+t.id+','+i+')" style="cursor:pointer"')
+        + '>' + (s.done ? '✓' : '') + '</div>'
+        + '<span class="subtask-mini-name' + (s.done?' done':'') + '">'
+        + (typeof escHtml!=='undefined' ? escHtml(s.name) : s.name) + '</span>'
+        + '</div>';
+    }).join('');
+    var miniHtml = '<div class="task-subtasks-mini" id="tsm-'+t.id+'">'
+      + '<div class="subtask-mini-progress"><div class="subtask-mini-fill" style="width:'+pct+'%"></div></div>'
+      + '<div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:3px">'+done+'/'+total+' sub-task selesai</div>'
+      + rows + '</div>';
+    var lastDiv = html.lastIndexOf('</div>');
+    if (lastDiv >= 0) html = html.slice(0, lastDiv) + miniHtml + html.slice(lastDiv);
+  }
+  return html;
+};
+
+function _toggleSubMini(taskId, idx) {
+  var t = tasks.filter(function(x){ return x.id === taskId; })[0];
+  if (!t || !t.subtasks) return;
+  if (t.due && t.due > todayStr && !t._nextDue) { showToast('⏳ Task ini baru bisa dikerjakan pada ' + fmt(t.due)); return; }
+  var s = t.subtasks[idx]; if (!s) return;
+  s.done = !s.done;
+  if (s.done) { totalSubtasks++; addXP(XP_PER_SUBTASK, '+'+XP_PER_SUBTASK); }
+  else totalSubtasks = Math.max(0, totalSubtasks-1);
+  checkAchievements();
+  // Refresh mini inline
+  var wrap = document.getElementById('tsm-'+taskId);
+  if (wrap) {
+    var done  = t.subtasks.filter(function(x){ return x.done; }).length;
+    var total = t.subtasks.length;
+    var pct   = Math.round(done/total*100);
+    var isFut = !!(t.due && t.due > todayStr && !t._nextDue);
+    wrap.querySelector('.subtask-mini-fill').style.width = pct + '%';
+    wrap.querySelector('.subtask-mini-fill').parentNode.nextSibling.textContent = done+'/'+total+' sub-task selesai';
+    var rows = wrap.querySelectorAll('.subtask-mini-row');
+    t.subtasks.forEach(function(sub, i) {
+      if (!rows[i]) return;
+      var chk  = rows[i].querySelector('.subtask-mini-chk');
+      var name = rows[i].querySelector('.subtask-mini-name');
+      if (chk)  { chk.classList.toggle('done', sub.done);  chk.textContent = sub.done ? '✓' : ''; }
+      if (name) name.classList.toggle('done', sub.done);
+    });
+  }
+  if (selectedTask && selectedTask.id === taskId && typeof renderSubtasksPanel === 'function') renderSubtasksPanel();
+  saveData(true);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// POPUP POSITIONING HELPER
+// ════════════════════════════════════════════════════════════════════
+function showPopupNear(popup, anchor) {
+  var ov = document.getElementById('chipPopupOverlay');
+  if (ov) ov.style.display = 'block';
+  popup.style.display = 'flex';
+  // Position
+  var rect  = anchor.getBoundingClientRect();
+  var pw    = popup.offsetWidth  || 280;
+  var ph    = popup.offsetHeight || 200;
+  var vw    = window.innerWidth;
+  var vh    = window.innerHeight;
+  var isMob = vw <= 700;
+  if (!isMob) {
+    var left = Math.min(rect.left, vw - pw - 8);
+    var top  = rect.bottom + 6;
+    if (top + ph > vh - 8) top = rect.top - ph - 6;
+    popup.style.left   = Math.max(8, left) + 'px';
+    popup.style.top    = top + 'px';
+    popup.style.bottom = '';
+    popup.style.transform = '';
+  }
+  // Mobile: CSS handles positioning via @media query
+}
+
+function closeAllChipPopups() {
+  var ov = document.getElementById('chipPopupOverlay');
+  if (ov) ov.style.display = 'none';
+  ['timerChipPopup','subtaskChipPopup','dowPickerPopup','monthdatePopup'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+// Close popups on scroll
+window.addEventListener('scroll', closeAllChipPopups, true);
+
+// ════════════════════════════════════════════════════════════════════
+// UTIL
+// ════════════════════════════════════════════════════════════════════
+if (typeof escHtml === 'undefined') {
+  window.escHtml = function(s) {
+    return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') : '';
+  };
+}
+
+console.log('[ChiTask+] Features loaded: Recurring, Timer chip, Subtask chip');
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     ChiTask UPGRADES v2 — NLP, Calendar Fix, Instant Render, Timer Cleanup
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+// ══════════════════════════════════════════════════════════════════════════
+// MODULE 1: ADVANCED NLP PARSER
+// Replaces the original nlpParseTask with full recurrence + day detection
+// ══════════════════════════════════════════════════════════════════════════
+(function() {
+
+  // ── Helper: date to YYYY-MM-DD string ──
+  function toDateStr(d) {
+    return d.getFullYear() + '-'
+      + String(d.getMonth() + 1).padStart(2, '0') + '-'
+      + String(d.getDate()).padStart(2, '0');
+  }
+
+  // ── Helper: next occurrence of a weekday from today ──
+  function nextWeekday(dayIndex, fromToday) {
+    var d = new Date(); d.setHours(0,0,0,0);
+    var cur = d.getDay();
+    var diff = ((dayIndex - cur + 7) % 7) || (fromToday ? 7 : 0);
+    d.setDate(d.getDate() + diff);
+    return d;
+  }
+
+  /**
+   * DAYS_MAP: maps Indonesian day names → 0-6 (0=Minggu)
+   */
+  var DAYS_MAP = {
+    'minggu': 0, 'senin': 1, 'selasa': 2, 'rabu': 3,
+    'kamis': 4, 'jumat': 5, "jum'at": 5, 'sabtu': 6
+  };
+
+  /**
+   * buildRepeatFromDays: given array of day indices, build a repeat string
+   * e.g. [1,3] → "Tiap Senin Rabu"
+   */
+  var DAY_NAMES = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  function buildRepeatFromDays(dayIndices) {
+    if (!dayIndices || !dayIndices.length) return '';
+    if (dayIndices.length === 7) return 'Harian';
+    return 'Tiap ' + dayIndices.map(function(i){ return DAY_NAMES[i]; }).join(' ');
+  }
+
+  /**
+   * ENHANCED nlpParseTask — full NLP with recurrence support
+   * Returns: { name, due, reminder, repeat, important, nlpHints }
+   */
+  window.nlpParseTask = function(raw) {
+    var text = (raw || '').trim();
+    var result = {
+      name: raw,
+      due: '',
+      reminder: '',
+      repeat: '',
+      important: false,
+      nlpHints: []
+    };
+    if (!text) return result;
+
+    // ── STEP 1: Parse TIME ──
+    // Patterns: "jam 7", "jam 07:30", "jam 7 pagi", "3 sore", "pukul 10", "09.00"
+    var timePatterns = [
+      /\bjam\s+(\d{1,2})(?:[:\.](\d{2}))?\s*(pagi|siang|sore|malam)?\b/i,
+      /\bpukul\s+(\d{1,2})(?:[:\.](\d{2}))?\s*(pagi|siang|sore|malam)?\b/i,
+      /@(\d{1,2})(?::(\d{2}))?\s*(pagi|siang|sore|malam)?\b/i,
+      /\b(\d{1,2})\s+(pagi|siang|sore|malam)\b/i,
+      /\b(\d{1,2})[:\.](\d{2})\b/
+    ];
+    var parsedHour = -1, parsedMin = 0;
+    for (var tp = 0; tp < timePatterns.length; tp++) {
+      var tm = text.match(timePatterns[tp]);
+      if (tm) {
+        parsedHour = parseInt(tm[1]);
+        parsedMin = tm[2] ? parseInt(tm[2]) : 0;
+        var period = (tm[3] || tm[2] || '').toLowerCase();
+        if (period === 'malam' || period === 'sore') {
+          if (parsedHour < 12) parsedHour += 12;
+        } else if (period === 'pagi') {
+          if (parsedHour === 12) parsedHour = 0;
+        } else if (period === 'siang') {
+          if (parsedHour < 12) parsedHour = parsedHour; // noon-ish
+        } else {
+          // Heuristic: 1-6 tanpa keterangan → sore/malam
+          if (parsedHour >= 1 && parsedHour <= 6) parsedHour += 12;
+        }
+        // Clamp
+        if (parsedHour > 23) parsedHour = 23;
+        text = text.replace(tm[0], '').trim();
+        result.reminder = String(parsedHour).padStart(2,'0') + ':' + String(parsedMin).padStart(2,'0');
+        var h12 = parsedHour % 12 || 12;
+        var ampm = parsedHour >= 12 ? 'PM' : 'AM';
+        result.nlpHints.push('⏰ ' + String(h12).padStart(2,'0') + ':' + String(parsedMin).padStart(2,'0') + ' ' + ampm);
+        break;
+      }
+    }
+
+    // ── STEP 2: Detect RECURRENCE ──
+    // Priority: check recurrence BEFORE date so "tiap senin rabu" doesn't get eaten as a date
+    var repeatResult = _nlpDetectRepeat(text);
+    if (repeatResult.repeat) {
+      result.repeat = repeatResult.repeat;
+      result.nlpHints.push('🔁 ' + repeatResult.label);
+      text = repeatResult.remaining;
+      // For habits, default due = today (start now)
+      if (!result.due) {
+        var todayD = new Date(); todayD.setHours(0,0,0,0);
+        result.due = toDateStr(todayD);
+      }
+    }
+
+    // ── STEP 3: Parse DATE (only if not already set by recurrence) ──
+    if (!result.due || result.due === toDateStr((function(){ var d=new Date();d.setHours(0,0,0,0);return d; })())) {
+      var dateResult = _nlpDetectDate(text);
+      if (dateResult.due) {
+        result.due = dateResult.due;
+        result.nlpHints.push('📅 ' + dateResult.label);
+        text = dateResult.remaining;
+      }
+    }
+
+    // ── STEP 4: Important keywords ──
+    if (/\b(penting|urgent|segera|asap|prioritas)\b/i.test(text)) {
+      result.important = true;
+      text = text.replace(/\b(penting|urgent|segera|asap|prioritas)\b/gi, '').trim();
+      result.nlpHints.push('⭐ Penting');
+    }
+
+    // ── STEP 5: Auto-detect Habit type if has recurrence ──
+    if (result.repeat && !result.isHabit) {
+      result.isHabit = true; // Signal to caller to set type=Habit
+    }
+
+    // ── STEP 6: Clean title ──
+    result.name = text.replace(/\s{2,}/g, ' ').replace(/[,\-–]+$/, '').trim() || raw;
+
+    return result;
+  };
+
+  // ── Internal: detect repeat patterns ──
+  function _nlpDetectRepeat(text) {
+    var out = { repeat: '', label: '', remaining: text };
+
+    // "tiap hari" / "setiap hari" / "tiap harinya" / "harian" / "minum vitamin tiap hari"
+    if (/\b(tiap|setiap)\s+hari\b|(\bharian\b)/i.test(text)) {
+      out.repeat = 'Harian';
+      out.label = 'Setiap hari';
+      out.remaining = text.replace(/\b(tiap|setiap)\s+hari\b|\bharian\b/gi, '').trim();
+      return out;
+    }
+
+    // "seminggu sekali" / "tiap minggu" / "setiap minggu" / "mingguan"
+    if (/\b(seminggu\s+sekali|tiap\s+minggu|setiap\s+minggu|mingguan)\b/i.test(text)) {
+      out.repeat = 'Mingguan';
+      out.label = 'Setiap minggu';
+      out.remaining = text.replace(/\b(seminggu\s+sekali|tiap\s+minggu|setiap\s+minggu|mingguan)\b/gi, '').trim();
+      return out;
+    }
+
+    // "sebulan sekali" / "tiap bulan" / "bulanan" / "tiap tanggal X"
+    var monthlyTgl = text.match(/\btiap\s+tanggal\s+(\d{1,2})\b/i);
+    if (monthlyTgl) {
+      var tgl = parseInt(monthlyTgl[1]);
+      out.repeat = 'Bulanan';
+      out.label = 'Setiap tgl ' + tgl;
+      out.remaining = text.replace(monthlyTgl[0], '').trim();
+      // Set due to next occurrence of this date
+      var today2 = new Date(); today2.setHours(0,0,0,0);
+      var dNext = new Date(today2.getFullYear(), today2.getMonth(), tgl);
+      if (dNext < today2) dNext.setMonth(dNext.getMonth() + 1);
+      out.due = toDateStr(dNext);
+      return out;
+    }
+    if (/\b(sebulan\s+sekali|tiap\s+bulan|setiap\s+bulan|bulanan)\b/i.test(text)) {
+      out.repeat = 'Bulanan';
+      out.label = 'Setiap bulan';
+      out.remaining = text.replace(/\b(sebulan\s+sekali|tiap\s+bulan|setiap\s+bulan|bulanan)\b/gi, '').trim();
+      return out;
+    }
+
+    // "tiap X hari" / "setiap 2 hari sekali" / "tiap 3 hari"
+    var everyNDays = text.match(/\b(?:tiap|setiap)\s+(\d+)\s+hari(?:\s+sekali)?\b/i);
+    if (everyNDays) {
+      var n = parseInt(everyNDays[1]);
+      out.repeat = 'Tiap ' + n + ' Hari';
+      out.label = 'Setiap ' + n + ' hari';
+      out.remaining = text.replace(everyNDays[0], '').trim();
+      return out;
+    }
+
+    // "tiap X minggu"
+    var everyNWeeks = text.match(/\b(?:tiap|setiap)\s+(\d+)\s+minggu\b/i);
+    if (everyNWeeks) {
+      var nw = parseInt(everyNWeeks[1]);
+      out.repeat = 'Tiap ' + (nw * 7) + ' Hari';
+      out.label = 'Setiap ' + nw + ' minggu';
+      out.remaining = text.replace(everyNWeeks[0], '').trim();
+      return out;
+    }
+
+    // "tiap senin rabu" / "setiap senin dan kamis" — multiple days
+    var multiDayMatch = text.match(
+      /\b(?:tiap|setiap)\s+((?:(?:senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu)(?:\s+(?:dan|&|,)?\s*)?){2,})\b/i
+    );
+    if (multiDayMatch) {
+      var dayStr = multiDayMatch[1].toLowerCase();
+      var indices = [];
+      Object.keys(DAYS_MAP).forEach(function(k) {
+        if (new RegExp('\\b' + k + '\\b').test(dayStr)) {
+          var idx = DAYS_MAP[k];
+          if (indices.indexOf(idx) < 0) indices.push(idx);
+        }
+      });
+      indices.sort(function(a,b){ return a-b; });
+      if (indices.length >= 2) {
+        out.repeat = buildRepeatFromDays(indices);
+        out.label = 'Tiap ' + indices.map(function(i){ return DAY_NAMES[i]; }).join(', ');
+        out.remaining = text.replace(multiDayMatch[0], '').trim();
+        // Due = next occurrence of first day
+        out.due = toDateStr(nextWeekday(indices[0], true));
+        return out;
+      }
+    }
+
+    // Single day: "tiap senin" / "setiap jumat"
+    var singleDayMatch = text.match(
+      /\b(?:tiap|setiap)\s+(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu)\b/i
+    );
+    if (singleDayMatch) {
+      var dIdx = DAYS_MAP[singleDayMatch[1].toLowerCase()];
+      out.repeat = 'Tiap ' + DAY_NAMES[dIdx];
+      out.label = 'Setiap ' + DAY_NAMES[dIdx];
+      out.remaining = text.replace(singleDayMatch[0], '').trim();
+      out.due = toDateStr(nextWeekday(dIdx, true));
+      return out;
+    }
+
+    return out;
+  }
+
+  // ── Internal: detect relative/absolute dates ──
+  function _nlpDetectDate(text) {
+    var out = { due: '', label: '', remaining: text };
+    var today = new Date(); today.setHours(0,0,0,0);
+
+    function offset(n) {
+      var d = new Date(today); d.setDate(d.getDate() + n); return toDateStr(d);
+    }
+    function friendlyLabel(dateStr) {
+      var d = new Date(dateStr + 'T00:00:00');
+      var diff = Math.round((d - today) / 86400000);
+      return diff === 0 ? 'Hari ini' : diff === 1 ? 'Besok' : diff === 2 ? 'Lusa' : dateStr;
+    }
+
+    var patterns = [
+      { re: /\bhari\s+ini\b/i, fn: function(){ return offset(0); } },
+      { re: /\bsekarang\b/i,    fn: function(){ return offset(0); } },
+      { re: /\bbesok\b/i,       fn: function(){ return offset(1); } },
+      { re: /\blusa\b/i,        fn: function(){ return offset(2); } },
+      { re: /\bminggu\s+depan\b/i, fn: function(){ return offset(7); } },
+      { re: /\bbulan\s+depan\b/i,  fn: function(){
+        var d = new Date(today); d.setMonth(d.getMonth()+1); return toDateStr(d);
+      }},
+      { re: /\b(?:tanggal|tgl)\s+(\d{1,2})\b/i, fn: function(m){
+        var d = new Date(today); d.setDate(parseInt(m[1]));
+        if (d < today) d.setMonth(d.getMonth()+1);
+        return toDateStr(d);
+      }},
+      { re: /\b(\d{1,2})\s+(jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|jun(?:i)?|jul(?:i)?|agu(?:stus)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|des(?:ember)?)\b/i, fn: function(m){
+        var months={jan:0,feb:1,mar:2,apr:3,mei:4,jun:5,jul:6,agu:7,sep:8,okt:9,nov:10,des:11};
+        var key = m[2].slice(0,3).toLowerCase();
+        var d = new Date(today.getFullYear(), months[key]||0, parseInt(m[1]));
+        if (d < today) d.setFullYear(d.getFullYear()+1);
+        return toDateStr(d);
+      }},
+      { re: /\b(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i, fn: function(m){
+        var idx = DAYS_MAP[m[1].toLowerCase()];
+        var d = new Date(today); var cur = d.getDay();
+        var diff = ((idx - cur + 7) % 7) || 7;
+        d.setDate(d.getDate() + diff);
+        return toDateStr(d);
+      }},
+      { re: /\b(\d+)\s+hari\s+(?:lagi|ke\s*depan)\b/i, fn: function(m){ return offset(parseInt(m[1])); } },
+      { re: /\b(\d+)\s+minggu\s+lagi\b/i, fn: function(m){ return offset(parseInt(m[1])*7); } },
+    ];
+
+    for (var i = 0; i < patterns.length; i++) {
+      var dm = text.match(patterns[i].re);
+      if (dm) {
+        var val = patterns[i].fn(dm);
+        if (val) {
+          out.due = val;
+          out.label = friendlyLabel(val);
+          out.remaining = text.replace(dm[0], '').trim();
+        }
+        break;
+      }
+    }
+    return out;
+  }
+
+  console.log('[ChiTask v2] Advanced NLP parser loaded.');
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// MODULE 2: ENHANCED nlpApplyAndAdd — apply repeat/habit from NLP
+// Wraps the existing function to also handle the new `repeat` and `isHabit`
+// fields returned by the upgraded parser.
+// ══════════════════════════════════════════════════════════════════════════
+(function() {
+  var _origNlpApplyAndAdd = window.nlpApplyAndAdd;
+
+  window.nlpApplyAndAdd = function(inputId, addFn) {
+    var inp = document.getElementById(inputId);
+    if (!inp) return;
+    var raw = inp.value.trim();
+    if (!raw) { if (typeof showToast !== 'undefined') showToast('Ketik nama task dulu 😊'); return; }
+
+    var p = window.nlpParseTask(raw);
+
+    // Set task name
+    inp.value = p.name;
+    var mainInp = document.getElementById('taskInput');
+    if (mainInp && inputId !== 'taskInput') mainInp.value = p.name;
+
+    // Apply due date
+    if (p.due) {
+      ['chip-due', 'mchip-due'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+          el.value = p.due;
+          if (typeof taskbarDateUpdateLabel === 'function') taskbarDateUpdateLabel(id, p.due);
+        }
+      });
+    }
+
+    // Apply reminder time
+    if (p.reminder) {
+      ['chip-reminder', 'mchip-reminder'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+          el.value = p.reminder;
+          if (typeof taskbarReminderUpdateLabel === 'function') taskbarReminderUpdateLabel(id, p.reminder);
+        }
+      });
+    }
+
+    // Apply recurrence repeat rule
+    if (p.repeat) {
+      ['chip-repeat', 'mchip-repeat'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && !el.value) {
+          // Check if this repeat value exists as an option; if so, set it
+          var exists = false;
+          for (var i = 0; i < el.options.length; i++) {
+            if (el.options[i].value === p.repeat) { exists = true; break; }
+          }
+          if (!exists) {
+            // Add as custom option
+            var opt = document.createElement('option');
+            opt.value = p.repeat;
+            opt.textContent = p.repeat;
+            el.appendChild(opt);
+          }
+          el.value = p.repeat;
+        }
+      });
+
+      // Auto-enable Habit chip when recurrence detected
+      if (p.isHabit && typeof chipState !== 'undefined' && !chipState.habit) {
+        chipState.habit = true;
+        ['chip-habit', 'mchip-habit', 'sqachip-habit'].forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.classList.add('active');
+        });
+      }
+    }
+
+    // Apply important flag
+    if (p.important && typeof chipState !== 'undefined' && !chipState.important) {
+      chipState.important = true;
+      ['chip-important', 'mchip-important'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.add('active');
+      });
+    }
+
+    // Hide NLP previews
+    ['nlpPreview', 'nlpPreviewMobile'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+
+    // Call original add function (addTask / addTaskMobile / addTaskSqa)
+    addFn();
+  };
+
+  console.log('[ChiTask v2] Enhanced nlpApplyAndAdd loaded.');
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// MODULE 3: NLP PREVIEW UPGRADE — show repeat hint in preview bar
+// ══════════════════════════════════════════════════════════════════════════
+(function() {
+  // Override nlpShowPreview to also handle repeat hints
+  window.nlpShowPreview = function(val) {
+    var previewEl = document.getElementById('nlpPreview');
+    if (!previewEl) return;
+    if (!val || val.length < 4) { previewEl.style.display = 'none'; return; }
+    var p = window.nlpParseTask(val);
+    if (!p.nlpHints || !p.nlpHints.length) { previewEl.style.display = 'none'; return; }
+    previewEl.innerHTML = '<span style="color:var(--muted);font-size:11px">✨ Terdeteksi: </span>'
+      + p.nlpHints.map(function(h) {
+          return '<span style="background:var(--pill,#f0f0f0);border:1px solid var(--border);border-radius:10px;'
+               + 'padding:2px 8px;font-size:11px;font-weight:600;color:var(--accent)">' + h + '</span>';
+        }).join(' ');
+    previewEl.style.display = 'flex';
+    previewEl.style.flexWrap = 'wrap';
+    previewEl.style.gap = '4px';
+    previewEl.style.alignItems = 'center';
+  };
+
+  // Same for mobile
+  window.nlpShowPreviewMobile = window.nlpShowPreview;
+
+  // Keep debounce wrappers pointing to new function
+  var _debTimer = null;
+  window.nlpInputChange = function(val) {
+    clearTimeout(_debTimer);
+    _debTimer = setTimeout(function() { window.nlpShowPreview(val); }, 220);
+  };
+  window.nlpInputChangeMobile = window.nlpInputChange;
+
+  console.log('[ChiTask v2] Enhanced NLP preview loaded.');
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// MODULE 4: CALENDAR RENDERING BUG FIX
+// Fix: recurring/habit tasks added to future dates don't show in calendar.
+// Solution: patch getTasksForDate to handle repeat intervals correctly,
+// including tasks that have a repeat but no history yet.
+// ══════════════════════════════════════════════════════════════════════════
+(function() {
+
+  // Helper: parse YYYY-MM-DD to midnight Date
+  function parseDate(s) {
+    return new Date(s + 'T00:00:00');
+  }
+
+  // Helper: check if a repeat pattern fires on a given dateStr
+  function repeatFiresOnDate(t, dateStr) {
+    if (!t.repeat) return false;
+    var anchor = t.due;
+    if (!anchor) return false;
+
+    var anchorD = parseDate(anchor);
+    var targetD = parseDate(dateStr);
+
+    // Must not be before anchor
+    if (targetD < anchorD) return false;
+
+    var repeat = t.repeat;
+
+    // "Harian" or "Harian kecuali X"
+    if (repeat === 'Harian' || repeat.indexOf('Harian kecuali') === 0) {
+      if (repeat.indexOf('Harian kecuali') === 0) {
+        var _HARI_MAP2 = {senin:1,selasa:2,rabu:3,kamis:4,jumat:5,"jum'at":5,sabtu:6,minggu:0};
+        var skipDay = repeat.replace('Harian kecuali','').trim().toLowerCase();
+        var skipIdx = _HARI_MAP2[skipDay];
+        if (skipIdx !== undefined && parseDate(dateStr).getDay() === skipIdx) return false;
+      }
+      return true;
+    }
+
+    // "Mingguan"
+    if (repeat === 'Mingguan') {
+      var diff = Math.round((targetD - anchorD) / 86400000);
+      return diff % 7 === 0;
+    }
+
+    // "Bulanan"
+    if (repeat === 'Bulanan') {
+      return anchorD.getDate() === targetD.getDate();
+    }
+
+    // "Tiap Senin Rabu" — named days pattern
+    var tiapMatch = repeat.match(/^Tiap\s+([\w\s]+)$/i);
+    if (tiapMatch) {
+      var DAY_MAP3 = {minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
+      var dayParts = tiapMatch[1].toLowerCase().split(/\s+/);
+      var dayIndices = [];
+      dayParts.forEach(function(p) {
+        if (DAY_MAP3.hasOwnProperty(p)) dayIndices.push(DAY_MAP3[p]);
+      });
+      if (dayIndices.length > 0) {
+        var targetDOW = parseDate(dateStr).getDay();
+        return dayIndices.indexOf(targetDOW) >= 0;
+      }
+    }
+
+    // "Tiap N Hari"
+    var nDayMatch = repeat.match(/Tiap\s+(\d+)\s+Hari/i) ||
+                    repeat.match(/(\d+)\s*h$/i) ||
+                    repeat.match(/(\d+)\s+hari/i);
+    if (nDayMatch) {
+      var n = parseInt(nDayMatch[1]);
+      if (n > 0) {
+        var diffN = Math.round((targetD - anchorD) / 86400000);
+        return diffN >= 0 && diffN % n === 0;
+      }
+    }
+
+    return false;
+  }
+
+  // Patch getTasksForDate
+  var _origGetTasksForDate = window.getTasksForDate;
+  window.getTasksForDate = function(dateStr) {
+    var seen = {};
+    var result = [];
+    if (typeof tasks === 'undefined') return result;
+
+    tasks.forEach(function(t) {
+      if (seen[t.id]) return;
+
+      // 1. Exact due date match
+      if (t.due === dateStr) {
+        seen[t.id] = true; result.push(t); return;
+      }
+
+      // 2. Habit/repeat task that fires on this date via interval
+      if (t.repeat && t.due) {
+        if (repeatFiresOnDate(t, dateStr)) {
+          seen[t.id] = true; result.push(t); return;
+        }
+      }
+
+      // 3. Habit checked on dateStr (history)
+      if (t.type === 'Habit' && t.history && t.history.indexOf(dateStr) >= 0) {
+        if (t.due && t.due > dateStr) return; // future due → skip
+        seen[t.id] = true; result.push(t); return;
+      }
+
+      // 4. Completed task with doneDate = dateStr
+      if (t.done && t.doneDate === dateStr) {
+        seen[t.id] = true; result.push(t); return;
+      }
+
+      // 5. Non-habit task completed on dateStr (history)
+      if (t.done && t.type !== 'Habit' && t.history && t.history.indexOf(dateStr) >= 0) {
+        seen[t.id] = true; result.push(t); return;
+      }
+    });
+
+    return result;
+  };
+
+  console.log('[ChiTask v2] Calendar bug fix (getTasksForDate) loaded.');
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// MODULE 5: INSTANT RENDER ON ENTER — Optimistic UI updates
+// Wraps addTask, addTaskMobile, addTaskSqa to immediately render before save
+// ══════════════════════════════════════════════════════════════════════════
+(function() {
+
+  /**
+   * Patch: after each addTask variant, call render() immediately.
+   * The original addTask already calls render() at the end, BUT
+   * it's called after saveData() which can be async (Firestore).
+   * We call render() right away as an optimistic update.
+   */
+  function wrapAddFn(fnName) {
+    if (typeof window[fnName] !== 'function') return;
+    var orig = window[fnName];
+    window[fnName] = function() {
+      // Capture task count before
+      var countBefore = (typeof tasks !== 'undefined') ? tasks.length : 0;
+      // Call original
+      orig.apply(this, arguments);
+      // Optimistic: if a task was added, render immediately
+      var countAfter = (typeof tasks !== 'undefined') ? tasks.length : 0;
+      if (countAfter !== countBefore && typeof render === 'function') {
+        // Force calendar re-render if active
+        if (typeof currentView !== 'undefined' && currentView === 'calendar') {
+          var calEl = document.getElementById('pageContent');
+          if (calEl && typeof renderCalendar === 'function') {
+            renderCalendar(calEl);
+          }
+        }
+        render();
+      }
+    };
+  }
+
+  // Wait for functions to be defined then patch
+  setTimeout(function() {
+    wrapAddFn('addTask');
+    wrapAddFn('addTaskMobile');
+    wrapAddFn('addTaskSqa');
+    console.log('[ChiTask v2] Instant render (optimistic update) loaded.');
+  }, 500);
+
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// MODULE 6: TIMER INFO MODAL — explain Estimation vs Pomodoro
+// ══════════════════════════════════════════════════════════════════════════
+(function() {
+
+  var TIMER_INFO = {
+    est: {
+      title: '⏳ Estimasi Durasi',
+      icon: '⏳',
+      color: '#6366f1',
+      lines: [
+        { icon: '📌', text: '<b>Apa ini?</b> Perkiraan berapa lama task ini akan memakan waktu.' },
+        { icon: '📊', text: '<b>Fungsi:</b> Bantu kamu merencanakan hari dengan lebih realistis.' },
+        { icon: '📈', text: '<b>Tracking:</b> Kalau kamu aktifkan timer saat mengerjakan, waktu aktual vs estimasi tercatat otomatis.' },
+        { icon: '💡', text: '<b>Contoh:</b> Task "review laporan" → set estimasi 30 menit supaya kamu tahu kapan harus mulai.' }
+      ]
+    },
+    pomo: {
+      title: '🍅 Pomodoro Timer',
+      icon: '🍅',
+      color: '#ef4444',
+      lines: [
+        { icon: '📌', text: '<b>Apa ini?</b> Teknik fokus kerja: 25 menit kerja → 5 menit istirahat. Ulangi.' },
+        { icon: '🎯', text: '<b>Tujuan:</b> Menghindari burnout, jaga fokus, dan tingkatkan produktivitas.' },
+        { icon: '🔔', text: '<b>Cara kerja:</b> Timer akan bunyi setelah 25 menit. Ambil napas 5 menit, lalu lanjut lagi.' },
+        { icon: '💡', text: '<b>Tips:</b> Matikan notifikasi HP selama sesi. Setelah 4 Pomodoro, istirahat lebih panjang ~15 menit.' }
+      ]
+    }
+  };
+
+  window.ctTimerInfo = function(type) {
+    var info = TIMER_INFO[type];
+    if (!info) return;
+    var contentEl = document.getElementById('ctTimerInfoContent');
+    if (!contentEl) return;
+
+    contentEl.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
+      + '<div style="width:36px;height:36px;border-radius:10px;background:' + info.color + '20;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">' + info.icon + '</div>'
+      + '<div style="font-size:15px;font-weight:800;color:var(--text)">' + info.title + '</div>'
+      + '</div>'
+      + info.lines.map(function(l) {
+          return '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px">'
+            + '<span style="font-size:14px;flex-shrink:0;margin-top:1px">' + l.icon + '</span>'
+            + '<span style="font-size:12.5px;color:var(--text);line-height:1.55">' + l.text + '</span>'
+            + '</div>';
+        }).join('');
+
+    var overlay = document.getElementById('ctTimerInfoOverlay');
+    var modal = document.getElementById('ctTimerInfoModal');
+    if (overlay) overlay.style.display = 'block';
+    if (modal) {
+      modal.style.display = 'block';
+      modal.style.animation = 'ctModalIn 0.22s ease';
+    }
+  };
+
+  window.ctCloseTimerInfo = function() {
+    var overlay = document.getElementById('ctTimerInfoOverlay');
+    var modal = document.getElementById('ctTimerInfoModal');
+    if (overlay) overlay.style.display = 'none';
+    if (modal) modal.style.display = 'none';
+  };
+
+  // Inject animation style
+  var style = document.createElement('style');
+  style.textContent = '@keyframes ctModalIn { from { opacity:0; transform:translate(-50%,-50%) scale(0.92); } to { opacity:1; transform:translate(-50%,-50%) scale(1); } }';
+  document.head.appendChild(style);
+
+  console.log('[ChiTask v2] Timer info modal loaded.');
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// MODULE 7: NLP PREVIEW — also show for mobile (unified)
+// ══════════════════════════════════════════════════════════════════════════
+(function() {
+  // Unified mobile preview (mirrors desktop showPreview logic)
+  var origMobilePreview = window.nlpInputChangeMobile;
+  window.nlpInputChangeMobile = function(val) {
+    var prevM = document.getElementById('nlpPreviewMobile');
+    if (!prevM) return;
+    if (!val || val.length < 4) { prevM.style.display = 'none'; return; }
+    var p = window.nlpParseTask(val);
+    if (!p.nlpHints || !p.nlpHints.length) { prevM.style.display = 'none'; return; }
+    prevM.innerHTML = '<span style="color:var(--muted);font-size:11px">✨ </span>'
+      + p.nlpHints.map(function(h) {
+          return '<span style="background:var(--pill,#f0f0f0);border:1px solid var(--border);border-radius:10px;'
+               + 'padding:2px 8px;font-size:11px;font-weight:600;color:var(--accent)">' + h + '</span>';
+        }).join(' ');
+    prevM.style.display = 'flex';
+    prevM.style.flexWrap = 'wrap';
+    prevM.style.gap = '4px';
+    prevM.style.alignItems = 'center';
+  };
+})();
+
+console.log('[ChiTask v2] All upgrades loaded ✅');
+</script>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MODULE 8: COLLABORATION — ChiTask v4
+     Redesign: Projects have their own task list, members, activity, comments.
+     ══════════════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+'use strict';
+
+// ─────────────────────────────────────────────
+// § 1. DATA LAYER
+// ─────────────────────────────────────────────
+var CollabStore = (function() {
+  // ── In-memory cache only (no localStorage for collab data) ──
+  var _cache = { projects:{}, members:{}, activity:{}, projectTasks:{}, assignments:{}, messages:{} };
+  var _unsubs = []; // Firestore unsubscribe handles
+
+  function _db(){ return (typeof fbDb!=='undefined' && fbDb) ? fbDb : null; }
+  function _uid(){ var db=_db(); return (typeof fbUser!=='undefined'&&fbUser&&fbUser.uid)?fbUser.uid:null; }
+
+  // ── Projects (collection: /projects/{projectId}) ──
+  function getProjects(){ return Object.values(_cache.projects); }
+  function getProject(id){ return _cache.projects[id]||null; }
+
+  function upsertProject(proj){
+    _cache.projects[proj.id] = proj;
+    var db=_db(); if(!db) return Promise.resolve();
+    return db.collection('projects').doc(proj.id).set(proj).catch(function(e){ console.error('[Collab] upsertProject',e); });
+  }
+  function deleteProject(id){
+    delete _cache.projects[id];
+    var db=_db(); if(!db) return Promise.resolve();
+    return db.collection('projects').doc(id).delete().catch(function(e){ console.error('[Collab] deleteProject',e); });
+  }
+
+  // ── Members (collection: /project_members/{projectId}_{userId}) ──
+  function getMembers(pid){ return _cache.members[pid]||[]; }
+
+  // Add a single member doc
+  function addMember(pid, memberObj){
+    var db=_db(); if(!db) return Promise.resolve();
+    var docId = pid + '_' + memberObj.user_id;
+    var data = Object.assign({}, memberObj, { project_id: pid });
+    return db.collection('project_members').doc(docId).set(data).then(function(){
+      if(!_cache.members[pid]) _cache.members[pid]=[];
+      var existing = _cache.members[pid].findIndex(function(m){ return m.user_id===memberObj.user_id; });
+      if(existing>=0) _cache.members[pid][existing] = data;
+      else _cache.members[pid].push(data);
+    }).catch(function(e){ console.error('[Collab] addMember',e); });
+  }
+
+  function removeMember(pid, userId){
+    var db=_db(); if(!db) return Promise.resolve();
+    var docId = pid + '_' + userId;
+    return db.collection('project_members').doc(docId).delete().then(function(){
+      if(_cache.members[pid]) _cache.members[pid] = _cache.members[pid].filter(function(m){ return m.user_id!==userId; });
+    }).catch(function(e){ console.error('[Collab] removeMember',e); });
+  }
+
+  // Legacy compat: saveMembers still works (replaces all members)
+  function saveMembers(pid, members){
+    var db=_db(); if(!db){ _cache.members[pid]=members; return; }
+    var batch=db.batch();
+    // Delete old members not in new list
+    var oldIds = (_cache.members[pid]||[]).map(function(m){ return m.user_id; });
+    var newIds = members.map(function(m){ return m.user_id; });
+    oldIds.forEach(function(uid){ if(newIds.indexOf(uid)<0) batch.delete(db.collection('project_members').doc(pid+'_'+uid)); });
+    // Upsert all new
+    members.forEach(function(m){ batch.set(db.collection('project_members').doc(pid+'_'+m.user_id), Object.assign({},m,{project_id:pid})); });
+    _cache.members[pid] = members;
+    batch.commit().catch(function(e){ console.error('[Collab] saveMembers',e); });
+  }
+
+  // ── Activity (collection: /project_activity/{actId}) ──
+  function getActivity(pid){ return (_cache.activity[pid]||[]).slice(0,100); }
+  function addActivity(pid, entry){
+    if(!_cache.activity[pid]) _cache.activity[pid]=[];
+    _cache.activity[pid].unshift(entry);
+    var db=_db(); if(!db) return;
+    db.collection('project_activity').doc(entry.id).set(Object.assign({},entry,{project_id:pid})).catch(function(e){ console.error('[Collab] addActivity',e); });
+  }
+
+  // ── Project Tasks (subcollection stored as single doc for simplicity) ──
+  // /projects/{pid}/tasks/{taskId} — each task is its own doc
+  function getProjectTasks(pid){ return _cache.projectTasks[pid]||[]; }
+  function saveProjectTasks(pid, tasks){
+    _cache.projectTasks[pid] = tasks;
+    var db=_db(); if(!db) return;
+    // Store as a map doc under projects/{pid}/tasks/all
+    db.collection('projects').doc(pid).collection('tasks').doc('all').set({tasks:tasks,updated_at:Date.now()}).catch(function(e){ console.error('[Collab] saveProjectTasks',e); });
+  }
+  function addProjectTask(pid,task){ var tasks=getProjectTasks(pid).slice(); tasks.push(task); saveProjectTasks(pid,tasks); return task; }
+  function updateProjectTask(pid,taskId,patch){ saveProjectTasks(pid,getProjectTasks(pid).map(function(t){ return t.id===taskId?Object.assign({},t,patch):t; })); }
+  function deleteProjectTask(pid,taskId){ saveProjectTasks(pid,getProjectTasks(pid).filter(function(t){ return t.id!==taskId; })); }
+
+  // ── Assignments (collection: /project_assignments/{assignId}) ──
+  function getAssignment(taskId){ return _cache.assignments[taskId]||null; }
+  function setAssignment(taskId, data, pid){
+    // Fix 4: Include project_id so per-project listener can filter correctly
+    if(data) _cache.assignments[taskId]=data; else delete _cache.assignments[taskId];
+    var db=_db(); if(!db) return;
+    if(data){
+      var docData = Object.assign({taskId:taskId, project_id: pid||'default_project'}, data);
+      db.collection('project_assignments').doc(taskId).set(docData).catch(function(e){ console.error('[Collab] setAssignment',e); });
+    } else {
+      db.collection('project_assignments').doc(taskId).delete().catch(function(e){ console.error('[Collab] delAssignment',e); });
+    }
+  }
+  function getAllAssignments(){ return _cache.assignments; }
+
+  // ── Messages / Diskusi (subcollection: /projects/{pid}/messages/{msgId}) ──
+  function getMessages(pid){ return _cache.messages[pid]||[]; }
+
+  function sendMessage(pid, msgObj){
+    var db=_db(); if(!db) return Promise.reject('no db');
+    var docId = 'msg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    var data = Object.assign({}, msgObj, { id: docId, project_id: pid });
+    return db.collection('projects').doc(pid).collection('messages').doc(docId).set(data).catch(function(e){ console.error('[Collab] sendMessage',e); });
+  }
+
+  // ── Invite Links (collection: /project_invites/{inviteId}) ──
+  function createInvite(pid, role){
+    var db=_db(); if(!db) return Promise.reject('no db');
+    var inviteId = 'inv_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+    var me = getCurrentUser();
+    var data = { id: inviteId, project_id: pid, role: role, created_by: me.uid, created_at: Date.now(), exp: Date.now()+7*24*3600*1000 };
+    return db.collection('project_invites').doc(inviteId).set(data).then(function(){ return data; });
+  }
+  function getInvite(inviteId){
+    var db=_db(); if(!db) return Promise.reject('no db');
+    return db.collection('project_invites').doc(inviteId).get().then(function(doc){
+      if(!doc.exists) throw new Error('invite_not_found');
+      return doc.data();
+    });
+  }
+  function fetchProjectForJoin(pid){
+    var db=_db(); if(!db) return Promise.reject('no db');
+    return db.collection('projects').doc(pid).get().then(function(doc){
+      if(!doc.exists) throw new Error('project_not_found');
+      var proj = doc.data();
+      _cache.projects[pid] = proj;
+      return proj;
+    });
+  }
+
+  // ── Firebase Realtime Listeners ──
+  function initListeners(){
+    var db=_db(); if(!db) return;
+    var uid=_uid(); if(!uid) return;
+
+    // Unsubscribe any previous
+    _unsubs.forEach(function(u){ try{u();}catch(e){} }); _unsubs=[];
+
+    // Listen: projects owned by me OR where I'm a member
+    var u1 = db.collection('projects').where('owner_id','==',uid).onSnapshot(function(snap){
+      snap.docs.forEach(function(d){ _cache.projects[d.id]=d.data(); });
+    }, function(e){ console.warn('[Collab] projects listener',e); });
+    _unsubs.push(u1);
+
+    // Listen: project_members where I am a member — gives me the project_ids
+    var u2 = db.collection('project_members').where('user_id','==',uid).onSnapshot(function(snap){
+      snap.docs.forEach(function(d){
+        var m = d.data();
+        var pid = m.project_id;
+        if(!_cache.members[pid]) _cache.members[pid]=[];
+        // Fetch the project itself if we don't have it
+        if(!_cache.projects[pid]){
+          db.collection('projects').doc(pid).get().then(function(pd){ if(pd.exists) _cache.projects[pid]=pd.data(); }).catch(function(){});
+        }
+        // Fetch all members of that project
+        _listenProjectMembers(pid);
+        // Listen to messages
+        _listenProjectMessages(pid);
+        // Listen to tasks
+        _listenProjectTasks(pid);
+      });
+    }, function(e){ console.warn('[Collab] member listener',e); });
+    _unsubs.push(u2);
+
+    // Fix 3: Assignments listener moved to per-project in _listenProjectAssignments (no unfiltered collection-wide listen)
+    console.log('[CT_Collab] Firebase listeners active');
+  }
+
+  var _memberListeners = {};
+  function _listenProjectMembers(pid){
+    if(_memberListeners[pid]) return;
+    var db=_db(); if(!db) return;
+    _memberListeners[pid] = db.collection('project_members').where('project_id','==',pid).onSnapshot(function(snap){
+      _cache.members[pid] = snap.docs.map(function(d){ return d.data(); });
+    }, function(e){ console.warn('[Collab] members['+pid+']',e); });
+    _unsubs.push(_memberListeners[pid]);
+  }
+
+  var _msgListeners = {};
+  function _listenProjectMessages(pid){
+    if(_msgListeners[pid]) return;
+    var db=_db(); if(!db) return;
+    _msgListeners[pid] = db.collection('projects').doc(pid).collection('messages')
+      .orderBy('ts','asc').limit(200)
+      .onSnapshot(function(snap){
+        _cache.messages[pid] = snap.docs.map(function(d){ return d.data(); });
+      }, function(e){ console.warn('[Collab] messages['+pid+']',e); });
+    _unsubs.push(_msgListeners[pid]);
+  }
+
+  var _taskListeners = {};
+  function _listenProjectTasks(pid){
+    if(_taskListeners[pid]) return;
+    var db=_db(); if(!db) return;
+    _taskListeners[pid] = db.collection('projects').doc(pid).collection('tasks').doc('all')
+      .onSnapshot(function(doc){
+        if(doc.exists) _cache.projectTasks[pid] = doc.data().tasks||[];
+        else _cache.projectTasks[pid] = [];
+      }, function(e){ console.warn('[Collab] tasks['+pid+']',e); });
+    _unsubs.push(_taskListeners[pid]);
+  }
+
+  // Fix 3: Per-project assignments listener (filtered by project_id — safe with Firestore rules)
+  var _assignListeners = {};
+  function _listenProjectAssignments(pid){
+    if(_assignListeners[pid]) return;
+    var db=_db(); if(!db) return;
+    _assignListeners[pid] = db.collection('project_assignments').where('project_id','==',pid).onSnapshot(function(snap){
+      snap.docs.forEach(function(d){ _cache.assignments[d.id]=d.data(); });
+    }, function(e){ console.warn('[Collab] assignments['+pid+']',e); });
+    _unsubs.push(_assignListeners[pid]);
+  }
+
+  // Called when a project is opened — ensures listeners are active
+  function listenProject(pid){
+    _listenProjectMembers(pid);
+    _listenProjectMessages(pid);
+    _listenProjectTasks(pid);
+    _listenProjectAssignments(pid); // Fix 3: per-project filtered listener
+    // Also fetch activity (not realtime, just load latest)
+    var db=_db(); if(!db) return;
+    db.collection('project_activity').where('project_id','==',pid).orderBy('ts','desc').limit(50)
+      .get().then(function(snap){
+        _cache.activity[pid] = snap.docs.map(function(d){ return d.data(); });
+      }).catch(function(){});
+  }
+
+  return {
+    getProjects, getProject, upsertProject, deleteProject,
+    getMembers, addMember, removeMember, saveMembers,
+    getActivity, addActivity,
+    getProjectTasks, saveProjectTasks, addProjectTask, updateProjectTask, deleteProjectTask,
+    getAssignment, setAssignment, getAllAssignments,
+    getMessages, sendMessage,
+    createInvite, getInvite, fetchProjectForJoin,
+    initListeners, listenProject
+  };
+})();
+
+// ─────────────────────────────────────────────
+// § 2. ROLE SYSTEM
+// ─────────────────────────────────────────────
+var Roles = {
+  OWNER:'owner', EDITOR:'editor', VIEWER:'viewer',
+  label:function(r){return{owner:'👑 Owner',editor:'✏️ Editor',viewer:'👁️ Viewer'}[r]||r;},
+  color:function(r){return{owner:'#d97706',editor:'#6366f1',viewer:'#78716c'}[r]||'#78716c';},
+  canEdit:function(r){return r==='owner'||r==='editor';},
+  canDelete:function(r){return r==='owner';},
+  canManageMembers:function(r){return r==='owner';}
+};
+
+// ─────────────────────────────────────────────
+// § 3. CURRENT USER
+// ─────────────────────────────────────────────
+function getCurrentUser(){
+  if(typeof fbUser!=='undefined'&&fbUser)
+    return{uid:fbUser.uid||'local_user',name:fbUser.displayName||'You',email:fbUser.email||'',photo:fbUser.photoURL||null};
+  try{
+    // Fix 1: Stable guest UID — generate once and persist, independent of username changes
+    var guestUid = localStorage.getItem('chitask_guest_uid');
+    if(!guestUid){
+      guestUid = 'guest_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
+      localStorage.setItem('chitask_guest_uid', guestUid);
+    }
+    var d=JSON.parse(localStorage.getItem('chitask_v6_data')||'{}');
+    return{uid:guestUid,name:d._userName||'Guest',email:'',photo:null};
+  }catch(e){return{uid:'local_user',name:'You',email:'',photo:null};}
+}
+
+// ─────────────────────────────────────────────
+// § 4. ACTIVITY LOGGER
+// ─────────────────────────────────────────────
+function logActivity(pid,action,meta){
+  var u=getCurrentUser();
+  CollabStore.addActivity(pid,{id:'act_'+Date.now(),user_id:u.uid,user_name:u.name,user_photo:u.photo,action:action,meta:meta||{},ts:Date.now()});
+}
+
+// ─────────────────────────────────────────────
+// § 5. INVITE LINKS
+// ─────────────────────────────────────────────
+function generateInviteLink(pid,role){
+  // Creates a Firestore invite doc and returns the shareable URL
+  return CollabStore.createInvite(pid,role).then(function(data){
+    return window.location.origin+window.location.pathname+'?invite='+data.id;
+  });
+}
+// Legacy sync version for UI that still calls it sync — returns placeholder while async resolves
+function generateInviteLinkSync(pid, role, callback){
+  CollabStore.createInvite(pid,role).then(function(data){
+    var url = window.location.origin+window.location.pathname+'?invite='+data.id;
+    if(callback) callback(url);
+  }).catch(function(e){
+    console.error('[Collab] generateInviteLink',e);
+    if(callback) callback('Error: '+e.message);
+  });
+}
+(function(){
+  var inviteId=new URLSearchParams(window.location.search).get('invite'); if(!inviteId)return;
+  // Fetch invite from Firestore (rules: allow read: if true — public)
+  setTimeout(function(){
+    CollabStore.getInvite(inviteId).then(function(data){
+      if(!data||!data.project_id){ _showToast('⚠️ Link tidak valid','warn'); return; }
+      if(Date.now()>data.exp){ _showToast('⚠️ Link sudah expired','warn'); return; }
+      // Fetch the project so the join modal shows the real name
+      CollabStore.fetchProjectForJoin(data.project_id).then(function(){
+        showJoinModal(data.project_id, data.role);
+      }).catch(function(){
+        showJoinModal(data.project_id, data.role); // still show even if project fetch fails
+      });
+    }).catch(function(e){
+      console.warn('[Collab] invite fetch',e);
+      _showToast('⚠️ Link tidak valid atau sudah expired','warn');
+    });
+  },1500);
+})();
+
+// ─────────────────────────────────────────────
+// § 6. CSS
+// ─────────────────────────────────────────────
+(function(){
+  if(document.getElementById('ct-collab-styles'))return;
+  var s=document.createElement('style'); s.id='ct-collab-styles';
+  s.textContent=`
+.ct-overlay{position:fixed;inset:0;background:rgba(0,0,0,.52);z-index:9800;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.ct-overlay.active{display:flex}
+@keyframes ctSlideUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ctPop{0%{transform:scale(.88);opacity:0}60%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+.ct-modal{background:var(--card);border-radius:16px;width:min(560px,95vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.28);animation:ctSlideUp .2s ease}
+.ct-modal-sm{width:min(380px,95vw)}.ct-modal-lg{width:min(720px,97vw)}
+.ct-modal-hdr{display:flex;align-items:center;gap:10px;padding:16px 18px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ct-modal-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;background:rgba(217,119,6,.12)}
+.ct-modal-title{font-size:15px;font-weight:700;color:var(--text);flex:1}
+.ct-modal-close{border:none;background:none;cursor:pointer;font-size:18px;color:var(--muted);width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;transition:background .1s}
+.ct-modal-close:hover{background:var(--border);color:var(--text)}
+.ct-modal-body{padding:16px 18px;overflow-y:auto;flex:1}
+.ct-modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0}
+.ct-tabs{display:flex;gap:2px;padding:12px 18px 0;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.ct-tab{padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;border:none;background:none;color:var(--muted);border-radius:8px 8px 0 0;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;white-space:nowrap;font-family:inherit}
+.ct-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(217,119,6,.06)}
+.ct-tab:hover:not(.active){color:var(--text)}
+.ct-tab-content{display:none}.ct-tab-content.active{display:block}
+.ct-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px}
+.ct-input{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s;box-sizing:border-box}
+.ct-input:focus{border-color:var(--accent)}
+.ct-select{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);outline:none;cursor:pointer}
+.ct-field{margin-bottom:12px}.ct-row{display:flex;gap:8px;align-items:flex-end}
+.ct-btn{padding:8px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;transition:all .12s;white-space:nowrap}
+.ct-btn:hover{background:var(--hover)}
+.ct-btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}.ct-btn-primary:hover{opacity:.9}
+.ct-btn-danger{color:var(--red);border-color:rgba(220,38,38,.2)}.ct-btn-danger:hover{background:rgba(220,38,38,.08)}
+.ct-btn-sm{padding:5px 11px;font-size:11px;border-radius:7px}.ct-btn-ghost{border-color:transparent;background:transparent}
+.ct-avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
+.ct-avatar img{width:100%;height:100%;object-fit:cover}
+.ct-avatar-sm{width:22px;height:22px;font-size:9px}
+.ct-avatar-stack{display:flex;flex-direction:row-reverse}
+.ct-avatar-stack .ct-avatar{margin-left:-6px;border:2px solid var(--card)}.ct-avatar-stack .ct-avatar:last-child{margin-left:0}
+.ct-member-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.ct-member-row:last-child{border-bottom:none}
+.ct-member-info{flex:1;min-width:0}
+.ct-member-name{font-size:13px;font-weight:600;color:var(--text)}.ct-member-email{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct-role-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;border:1px solid currentColor;white-space:nowrap}
+.ct-invite-box{display:flex;align-items:center;gap:8px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:8px 10px}
+.ct-invite-url{flex:1;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace}
+.ct-copy-btn{flex-shrink:0;padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--card);font-size:11px;cursor:pointer;font-weight:600;color:var(--accent)}
+.ct-copy-btn.copied{color:var(--green)}
+.ct-activity-item{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+.ct-activity-item:last-child{border-bottom:none}
+.ct-activity-text{font-size:12px;color:var(--text);line-height:1.45;flex:1}
+.ct-activity-time{font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.ct-empty{text-align:center;padding:28px 16px;color:var(--muted)}
+.ct-empty-icon{font-size:34px;margin-bottom:8px;opacity:.6}
+.ct-empty-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px}
+.ct-empty-sub{font-size:12px;line-height:1.5}
+.ct-divider{height:1px;background:var(--border);margin:12px 0}
+.ct-proj-card{border:1.5px solid var(--border);border-radius:12px;padding:14px;background:var(--card);position:relative;overflow:hidden;margin-bottom:10px;cursor:pointer;transition:all .15s}
+.ct-proj-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.1)}
+.ct-proj-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--tc-color,var(--accent));border-radius:12px 12px 0 0}
+/* Project task list */
+.ct-ptask{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:var(--bg);margin-bottom:6px;border:1px solid var(--border);transition:all .12s}
+.ct-ptask:hover{border-color:var(--accent)}
+.ct-ptask-done{opacity:.55}
+.ct-ptask-check{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .12s}
+.ct-ptask-check.checked{background:var(--green);border-color:var(--green);color:#fff;font-size:10px}
+.ct-ptask-title{flex:1;font-size:13px;color:var(--text);font-weight:500}
+.ct-ptask-done .ct-ptask-title{text-decoration:line-through;color:var(--muted)}
+.ct-ptask-meta{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.ct-ptask-priority{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid currentColor}
+.ct-ptask-add{display:flex;gap:8px;margin-top:10px}
+/* Status pills */
+.ct-status-todo{color:#6366f1;border-color:#6366f1}
+.ct-status-inprogress{color:#d97706;border-color:#d97706}
+.ct-status-done{color:var(--green);border-color:var(--green)}
+/* Comments */
+.ct-comment{display:flex;gap:8px;padding:8px 0}
+.ct-comment-bubble{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 12px}
+.ct-comment-header{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.ct-comment-author{font-size:12px;font-weight:700;color:var(--text)}.ct-comment-time{font-size:10px;color:var(--muted)}
+.ct-comment-body{font-size:13px;color:var(--text);line-height:1.5}
+#ct-toast-container{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:7px;align-items:center;pointer-events:none}
+.ct-toast{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 24px rgba(0,0,0,.15);animation:ctPop .2s ease;white-space:nowrap}
+.ct-toast.success{border-color:var(--green);color:var(--green)}.ct-toast.warn{border-color:var(--gold);color:var(--gold)}.ct-toast.error{border-color:var(--red);color:var(--red)}
+@media(max-width:500px){.ct-modal{width:100vw;max-height:94vh;border-radius:18px 18px 0 0;margin-top:auto;align-self:flex-end}}
+/* Assign panel in detail sidebar */
+.ct-assign-panel{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.ct-assign-title{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
+.ct-assign-pick{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:9px;background:var(--bg);border:1.5px solid var(--border);cursor:pointer;transition:all .12s;font-size:13px;color:var(--text)}
+.ct-assign-pick:hover{border-color:var(--accent)}
+.ct-assign-current{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text);font-weight:600}
+.ct-assign-dropdown{position:absolute;background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:6px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.18);min-width:180px}
+.ct-assign-opt{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text);transition:background .1s}
+.ct-assign-opt:hover{background:var(--hover)}
+.ct-assign-opt.selected{background:rgba(217,119,6,.08);font-weight:600}
+`;
+  document.head.appendChild(s);
+})();
+
+// ─────────────────────────────────────────────
+// § 7. HELPERS
+// ─────────────────────────────────────────────
+function _showToast(msg,type,dur){
+  var tc=document.getElementById('ct-toast-container');
+  if(!tc){tc=document.createElement('div');tc.id='ct-toast-container';document.body.appendChild(tc);}
+  var el=document.createElement('div');el.className='ct-toast '+(type||'');el.textContent=msg;
+  tc.appendChild(el);
+  setTimeout(function(){el.style.opacity='0';el.style.transition='opacity .15s';setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},150);},dur||2600);
+}
+
+function _makeAvatar(user,sizeClass){
+  var el=document.createElement('div');el.className='ct-avatar '+(sizeClass||'');
+  if(user&&user.photo){var img=document.createElement('img');img.src=user.photo;img.alt=user.name||'';el.appendChild(img);}
+  else{
+    var init=((user&&user.name)?user.name.charAt(0):'?').toUpperCase();
+    el.textContent=init;
+    var cols=['#d97706','#6366f1','#16a34a','#0891b2','#dc2626','#7c3aed','#c2410c'];
+    el.style.background=cols[(user&&user.name?user.name.charCodeAt(0):0)%cols.length];
+  }
+  return el;
+}
+
+function _makeAvatarStack(users,max){
+  max=max||3;
+  var stack=document.createElement('div');stack.className='ct-avatar-stack';
+  users.slice(0,max).reverse().forEach(function(u){stack.appendChild(_makeAvatar(u,'ct-avatar-sm'));});
+  if(users.length>max){var m=document.createElement('div');m.className='ct-avatar ct-avatar-sm';m.textContent='+'+(users.length-max);m.style.background='#78716c';stack.insertBefore(m,stack.firstChild);}
+  return stack;
+}
+
+function _relTime(ts){
+  var d=Date.now()-ts;
+  if(d<60000)return'just now';if(d<3600000)return Math.floor(d/60000)+'m ago';
+  if(d<86400000)return Math.floor(d/3600000)+'h ago';return Math.floor(d/86400000)+'d ago';
+}
+
+function _buildModal(title,icon,sizeClass){
+  var overlay=document.createElement('div');overlay.className='ct-overlay';
+  var modal=document.createElement('div');modal.className='ct-modal '+(sizeClass||'');
+  var hdr=document.createElement('div');hdr.className='ct-modal-hdr';
+  hdr.innerHTML='<div class="ct-modal-icon">'+icon+'</div><div class="ct-modal-title">'+title+'</div>';
+  var closeBtn=document.createElement('button');closeBtn.className='ct-modal-close';closeBtn.innerHTML='&#x2715;';
+  var _close=function(){if(overlay.parentNode)overlay.parentNode.removeChild(overlay);};
+  closeBtn.onclick=_close;hdr.appendChild(closeBtn);
+  var body=document.createElement('div');body.className='ct-modal-body';
+  var footer=document.createElement('div');footer.className='ct-modal-footer';
+  modal.appendChild(hdr);modal.appendChild(body);modal.appendChild(footer);
+  overlay.appendChild(modal);
+  overlay.onclick=function(e){if(e.target===overlay)_close();};
+  document.body.appendChild(overlay);
+  requestAnimationFrame(function(){overlay.classList.add('active');});
+  return{overlay:overlay,modal:modal,body:body,footer:footer,close:_close};
+}
+
+function _getMyRole(pid){
+  var proj=CollabStore.getProject(pid);if(!proj)return null;
+  var me=getCurrentUser();
+  if(proj.owner_id===me.uid)return Roles.OWNER;
+  var m=CollabStore.getMembers(pid).find(function(x){return x.user_id===me.uid;});
+  return m?m.role:null;
+}
+
+// ─────────────────────────────────────────────
+// § 8. ACTIVITY FEED
+// ─────────────────────────────────────────────
+var ACTION_LABELS={
+  task_completed:'✅ completed',task_created:'➕ added task',task_edited:'✏️ edited',
+  task_deleted:'🗑️ deleted',member_added:'👋 joined',member_removed:'🚫 was removed',
+  comment_added:'💬 commented on'
+};
+function _renderActivityFeed(pid,container){
+  container.innerHTML='';
+  var items=CollabStore.getActivity(pid);
+  if(!items.length){container.innerHTML='<div class="ct-empty"><div class="ct-empty-icon">📋</div><div class="ct-empty-title">No activity yet</div></div>';return;}
+  items.slice(0,50).forEach(function(item){
+    var row=document.createElement('div');row.className='ct-activity-item';
+    var label=ACTION_LABELS[item.action]||item.action;
+    var task=item.meta&&item.meta.task_title?' <b>"'+item.meta.task_title+'"</b>':'';
+    var text=document.createElement('div');text.className='ct-activity-text';
+    text.innerHTML='<b>'+(item.user_name||'?')+'</b> '+label+task;
+    var time=document.createElement('div');time.className='ct-activity-time';time.textContent=_relTime(item.ts);
+    row.appendChild(_makeAvatar({name:item.user_name,photo:item.user_photo},'ct-avatar-sm'));
+    row.appendChild(text);row.appendChild(time);container.appendChild(row);
+  });
+}
+
+// ─────────────────────────────────────────────
+// § 9. MEMBER LIST
+// ─────────────────────────────────────────────
+function _renderMemberList(pid,container){
+  container.innerHTML='';
+  var members=CollabStore.getMembers(pid),me=getCurrentUser(),myRole=_getMyRole(pid);
+  if(!members.length){container.innerHTML='<div class="ct-empty"><div class="ct-empty-icon">👥</div><div class="ct-empty-title">No members yet</div></div>';return;}
+  members.forEach(function(m){
+    var row=document.createElement('div');row.className='ct-member-row';
+    var info=document.createElement('div');info.className='ct-member-info';
+    info.innerHTML='<div class="ct-member-name">'+(m.name||m.email||'User')+'</div><div class="ct-member-email">'+(m.email||m.user_id||'')+'</div>';
+    var badge=document.createElement('div');badge.className='ct-role-badge';badge.style.color=Roles.color(m.role);badge.textContent=Roles.label(m.role);
+    row.appendChild(_makeAvatar(m,''));row.appendChild(info);row.appendChild(badge);
+    if(Roles.canManageMembers(myRole)&&m.user_id!==me.uid){
+      var rm=document.createElement('button');rm.className='ct-btn ct-btn-sm ct-btn-danger ct-btn-ghost';rm.textContent='✕';
+      rm.onclick=function(e){
+        e.stopPropagation();
+        CollabStore.saveMembers(pid,members.filter(function(x){return x.user_id!==m.user_id;}));
+        logActivity(pid,'member_removed',{target_name:m.name});
+        _renderMemberList(pid,container);_showToast('🚫 Removed','warn');
+      };
+      row.appendChild(rm);
+    }
+    container.appendChild(row);
+  });
+}
+
+// ─────────────────────────────────────────────
+// § 10. COMMENTS
+// ─────────────────────────────────────────────
+function renderCommentsPanel(taskId,pid,containerEl){
+  var KEY='ct_cmts_'+taskId;
+  function _get(){try{return JSON.parse(localStorage.getItem(KEY)||'[]');}catch(e){return[];}}
+  function _put(c){try{localStorage.setItem(KEY,JSON.stringify(c));}catch(e){}}
+  var panel=document.createElement('div');panel.style.marginTop='12px';
+  panel.innerHTML='<div class="ct-label" style="margin-bottom:8px">💬 Comments</div>';
+  var feed=document.createElement('div');panel.appendChild(feed);
+  function _render(){
+    feed.innerHTML='';
+    var cmts=_get();
+    if(!cmts.length){feed.innerHTML='<div style="font-size:12px;color:var(--muted);padding:6px 0">No comments yet.</div>';}
+    cmts.forEach(function(c){
+      var row=document.createElement('div');row.className='ct-comment';
+      row.innerHTML='<div class="ct-comment-bubble"><div class="ct-comment-header"><span class="ct-comment-author">'+c.author+'</span><span class="ct-comment-time">'+_relTime(c.ts)+'</span></div><div class="ct-comment-body">'+c.text+'</div></div>';
+      feed.appendChild(row);
+    });
+  }
+  _render();
+  var box=document.createElement('div');box.style.cssText='display:flex;gap:8px;margin-top:10px';
+  var inp=document.createElement('input');inp.className='ct-input';inp.placeholder='Add a comment...';inp.style.flex='1';
+  var btn=document.createElement('button');btn.className='ct-btn ct-btn-primary ct-btn-sm';btn.textContent='Send';
+  btn.onclick=function(){
+    var v=inp.value.trim();if(!v)return;
+    var me=getCurrentUser();
+    var cmts=_get();cmts.push({id:'cmt_'+Date.now(),author:me.name,text:v,ts:Date.now()});_put(cmts);
+    if(pid)logActivity(pid,'comment_added',{task_title:taskId});
+    inp.value='';_render();
+  };
+  inp.onkeydown=function(e){if(e.key==='Enter')btn.click();};
+  box.appendChild(inp);box.appendChild(btn);panel.appendChild(box);
+  containerEl.appendChild(panel);
+}
+
+// ─────────────────────────────────────────────
+// § 11. PROJECT TASK DETAIL MODAL
+// ─────────────────────────────────────────────
+function showProjectTaskModal(pid,task){
+  var m=_buildModal(task.title,'📌','ct-modal-sm');
+  var members=CollabStore.getMembers(pid);
+  var myRole=_getMyRole(pid);
+  var canEdit=Roles.canEdit(myRole||Roles.OWNER);
+
+  // Status
+  var statusOpts=['todo','inprogress','done'];
+  var statusLabels={todo:'To Do',inprogress:'In Progress',done:'Done'};
+  var statusColors={todo:'#6366f1',inprogress:'#d97706',done:'var(--green)'};
+
+  m.body.innerHTML='';
+
+  // Status selector
+  var srow=document.createElement('div');srow.style.cssText='display:flex;gap:6px;margin-bottom:14px';
+  statusOpts.forEach(function(s){
+    var btn=document.createElement('button');
+    btn.className='ct-btn ct-btn-sm';btn.textContent=statusLabels[s];
+    btn.style.color=statusColors[s];btn.style.borderColor=statusColors[s];
+    if(task.status===s){btn.style.background=statusColors[s];btn.style.color='#fff';}
+    btn.onclick=function(){
+      if(!canEdit){_showToast('⚠️ No permission','warn');return;}
+      CollabStore.updateProjectTask(pid,task.id,{status:s,updated_at:Date.now()});
+      task.status=s;
+      logActivity(pid,'task_edited',{task_title:task.title});
+      m.close();showProjectTaskModal(pid,Object.assign({},task,{status:s}));
+    };
+    srow.appendChild(btn);
+  });
+  m.body.appendChild(srow);
+
+  // Description
+  var desc=document.createElement('div');desc.style.cssText='font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5';
+  desc.textContent=task.desc||'No description.';m.body.appendChild(desc);
+
+  // Assignee
+  var arow=document.createElement('div');arow.style.cssText='margin-bottom:14px';
+  var albl=document.createElement('div');albl.className='ct-label';albl.textContent='Assigned to';
+  var aval=document.createElement('div');aval.style.cssText='display:flex;align-items:center;gap:8px;margin-top:5px';
+  var assignee=task.assignee_id?members.find(function(x){return x.user_id===task.assignee_id;}):null;
+  if(assignee){
+    aval.appendChild(_makeAvatar(assignee,''));
+    var aname=document.createElement('span');aname.style.cssText='font-size:13px;font-weight:600;color:var(--text)';aname.textContent=assignee.name;aval.appendChild(aname);
+  } else {
+    aval.innerHTML='<span style="font-size:12px;color:var(--muted)">Unassigned</span>';
+  }
+  if(canEdit&&members.length){
+    var aBtn=document.createElement('button');aBtn.className='ct-btn ct-btn-sm ct-btn-ghost';aBtn.textContent='Change';aBtn.style.marginLeft='auto';
+    aBtn.onclick=function(){
+      // inline assignee picker
+      var picker=document.createElement('div');picker.style.cssText='position:absolute;background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:8px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.15);min-width:160px';
+      [{user_id:null,name:'Unassigned'}].concat(members).forEach(function(u){
+        var opt=document.createElement('div');opt.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--text)';
+        if(u.user_id)opt.appendChild(_makeAvatar(u,'ct-avatar-sm'));
+        var lbl=document.createElement('span');lbl.textContent=u.name;opt.appendChild(lbl);
+        opt.onmouseenter=function(){opt.style.background='var(--hover)';};
+        opt.onmouseleave=function(){opt.style.background='';};
+        opt.onclick=function(){
+          CollabStore.updateProjectTask(pid,task.id,{assignee_id:u.user_id||null,assignee_name:u.user_id?u.name:null,updated_at:Date.now()});
+          logActivity(pid,'task_edited',{task_title:task.title});
+          if(picker.parentNode)picker.parentNode.removeChild(picker);
+          m.close();showProjectTaskModal(pid,Object.assign({},task,{assignee_id:u.user_id||null,assignee_name:u.user_id?u.name:null}));
+        };
+        picker.appendChild(opt);
+      });
+      document.body.appendChild(picker);
+      var rect=aBtn.getBoundingClientRect();
+      picker.style.top=(rect.bottom+window.scrollY+4)+'px';picker.style.left=rect.left+'px';
+      setTimeout(function(){document.addEventListener('click',function _c(){if(picker.parentNode)picker.parentNode.removeChild(picker);document.removeEventListener('click',_c);},true);},0);
+    };
+    aval.appendChild(aBtn);
+  }
+  arow.appendChild(albl);arow.appendChild(aval);m.body.appendChild(arow);
+
+  // Due date
+  if(task.due){
+    var drow=document.createElement('div');drow.style.cssText='margin-bottom:14px';
+    drow.innerHTML='<div class="ct-label">Due Date</div><div style="font-size:13px;color:var(--text);margin-top:4px">📅 '+task.due+'</div>';
+    m.body.appendChild(drow);
+  }
+
+  // Comments
+  var cdiv=document.createElement('div');cdiv.className='ct-divider';m.body.appendChild(cdiv);
+  renderCommentsPanel(task.id,pid,m.body);
+
+  // Delete button (owner only)
+  if(Roles.canDelete(myRole||Roles.OWNER)){
+    m.footer.innerHTML='';
+    var delBtn=document.createElement('button');delBtn.className='ct-btn ct-btn-danger';delBtn.textContent='🗑️ Delete Task';
+    delBtn.onclick=function(){
+      if(!confirm('Delete "'+task.title+'"?'))return;
+      CollabStore.deleteProjectTask(pid,task.id);
+      logActivity(pid,'task_deleted',{task_title:task.title});
+      _showToast('🗑️ Task deleted','warn');m.close();
+    };
+    m.footer.appendChild(delBtn);
+    m.footer.style.display='flex';
+  } else {
+    m.footer.style.display='none';
+  }
+}
+
+// ─────────────────────────────────────────────
+// § 12. PROJECT DETAIL VIEW
+// ─────────────────────────────────────────────
+function showProjectDetail(proj){
+  // Activate realtime listeners for this project's messages, members, tasks
+  CollabStore.listenProject(proj.id);
+  var m=_buildModal(proj.title,'📋','ct-modal-lg');
+  var myRole=_getMyRole(proj.id)||Roles.OWNER;
+  var canEdit=Roles.canEdit(myRole);
+
+  // Tabs: Tasks | Members | Activity | Invite
+  var tabBar=document.createElement('div');tabBar.className='ct-tabs';
+  var tabDefs=['📋 Tasks','👥 Members','📈 Activity','💬 Diskusi','🔗 Invite'];
+  var tabContents=[];
+  tabDefs.forEach(function(name,i){
+    var btn=document.createElement('button');btn.className='ct-tab'+(i===0?' active':'');btn.textContent=name;
+    var content=document.createElement('div');content.className='ct-tab-content'+(i===0?' active':'');
+    tabContents.push({btn:btn,content:content});
+    btn.onclick=function(){
+      tabContents.forEach(function(x){x.btn.classList.remove('active');x.content.classList.remove('active');});
+      btn.classList.add('active');content.classList.add('active');
+    };
+    tabBar.appendChild(btn);
+  });
+  m.modal.insertBefore(tabBar,m.body);
+  var wrap=document.createElement('div');wrap.style.cssText='overflow-y:auto;max-height:calc(92vh - 115px);padding:16px 18px';
+  tabContents.forEach(function(x){wrap.appendChild(x.content);});
+  m.modal.insertBefore(wrap,m.body);
+  m.modal.removeChild(m.body);m.modal.removeChild(m.footer);
+
+  // ── TAB 0: TASKS ──
+  var STATUS_ORDER=['todo','inprogress','done'];
+  var STATUS_LABELS={todo:'⏳ To Do',inprogress:'🔄 In Progress',done:'✅ Done'};
+
+  function _renderTasks(){
+    var tc=tabContents[0].content;tc.innerHTML='';
+    var tasks=CollabStore.getProjectTasks(proj.id);
+
+    // Add task form
+    if(canEdit){
+      var addRow=document.createElement('div');addRow.style.cssText='display:flex;gap:8px;margin-bottom:14px';
+      var inp=document.createElement('input');inp.className='ct-input';inp.placeholder='Add a new task...';inp.style.flex='1';
+      var addBtn=document.createElement('button');addBtn.className='ct-btn ct-btn-primary';addBtn.textContent='+ Add';
+      addBtn.onclick=function(){
+        var v=inp.value.trim();if(!v)return;
+        var me=getCurrentUser();
+        var task={id:'ptsk_'+Date.now(),title:v,desc:'',status:'todo',priority:'normal',
+          created_by:me.uid,created_by_name:me.name,assignee_id:null,assignee_name:null,
+          due:null,created_at:Date.now(),updated_at:Date.now()};
+        CollabStore.addProjectTask(proj.id,task);
+        logActivity(proj.id,'task_created',{task_title:v});
+        inp.value='';_renderTasks();_showToast('✅ Task added','success');
+      };
+      inp.onkeydown=function(e){if(e.key==='Enter')addBtn.click();};
+      addRow.appendChild(inp);addRow.appendChild(addBtn);tc.appendChild(addRow);
+    }
+
+    if(!tasks.length){
+      tc.insertAdjacentHTML('beforeend','<div class="ct-empty"><div class="ct-empty-icon">📋</div><div class="ct-empty-title">No tasks yet</div><div class="ct-empty-sub">Add the first task above.</div></div>');
+      return;
+    }
+
+    // Group by status
+    STATUS_ORDER.forEach(function(status){
+      var filtered=tasks.filter(function(t){return (t.status||'todo')===status;});
+      if(!filtered.length&&status==='done')return;
+      var section=document.createElement('div');section.style.marginBottom='14px';
+      var shdr=document.createElement('div');shdr.style.cssText='font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;display:flex;align-items:center;gap:6px';
+      shdr.innerHTML=STATUS_LABELS[status]+'<span style="background:var(--border);border-radius:20px;padding:1px 7px;font-size:10px">'+filtered.length+'</span>';
+      section.appendChild(shdr);
+      filtered.forEach(function(task){
+        var row=document.createElement('div');row.className='ct-ptask'+(task.status==='done'?' ct-ptask-done':'');
+        // Checkbox
+        var chk=document.createElement('div');chk.className='ct-ptask-check'+(task.status==='done'?' checked':'');
+        chk.innerHTML=task.status==='done'?'✓':'';
+        chk.onclick=function(e){
+          e.stopPropagation();
+          if(!canEdit){_showToast('⚠️ No permission','warn');return;}
+          var newStatus=task.status==='done'?'todo':'done';
+          CollabStore.updateProjectTask(proj.id,task.id,{status:newStatus,updated_at:Date.now()});
+          if(newStatus==='done')logActivity(proj.id,'task_completed',{task_title:task.title});
+          _renderTasks();
+        };
+        // Title
+        var title=document.createElement('div');title.className='ct-ptask-title';title.textContent=task.title;
+        // Meta
+        var meta=document.createElement('div');meta.className='ct-ptask-meta';
+        if(task.assignee_name){
+          var members=CollabStore.getMembers(proj.id);
+          var asgn=members.find(function(x){return x.user_id===task.assignee_id;})||{name:task.assignee_name};
+          meta.appendChild(_makeAvatar(asgn,'ct-avatar-sm'));
+        }
+        if(task.due){var due=document.createElement('span');due.style.cssText='font-size:10px;color:var(--muted)';due.textContent='📅 '+task.due;meta.appendChild(due);}
+        row.appendChild(chk);row.appendChild(title);row.appendChild(meta);
+        row.onclick=function(){showProjectTaskModal(proj.id,task);};
+        section.appendChild(row);
+      });
+      tc.appendChild(section);
+    });
+  }
+  _renderTasks();
+  // Refresh tasks tab when switching back
+  tabContents[0].btn.addEventListener('click',_renderTasks);
+
+  // ── TAB 1: MEMBERS ──
+  var ml=document.createElement('div');tabContents[1].content.appendChild(ml);
+  tabContents[1].btn.addEventListener('click',function(){_renderMemberList(proj.id,ml);});
+  _renderMemberList(proj.id,ml);
+
+  // ── TAB 2: ACTIVITY ──
+  var af=document.createElement('div');tabContents[2].content.appendChild(af);
+  tabContents[2].btn.addEventListener('click',function(){_renderActivityFeed(proj.id,af);});
+
+  // ── TAB 3: DISKUSI ──
+  (function(){
+    var dc=tabContents[3].content;
+    // Ensure listener is active for this project
+    CollabStore.listenProject(proj.id);
+
+    var feed=document.createElement('div');
+    feed.style.cssText='margin-bottom:12px;max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px';
+
+    function _renderDisk(){
+      feed.innerHTML='';
+      var msgs=CollabStore.getMessages(proj.id);
+      if(!msgs.length){
+        feed.innerHTML='<div class="ct-empty" style="padding:20px 0"><div class="ct-empty-icon">💬</div><div class="ct-empty-title">Belum ada diskusi</div><div class="ct-empty-sub">Mulai diskusi terkait project ini.</div></div>';
+        return;
+      }
+      var me=getCurrentUser();
+      msgs.forEach(function(msg){
+        var isMe=msg.user_id===me.uid;
+        var wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:'+(isMe?'row-reverse':'row')+';align-items:flex-end;gap:8px';
+        var bubble=document.createElement('div');
+        bubble.style.cssText='max-width:72%;padding:9px 12px;border-radius:'+(isMe?'14px 14px 4px 14px':'14px 14px 14px 4px')+';font-size:13px;line-height:1.5;'+(isMe?'background:var(--accent);color:#fff':'background:var(--bg);border:1px solid var(--border);color:var(--text)');
+        var header=document.createElement('div');header.style.cssText='font-size:10px;font-weight:700;margin-bottom:3px;opacity:.75';header.textContent=msg.user_name+' · '+_relTime(msg.ts);
+        var body=document.createElement('div');body.textContent=msg.text;
+        bubble.appendChild(header);bubble.appendChild(body);
+        wrap.appendChild(_makeAvatar({name:msg.user_name,photo:msg.user_photo},'ct-avatar-sm'));
+        wrap.appendChild(bubble);
+        feed.appendChild(wrap);
+      });
+      feed.scrollTop=feed.scrollHeight;
+    }
+
+    // Poll every 3 seconds for new messages (Firestore listener updates cache automatically)
+    var _pollInterval=null;
+    function _startPoll(){
+      _renderDisk();
+      _pollInterval=setInterval(_renderDisk,3000);
+    }
+    function _stopPoll(){ if(_pollInterval){ clearInterval(_pollInterval); _pollInterval=null; } }
+
+    _startPoll();
+    dc.appendChild(feed);
+
+    var inputRow=document.createElement('div');inputRow.style.cssText='display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--border)';
+    var inp=document.createElement('input');inp.className='ct-input';inp.placeholder='Tulis pesan...';inp.style.flex='1';
+    var sendBtn=document.createElement('button');sendBtn.className='ct-btn ct-btn-primary';sendBtn.innerHTML='➤';sendBtn.style.padding='8px 14px';
+
+    sendBtn.onclick=function(){
+      var v=inp.value.trim(); if(!v)return;
+      var me=getCurrentUser();
+      var msgObj={user_id:me.uid,user_name:me.name,user_photo:me.photo||null,text:v,ts:Date.now()};
+      inp.value='';
+      sendBtn.disabled=true;
+      CollabStore.sendMessage(proj.id, msgObj).then(function(){
+        sendBtn.disabled=false;
+        _renderDisk();
+      }).catch(function(e){
+        sendBtn.disabled=false;
+        _showToast('⚠️ Gagal kirim pesan','warn');
+        console.error('[Collab] sendMessage',e);
+      });
+      logActivity(proj.id,'comment_added',{task_title:'diskusi project'});
+    };
+    inp.onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendBtn.click();}};
+    inputRow.appendChild(inp);inputRow.appendChild(sendBtn);dc.appendChild(inputRow);
+
+    tabContents[3].btn.addEventListener('click',function(){
+      _stopPoll(); _startPoll();
+    });
+
+    // Stop polling when modal closes
+    var origClose = m.close.bind(m);
+    m.close = function(){ _stopPoll(); origClose(); };
+  })();
+
+  // ── TAB 4: INVITE ──
+  tabContents[4].content.innerHTML=`
+    <div class="ct-field">
+      <div class="ct-label">Invite by email</div>
+      <div class="ct-row">
+        <input id="ct-inv-inp" class="ct-input" placeholder="email@example.com" style="flex:1">
+        <select id="ct-inv-role" class="ct-select" style="width:110px">
+          <option value="editor">✏️ Editor</option>
+          <option value="viewer">👁️ Viewer</option>
+        </select>
+      </div>
+    </div>
+    <button class="ct-btn ct-btn-primary" id="ct-send-inv" style="width:100%;margin-bottom:16px">✉️ Send Invite</button>
+    <div class="ct-divider" style="margin-top:0"></div>
+    <div class="ct-label" style="margin-bottom:8px">Share via link</div>
+    <select id="ct-link-role" class="ct-select" style="width:170px;margin-bottom:8px">
+      <option value="editor">Link for Editors</option>
+      <option value="viewer">Link for Viewers</option>
+    </select>
+    <div class="ct-invite-box"><div class="ct-invite-url" id="ct-inv-url">Generating...</div><button class="ct-copy-btn" id="ct-copy-inv">Copy</button></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">🔒 Expires in 7 days · Link disimpan di Firestore</div>`;
+
+  tabContents[4].btn.addEventListener('click',function(){
+    var lr=document.getElementById('ct-link-role');
+    var urlEl=document.getElementById('ct-inv-url');
+    function _rl(){
+      urlEl.textContent='Generating...';
+      generateInviteLinkSync(proj.id, lr.value, function(url){ urlEl.textContent=url; });
+    }
+    if(lr){ lr.onchange=_rl; _rl(); }
+
+    var cb=document.getElementById('ct-copy-inv');
+    if(cb)cb.onclick=function(){
+      var txt=document.getElementById('ct-inv-url').textContent;
+      if(!txt||txt==='Generating...')return;
+      navigator.clipboard.writeText(txt).catch(function(){});
+      cb.textContent='✓ Copied!';cb.classList.add('copied');_showToast('🔗 Copied!','success');
+    };
+    var sb=document.getElementById('ct-send-inv');
+    if(sb)sb.onclick=function(){
+      var email=(document.getElementById('ct-inv-inp').value||'').trim();
+      if(!email){_showToast('⚠️ Enter email','warn');return;}
+      var members=CollabStore.getMembers(proj.id);
+      if(members.find(function(x){return x.email===email;})){_showToast('ℹ️ Already member','warn');return;}
+      var role=document.getElementById('ct-inv-role').value;
+      var me=getCurrentUser();
+      var pendingMember={user_id:'pend_'+Date.now(),name:email.split('@')[0],email:email,role:role,status:'pending',invited_at:Date.now(),invited_by:me.uid};
+      CollabStore.addMember(proj.id, pendingMember).then(function(){
+        logActivity(proj.id,'member_invited',{target_name:email});
+        document.getElementById('ct-inv-inp').value='';
+        _showToast('✉️ Invited '+email,'success');
+        tabContents[1].btn.click();
+      }).catch(function(e){ _showToast('⚠️ Gagal invite: '+e.message,'warn'); });
+    };
+  });
+} // end showProjectDetail
+
+// ─────────────────────────────────────────────
+// § 13. PROJECTS LIST VIEW
+// ─────────────────────────────────────────────
+function showProjectsView(){
+  var m=_buildModal('🤝 Projects','🤝','ct-modal-lg');
+  var wrap=document.createElement('div');wrap.style.cssText='overflow-y:auto;max-height:calc(92vh - 70px);padding:16px 18px';
+  m.modal.insertBefore(wrap,m.body);
+  m.modal.removeChild(m.body);m.modal.removeChild(m.footer);
+
+  function _render(){
+    wrap.innerHTML='';
+    // New project button
+    var newBtn=document.createElement('button');newBtn.className='ct-btn ct-btn-primary';
+    newBtn.style.cssText='width:100%;margin-bottom:8px';newBtn.textContent='＋ New Project';
+    newBtn.onclick=function(){_showNewProjForm(wrap,function(proj){CollabStore.upsertProject(proj);_render();});};
+    wrap.appendChild(newBtn);
+
+    var joinLinkBtn=document.createElement('button');joinLinkBtn.className='ct-btn';
+    joinLinkBtn.style.cssText='width:100%;margin-bottom:14px;border:1.5px dashed var(--border);color:var(--accent);background:rgba(217,119,6,.06)';
+    joinLinkBtn.innerHTML='🔗 Join via Link';
+    joinLinkBtn.onclick=function(){m.close();showJoinViaLinkModal();};
+    wrap.appendChild(joinLinkBtn);
+
+    var list=CollabStore.getProjects();
+    if(!list.length){
+      wrap.insertAdjacentHTML('beforeend','<div class="ct-empty"><div class="ct-empty-icon">📂</div><div class="ct-empty-title">No projects yet</div><div class="ct-empty-sub">Create a project to collaborate with your team.</div></div>');
+      return;
+    }
+    list.forEach(function(proj){
+      var members=CollabStore.getMembers(proj.id);
+      var tasks=CollabStore.getProjectTasks(proj.id);
+      var doneCnt=tasks.filter(function(t){return t.status==='done';}).length;
+      var myRole=_getMyRole(proj.id);
+      var card=document.createElement('div');card.className='ct-proj-card';
+      card.style.setProperty('--tc-color',proj.color||'#6366f1');
+      var hdr=document.createElement('div');hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px';
+      var title=document.createElement('div');title.style.cssText='font-size:15px;font-weight:700;color:var(--text)';title.textContent=proj.title;
+      var right=document.createElement('div');right.style.cssText='display:flex;align-items:center;gap:8px';
+      if(members.length)right.appendChild(_makeAvatarStack(members));
+      if(myRole){var rb=document.createElement('div');rb.className='ct-role-badge';rb.style.color=Roles.color(myRole);rb.textContent=Roles.label(myRole);right.appendChild(rb);}
+      hdr.appendChild(title);hdr.appendChild(right);
+      var meta=document.createElement('div');meta.style.cssText='font-size:11px;color:var(--muted);margin-bottom:10px';
+      meta.textContent=tasks.length+' task'+(tasks.length!==1?'s':'')+' · '+doneCnt+' done · '+members.length+' member'+(members.length!==1?'s':'');
+      // Progress bar
+      if(tasks.length){
+        var pct=Math.round(doneCnt/tasks.length*100);
+        var bar=document.createElement('div');bar.style.cssText='height:4px;background:var(--border);border-radius:4px;margin-bottom:10px;overflow:hidden';
+        var fill=document.createElement('div');fill.style.cssText='height:100%;width:'+pct+'%;background:var(--green);border-radius:4px;transition:width .3s';
+        bar.appendChild(fill);meta.insertAdjacentElement('afterend',bar);
+      }
+      var acts=document.createElement('div');acts.style.cssText='display:flex;gap:8px';
+      var openBtn=document.createElement('button');openBtn.className='ct-btn ct-btn-sm ct-btn-primary';openBtn.innerHTML='📋 Open';
+      openBtn.onclick=function(e){e.stopPropagation();m.close();showProjectDetail(proj);};
+      acts.appendChild(openBtn);
+      if(Roles.canDelete(myRole||Roles.OWNER)){
+        var delBtn=document.createElement('button');delBtn.className='ct-btn ct-btn-sm ct-btn-danger ct-btn-ghost';delBtn.innerHTML='🗑️';
+        delBtn.onclick=function(e){e.stopPropagation();if(confirm('Delete "'+proj.title+'"?')){CollabStore.deleteProject(proj.id);_render();_showToast('🗑️ Deleted','warn');}};
+        acts.appendChild(delBtn);
+      }
+      card.appendChild(hdr);card.appendChild(meta);card.appendChild(acts);
+      card.onclick=function(){m.close();showProjectDetail(proj);};
+      wrap.appendChild(card);
+    });
+  }
+  _render();
+}
+
+function _showNewProjForm(container,onSave){
+  container.innerHTML=`
+    <div class="ct-field"><div class="ct-label">Project Name *</div><input id="ct-pn" class="ct-input" placeholder="e.g. Website Redesign"></div>
+    <div class="ct-field"><div class="ct-label">Description</div><input id="ct-pd" class="ct-input" placeholder="What is this project about?"></div>
+    <div class="ct-field"><div class="ct-label">Color</div><input id="ct-pc" type="color" value="#6366f1" class="ct-input" style="padding:4px;height:38px;cursor:pointer"></div>
+    <button class="ct-btn ct-btn-primary" id="ct-ps" style="width:100%;margin-top:4px">🚀 Create Project</button>
+    <button class="ct-btn" id="ct-pcx" style="width:100%;margin-top:8px">Cancel</button>`;
+  setTimeout(function(){
+    document.getElementById('ct-ps').onclick=function(){
+      var name=(document.getElementById('ct-pn').value||'').trim();if(!name){_showToast('⚠️ Name required','warn');return;}
+      var me=getCurrentUser();
+      var proj={id:'proj_'+Date.now(),title:name,desc:document.getElementById('ct-pd').value.trim(),color:document.getElementById('ct-pc').value,owner_id:me.uid,created_at:Date.now()};
+      CollabStore.saveMembers(proj.id,[{user_id:me.uid,name:me.name,email:me.email,photo:me.photo,role:Roles.OWNER,status:'active'}]);
+      logActivity(proj.id,'member_added',{target_name:me.name});
+      onSave(proj);_showToast('🎉 Project created!','success');
+    };
+    document.getElementById('ct-pcx').onclick=function(){showProjectsView();};
+  },40);
+}
+
+// ─────────────────────────────────────────────
+// § 13b. JOIN VIA LINK MODAL
+// ─────────────────────────────────────────────
+function showJoinViaLinkModal(){
+  var m=_buildModal('🔗 Join via Invite Link','🔗','ct-modal-sm');
+  m.body.innerHTML=`
+    <div style="text-align:center;padding:8px 0 4px">
+      <div style="font-size:36px;margin-bottom:10px">🔗</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Join sebuah Project</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Paste invite link yang dikirim temanmu</div>
+    </div>
+    <div class="ct-field">
+      <div class="ct-label">Invite Link</div>
+      <input id="ct-jvl-inp" class="ct-input" placeholder="https://...?invite=..." style="width:100%;box-sizing:border-box">
+    </div>
+    <div id="ct-jvl-status" style="min-height:18px;font-size:12px;margin-bottom:10px;text-align:center"></div>
+    <button class="ct-btn ct-btn-primary" id="ct-jvl-go" style="width:100%;padding:11px">🚀 Join Project</button>`;
+  setTimeout(function(){
+    var inp=document.getElementById('ct-jvl-inp');
+    var status=document.getElementById('ct-jvl-status');
+    var goBtn=document.getElementById('ct-jvl-go');
+
+    // Auto-paste from clipboard if available
+    if(navigator.clipboard&&navigator.clipboard.readText){
+      navigator.clipboard.readText().then(function(txt){
+        if(txt&&txt.indexOf('invite=')>-1) inp.value=txt.trim();
+      }).catch(function(){});
+    }
+
+    goBtn.onclick=function(){
+      var raw=(inp.value||'').trim();
+      if(!raw){_showToast('⚠️ Masukkan invite link','warn');return;}
+
+      // Extract invite ID from URL param
+      var inviteId=null;
+      try{
+        var urlObj=new URL(raw);
+        inviteId=urlObj.searchParams.get('invite');
+      }catch(e){
+        // Try regex fallback for non-full URLs
+        var m2=raw.match(/[?&]invite=([^&]+)/);
+        if(m2)inviteId=m2[1];
+      }
+      if(!inviteId){
+        status.innerHTML='<span style="color:var(--red)">⚠️ Link tidak valid. Pastikan link lengkap.</span>';
+        return;
+      }
+
+      goBtn.disabled=true;goBtn.textContent='⏳ Memproses...';
+      status.innerHTML='<span style="color:var(--muted)">Mengecek link...</span>';
+
+      CollabStore.getInvite(inviteId).then(function(data){
+        if(!data||!data.project_id){
+          status.innerHTML='<span style="color:var(--red)">⚠️ Link tidak valid.</span>';
+          goBtn.disabled=false;goBtn.innerHTML='🚀 Join Project';return;
+        }
+        if(Date.now()>data.exp){
+          status.innerHTML='<span style="color:var(--red)">⚠️ Link sudah expired (7 hari).</span>';
+          goBtn.disabled=false;goBtn.innerHTML='🚀 Join Project';return;
+        }
+        // Check if already member
+        var me=getCurrentUser();
+        var members=CollabStore.getMembers(data.project_id);
+        if(members.find(function(x){return x.user_id===me.uid;})){
+          status.innerHTML='<span style="color:var(--green)">✅ Kamu sudah jadi member project ini.</span>';
+          goBtn.disabled=false;goBtn.innerHTML='🚀 Join Project';return;
+        }
+        status.innerHTML='<span style="color:var(--green)">✓ Link valid!</span>';
+        CollabStore.fetchProjectForJoin(data.project_id).then(function(){
+          m.close();showJoinModal(data.project_id,data.role);
+        }).catch(function(){
+          m.close();showJoinModal(data.project_id,data.role);
+        });
+      }).catch(function(e){
+        status.innerHTML='<span style="color:var(--red)">⚠️ Link tidak valid atau sudah expired.</span>';
+        goBtn.disabled=false;goBtn.innerHTML='🚀 Join Project';
+        console.warn('[Collab] join via link',e);
+      });
+    };
+
+    // Enter key support
+    inp.onkeydown=function(e){if(e.key==='Enter')goBtn.click();};
+  },40);
+}
+
+// ─────────────────────────────────────────────
+// § 14. JOIN MODAL
+// ─────────────────────────────────────────────
+function showJoinModal(pid,role){
+  var proj=CollabStore.getProject(pid);
+  var title=proj?proj.title:'a project';
+  var m=_buildModal("You've been invited!",'🎉','ct-modal-sm');
+  m.body.innerHTML='<div style="text-align:center;padding:12px 0 20px"><div style="font-size:40px;margin-bottom:12px">🤝</div><div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Join <b>'+title+'</b></div><div style="font-size:13px;color:var(--muted);margin-bottom:18px">Role: <b style="color:var(--accent)">'+Roles.label(role)+'</b></div><button class="ct-btn ct-btn-primary" id="ct-join-ok" style="width:100%;padding:12px">✅ Accept Invite</button><button class="ct-btn" id="ct-join-no" style="width:100%;margin-top:8px">Decline</button></div>';
+  setTimeout(function(){
+    document.getElementById('ct-join-ok').onclick=function(){
+      var me=getCurrentUser();
+      var btn=document.getElementById('ct-join-ok');
+      if(btn){btn.disabled=true;btn.textContent='Joining...';}
+      // Fix 5+6: Fetch fresh members from Firestore (not stale cache) before already-member check,
+      // then use addMember() (atomic single doc write) instead of saveMembers() (read-modify-write race condition)
+      var db=(typeof fbDb!=='undefined'&&fbDb)?fbDb:null;
+      function _doJoin(freshMembers){
+        var alreadyMember = freshMembers && freshMembers.find(function(x){return x.user_id===me.uid;});
+        if(alreadyMember){
+          _showToast('Kamu sudah menjadi member project ini','warn');
+          m.close();history.replaceState({},'',window.location.pathname);
+          return;
+        }
+        var memberObj={user_id:me.uid,name:me.name,email:me.email,photo:me.photo,role:role,status:'active',joined_at:Date.now(),project_id:pid};
+        CollabStore.addMember(pid,memberObj).then(function(){
+          logActivity(pid,'member_added',{target_name:me.name});
+          _showToast('🎉 Joined '+title+'!','success');
+          m.close();history.replaceState({},'',window.location.pathname);
+        }).catch(function(e){
+          console.error('[Collab] join failed',e);
+          _showToast('Gagal join: '+e.message,'error');
+          if(btn){btn.disabled=false;btn.textContent='✅ Accept Invite';}
+        });
+      }
+      if(db){
+        // Fresh fetch from Firestore to avoid stale cache race
+        db.collection('project_members').where('project_id','==',pid).get()
+          .then(function(snap){ _doJoin(snap.docs.map(function(d){return d.data();})); })
+          .catch(function(){ _doJoin(CollabStore.getMembers(pid)); }); // fallback to cache on network error
+      } else {
+        _doJoin(CollabStore.getMembers(pid));
+      }
+    };
+    document.getElementById('ct-join-no').onclick=function(){m.close();history.replaceState({},'',window.location.pathname);};
+  },40);
+}
+
+// ─────────────────────────────────────────────
+// § 15. SHARE MODAL (for personal tasks)
+// ─────────────────────────────────────────────
+function showShareModal(pid,taskId){
+  showProjectDetail(CollabStore.getProject(pid)||{id:pid||'default_project',title:'My Tasks',owner_id:getCurrentUser().uid,color:'#d97706',created_at:Date.now()});
+}
+function showAssignModal(taskId,taskTitle,pid){
+  showProjectsView();
+}
+
+// ─────────────────────────────────────────────
+// § 16. SIDEBAR INJECTION
+// ─────────────────────────────────────────────
+function _injectSidebar(){
+  // bail out if nav-collab already exists in HTML (avoids duplicate Projects section)
+  if(document.getElementById('nav-collab'))return;
+  if(document.getElementById('ct-sidebar-nav'))return;
+  var navSec=document.getElementById('navSecTask');if(!navSec)return;
+  var navContainer=navSec.parentNode;if(!navContainer)return;
+  var section=document.createElement('div');section.id='ct-sidebar-nav';section.style.cssText='padding:8px 12px 4px;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px';
+  section.innerHTML='<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:.9px;margin-bottom:6px">🤝 Collaboration</div>';
+  function _navItem(icon,label,fn){
+    var item=document.createElement('div');item.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;transition:background .1s;color:rgba(255,255,255,0.75);font-size:13px;margin-bottom:2px';
+    item.innerHTML='<span style="font-size:15px">'+icon+'</span><span style="flex:1">'+label+'</span>';
+    item.onmouseenter=function(){item.style.background='rgba(255,255,255,0.08)';};
+    item.onmouseleave=function(){item.style.background='';};
+    item.onclick=fn;return item;
+  }
+  section.appendChild(_navItem('🤝','Projects',function(){showProjectsView();}));
+  section.appendChild(_navItem('🔗','Join via Link',function(){showJoinViaLinkModal();}));
+  var nextSec=document.getElementById('navSecFin');
+  if(nextSec&&nextSec.parentNode===navContainer)navContainer.insertBefore(section,nextSec);
+  else navContainer.appendChild(section);
+}
+
+// ─────────────────────────────────────────────
+// § 17. INIT (no render() patching — was causing stack overflow)
+// ─────────────────────────────────────────────
+
+// § 18. PUBLIC API — assigned early so CT_Collab is always defined
+window.CT_Collab={
+  showProjectsView:showProjectsView,
+  showProjectDetail:showProjectDetail,
+  showShareModal:showShareModal,
+  showAssignModal:showAssignModal,
+  showJoinModal:showJoinModal,
+  showJoinViaLinkModal:showJoinViaLinkModal,
+  renderCommentsPanel:renderCommentsPanel,
+  logActivity:logActivity,
+  getCurrentUser:getCurrentUser,
+  CollabStore:CollabStore,
+  Roles:Roles,
+  generateInviteLink:generateInviteLink,
+  showToast:_showToast,
+  makeAvatar:_makeAvatar,
+  makeAvatarStack:_makeAvatarStack
+};
+
+// ─────────────────────────────────────────────
+// § 16c. ASSIGNEE BADGES ON TASK CARDS
+// ─────────────────────────────────────────────
+function _addAssigneeBadges(){
+  var assignments = CollabStore.getAllAssignments();
+  if(!Object.keys(assignments).length) return;
+  document.querySelectorAll('[data-task-id]').forEach(function(card){
+    var taskId = card.getAttribute('data-task-id');
+    if(!taskId || card.querySelector('[data-ct-badge]')) return;
+    var asgn = assignments[taskId];
+    if(!asgn) return;
+    var badge = document.createElement('div');
+    badge.setAttribute('data-ct-badge','1');
+    badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--accent);background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.2);border-radius:20px;padding:1px 7px 1px 4px;margin-top:3px;cursor:pointer';
+    badge.innerHTML = '<span style="width:14px;height:14px;border-radius:50%;background:var(--accent);color:#fff;font-size:8px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">'+asgn.name.charAt(0).toUpperCase()+'</span><span>'+asgn.name.split(' ')[0]+'</span>';
+    badge.onclick = function(e){ e.stopPropagation(); openDetail(parseInt(taskId)||taskId); };
+    var meta = card.querySelector('.task-meta');
+    if(meta) meta.insertAdjacentElement('afterend', badge);
+    else card.querySelector('.task-body')&&card.querySelector('.task-body').appendChild(badge);
+  });
+}
+
+
+// ─────────────────────────────────────────────
+// § 16b. ASSIGN FROM MY DAY (openDetail patch)
+// ─────────────────────────────────────────────
+function _injectAssignPanelIntoDetail(taskId){
+  // Find the detail panel sidebar - look for the note/group section at bottom
+  var detailPanel = document.getElementById('detailPanel');
+  if(!detailPanel) return;
+  // Remove any existing assign panel
+  var existing = document.getElementById('ct-assign-panel-'+taskId);
+  if(existing) existing.parentNode.removeChild(existing);
+
+  var panel = document.createElement('div');
+  panel.id = 'ct-assign-panel-'+taskId;
+  panel.className = 'ct-assign-panel';
+
+  var title = document.createElement('div');
+  title.className = 'ct-assign-title';
+  title.textContent = '👤 Assign ke';
+  panel.appendChild(title);
+
+  var projects = CollabStore.getProjects();
+  if(!projects.length){
+    var hint = document.createElement('div');
+    hint.style.cssText = 'font-size:12px;color:var(--muted)';
+    hint.innerHTML = 'Belum ada project. <a href="#" onclick="event.preventDefault();showProjectsView()" style="color:var(--accent)">Buat project</a> dulu.';
+    panel.appendChild(hint);
+  } else {
+    // Project picker if multiple
+    var pid = projects[0].id;
+    if(projects.length > 1){
+      var psel = document.createElement('select');
+      psel.className = 'ct-select';
+      psel.style.cssText = 'margin-bottom:8px;font-size:12px';
+      projects.forEach(function(p){
+        var opt = document.createElement('option');opt.value=p.id;opt.textContent=p.title;psel.appendChild(opt);
+      });
+      psel.onchange = function(){ pid = psel.value; _refreshAssignee(); };
+      panel.appendChild(psel);
+    }
+
+    var assignRow = document.createElement('div');
+    assignRow.style.cssText = 'position:relative';
+    panel.appendChild(assignRow);
+
+    function _refreshAssignee(){
+      assignRow.innerHTML = '';
+      var asgn = CollabStore.getAssignment(taskId);
+      var members = CollabStore.getMembers(pid);
+      var pick = document.createElement('div');
+      pick.className = 'ct-assign-pick';
+      if(asgn){
+        var av = _makeAvatar({name:asgn.name,photo:asgn.photo},'ct-avatar-sm');
+        var nm = document.createElement('span');nm.textContent = asgn.name;
+        var cl = document.createElement('span');cl.style.cssText='margin-left:auto;font-size:11px;color:var(--muted);cursor:pointer';cl.textContent='✕ Hapus';
+        cl.onclick = function(e){
+          e.stopPropagation();
+          CollabStore.setAssignment(taskId,null,pid);
+          _refreshAssignee();
+          _showToast('Assignment dihapus','');
+        };
+        pick.appendChild(av);pick.appendChild(nm);pick.appendChild(cl);
+      } else {
+        pick.innerHTML = '<span style="color:var(--muted);font-size:13px">Pilih anggota...</span><span style="margin-left:auto;font-size:12px">▾</span>';
+      }
+      pick.onclick = function(e){
+        e.stopPropagation();
+        // Remove existing dropdown
+        var old = document.querySelector('.ct-assign-dropdown');
+        if(old && old.parentNode) old.parentNode.removeChild(old);
+        var dd = document.createElement('div');dd.className = 'ct-assign-dropdown';
+        var me = getCurrentUser();
+        var allUsers = [{user_id:me.uid,name:me.name+' (kamu)',email:me.email,photo:me.photo}];
+        members.forEach(function(x){if(x.user_id!==me.uid)allUsers.push(x);});
+        allUsers.forEach(function(u){
+          var opt=document.createElement('div');opt.className='ct-assign-opt'+(asgn&&asgn.user_id===u.user_id?' selected':'');
+          opt.appendChild(_makeAvatar(u,'ct-avatar-sm'));
+          var nm=document.createElement('span');nm.textContent=u.name;opt.appendChild(nm);
+          opt.onclick=function(e2){
+            e2.stopPropagation();
+            CollabStore.setAssignment(taskId,{user_id:u.user_id,name:u.name.replace(' (kamu)',''),photo:u.photo||null},pid);
+            logActivity(pid,'task_assigned',{task_title:taskId});
+            if(dd.parentNode)dd.parentNode.removeChild(dd);
+            _refreshAssignee();
+            _showToast('📌 Di-assign ke '+(u.name.replace(' (kamu)','')), 'success');
+          };
+          dd.appendChild(opt);
+        });
+        if(!allUsers.length){dd.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px">Belum ada member di project ini.</div>';}
+        document.body.appendChild(dd);
+        var rect = pick.getBoundingClientRect();
+        dd.style.top = (rect.bottom+window.scrollY+4)+'px';
+        dd.style.left = Math.min(rect.left, window.innerWidth-190)+'px';
+        setTimeout(function(){
+          document.addEventListener('click', function _cl(){
+            if(dd.parentNode)dd.parentNode.removeChild(dd);
+            document.removeEventListener('click',_cl,true);
+          }, true);
+        }, 0);
+      };
+      assignRow.appendChild(pick);
+    }
+    _refreshAssignee();
+  }
+
+  // Inject into detail panel — find a stable anchor
+  var detNote = detailPanel.querySelector('#det-note') || detailPanel.querySelector('.det-note-field');
+  var injTarget = detNote ? detNote.closest('.field-group')||detNote.parentNode : detailPanel.querySelector('.detail-scroll')||detailPanel;
+  if(injTarget){
+    // Try to add before the save/close buttons area
+    var saveArea = detailPanel.querySelector('.detail-actions') || detailPanel.querySelector('[id*="det-save"]');
+    if(saveArea && saveArea.parentNode === injTarget){
+      injTarget.insertBefore(panel, saveArea);
+    } else {
+      injTarget.appendChild(panel);
+    }
+  }
+}
+
+(function _init(){
+  // Fix 2: Retry loop — wait for fbDb up to 15s (30 x 500ms), no fixed 1500ms assumption
+  var _tries=0;
+  function _tryFb(){
+    if(typeof fbDb!=='undefined'&&fbDb){CollabStore.initListeners();}
+    else if(_tries++<30){setTimeout(_tryFb,500);}
+    else{console.warn('[CT_Collab] fbDb never ready after 15s — listeners skipped');}
+  }
+  setTimeout(_tryFb,800);
+
+  // Fix 2: Also use retry loop for sidebar injection instead of fixed 1500ms
+  var _uiTries=0;
+  function _tryUi(){
+    if(document.body){
+      _injectSidebar();
+      // Ensure default project exists
+      if(!CollabStore.getProject('default_project')){
+        var me=getCurrentUser();
+        CollabStore.upsertProject({id:'default_project',title:'My Tasks',color:'#d97706',owner_id:me.uid,created_at:Date.now()});
+      }
+      // Patch openDetail to inject assign panel
+      if(typeof openDetail==='function' && !openDetail._ctPatched){
+        var _origOD = openDetail;
+        openDetail = function(id){
+          _origOD.apply(this, arguments);
+          setTimeout(function(){ _injectAssignPanelIntoDetail(id); }, 80);
+        };
+        openDetail._ctPatched = true;
+      }
+      // Patch render() once to add assignee badges to task cards (no recursion guard)
+      if(typeof render==='function' && !render._ctPatched){
+        var _origR = render;
+        render = function(){
+          _origR.apply(this, arguments);
+          setTimeout(_addAssigneeBadges, 80);
+        };
+        render._ctPatched = true;
+      }
+      _addAssigneeBadges();
+      console.log('[CT_Collab v4] Loaded ✅');
+    } else if(_uiTries++<30){
+      setTimeout(_tryUi, 500);
+    }
+  }
+  setTimeout(_tryUi, 800);
+})();
+
+})(); // end IIFE
+</script>
+
 
 </body>
 </html>
