@@ -8363,7 +8363,7 @@ function toggleNavSection(sec){
   navSectionOpen[sec]=!navSectionOpen[sec];
   var group=document.getElementById('navgroup-'+sec);
   var chevron=document.getElementById('chevron-'+sec);
-  if(group){group.style.maxHeight=navSectionOpen[sec]?group.scrollHeight+'px':'0';}
+  if(group){group.style.maxHeight=navSectionOpen[sec]?Math.max(group.scrollHeight,2000)+'px':'0';}
   if(chevron){chevron.classList.toggle('open',navSectionOpen[sec]);}
   saveData();
 }
@@ -8372,7 +8372,7 @@ function applyNavSections(){
     var group=document.getElementById('navgroup-'+sec);
     var chevron=document.getElementById('chevron-'+sec);
     var open=navSectionOpen[sec]!==false;
-    if(group){group.style.maxHeight=open?'800px':'0';}
+    if(group){group.style.maxHeight=open?'2000px':'0';}
     if(chevron){chevron.classList.toggle('open',open);}
   });
 }
@@ -24861,7 +24861,19 @@ function sholatLoadAndRender() {
     }
     // Cek apakah sudah ada task sholat hari ini dengan tanggal yang benar
     var todayKey = localStorage.getItem('chitask_sholat_lastrun');
+    var isJumatNow = (new Date().getDay() === 5);
     if (todayKey === todayStr) {
+      // Sudah inject hari ini — tapi kalau hari Jumat, pastikan task Jumat sudah ada & aktif
+      if (isJumatNow) {
+        var jumatTask = (tasks||[]).filter(function(t){ return t.name === '🕌 Sholat Jumat'; })[0];
+        if (!jumatTask || !jumatTask.myday) {
+          // Task Jumat belum ada atau belum aktif — force re-inject
+          localStorage.removeItem('chitask_sholat_lastrun');
+          sholatAutoInject();
+          localStorage.setItem('chitask_sholat_lastrun', todayStr);
+          return;
+        }
+      }
       // Sudah inject hari ini, cukup reschedule reminder
       if (typeof scheduleReminders === 'function') setTimeout(scheduleReminders, 1000);
       return;
@@ -29228,42 +29240,55 @@ console.log('[ChiTask+] Features loaded: Recurring, Timer chip, Subtask chip');
   }
 
   // Patch getTasksForDate
+  // FIX: Repeat task hanya tampil di 1 tanggal berikutnya, bukan semua tanggal future
   var _origGetTasksForDate = window.getTasksForDate;
   window.getTasksForDate = function(dateStr) {
     var seen = {};
     var result = [];
     if (typeof tasks === 'undefined') return result;
+    var todayS = (typeof todayStr !== 'undefined') ? todayStr : new Date().toISOString().slice(0,10);
 
     tasks.forEach(function(t) {
       if (seen[t.id]) return;
 
-      // 1. Exact due date match
-      if (t.due === dateStr) {
-        seen[t.id] = true; result.push(t); return;
-      }
-
-      // 2. Habit/repeat task that fires on this date via interval
-      if (t.repeat && t.due) {
-        if (repeatFiresOnDate(t, dateStr)) {
+      // ── MASA LALU ──
+      // Hanya tampilkan kalau benar-benar sudah dicentang di tanggal itu
+      if (dateStr < todayS) {
+        if (t.history && t.history.indexOf(dateStr) >= 0) {
           seen[t.id] = true; result.push(t); return;
         }
+        if (!t.repeat && t.due === dateStr) {
+          seen[t.id] = true; result.push(t); return;
+        }
+        if (!t.repeat && t.done && t.doneDate === dateStr) {
+          seen[t.id] = true; result.push(t); return;
+        }
+        // Repeat yang belum dicentang TIDAK tampil di masa lalu
+        return;
       }
 
-      // 3. Habit checked on dateStr (history)
-      if (t.type === 'Habit' && t.history && t.history.indexOf(dateStr) >= 0) {
-        if (t.due && t.due > dateStr) return; // future due → skip
-        seen[t.id] = true; result.push(t); return;
+      // ── HARI INI ──
+      if (dateStr === todayS) {
+        if (t.due === dateStr) { seen[t.id] = true; result.push(t); return; }
+        if (t.repeat && t._nextDue && t._nextDue === dateStr) { seen[t.id] = true; result.push(t); return; }
+        if (t.repeat && t.due && !t.done && repeatFiresOnDate(t, dateStr)) { seen[t.id] = true; result.push(t); return; }
+        if (t.history && t.history.indexOf(dateStr) >= 0) { seen[t.id] = true; result.push(t); return; }
+        return;
       }
 
-      // 4. Completed task with doneDate = dateStr
-      if (t.done && t.doneDate === dateStr) {
-        seen[t.id] = true; result.push(t); return;
+      // ── MASA DEPAN ──
+      // Repeat task: HANYA tampil di 1 tanggal berikutnya
+      if (t.repeat) {
+        // Kalau task sudah dicentang dan punya _nextDue → tampil di _nextDue saja
+        if (t._nextDue && t._nextDue === dateStr) { seen[t.id] = true; result.push(t); return; }
+        // Kalau belum pernah dicentang → tampil hanya di due date aslinya
+        if (!t.done && !t._nextDue && t.due === dateStr) { seen[t.id] = true; result.push(t); return; }
+        // Semua tanggal future lainnya → TIDAK tampil (baru muncul setelah dicentang)
+        return;
       }
 
-      // 5. Non-habit task completed on dateStr (history)
-      if (t.done && t.type !== 'Habit' && t.history && t.history.indexOf(dateStr) >= 0) {
-        seen[t.id] = true; result.push(t); return;
-      }
+      // Non-repeat future task
+      if (t.due === dateStr) { seen[t.id] = true; result.push(t); return; }
     });
 
     return result;
@@ -29676,7 +29701,10 @@ var CollabStore = (function() {
     getAssignment, setAssignment, getAllAssignments,
     getMessages, sendMessage,
     createInvite, getInvite, fetchProjectForJoin,
-    initListeners, listenProject
+    initListeners, listenProject,
+    // FIX: expose diskusi render callback registry so showProjectDetail (outside IIFE) can register
+    setDiskCallback: function(pid, fn){ _diskRenderCallbacks[pid] = fn; },
+    clearDiskCallback: function(pid){ delete _diskRenderCallbacks[pid]; }
   };
 })();
 
@@ -29697,7 +29725,7 @@ var Roles = {
 // ─────────────────────────────────────────────
 function getCurrentUser(){
   if(typeof fbUser!=='undefined'&&fbUser)
-    return{uid:fbUser.uid||'local_user',name:fbUser.displayName||'You',email:fbUser.email||'',photo:fbUser.photoURL||null};
+    return{uid:fbUser.uid||'local_user',name:fbUser.displayName||'You',email:fbUser.email||'',photo:fbUser.photoURL||null,_isGuest:!!(fbUser._isGuest)};
   try{
     // Fix 1: Stable guest UID — generate once and persist, independent of username changes
     var guestUid = localStorage.getItem('chitask_guest_uid');
@@ -29706,8 +29734,8 @@ function getCurrentUser(){
       localStorage.setItem('chitask_guest_uid', guestUid);
     }
     var d=JSON.parse(localStorage.getItem('chitask_v6_data')||'{}');
-    return{uid:guestUid,name:d._userName||'Guest',email:'',photo:null};
-  }catch(e){return{uid:'local_user',name:'You',email:'',photo:null};}
+    return{uid:guestUid,name:d._userName||'Guest',email:'',photo:null,_isGuest:true};
+  }catch(e){return{uid:'local_user',name:'You',email:'',photo:null,_isGuest:true};}
 }
 
 // ─────────────────────────────────────────────
@@ -29739,7 +29767,10 @@ function generateInviteLinkSync(pid, role, callback){
     if(callback) callback(url);
   }).catch(function(e){
     console.error('[Collab] generateInviteLink',e);
-    if(callback) callback('⚠️ Gagal buat link: '+e.message);
+    var msg=(e==='no db'||(e&&e.message==='no db'))
+      ?'⚠️ Login Google untuk membuat invite link'
+      :'⚠️ Gagal buat link: '+(e&&e.message?e.message:e);
+    if(callback) callback(msg);
   });
 }
 (function(){
@@ -30463,7 +30494,7 @@ function showProjectDetail(proj){
     function _stopPoll(){ if(_pollInterval){ clearInterval(_pollInterval); _pollInterval=null; } }
 
     _startPoll();
-    _diskRenderCallbacks[proj.id] = _renderDisk;
+    CollabStore.setDiskCallback(proj.id, _renderDisk);
     dc.appendChild(feed);
 
     var inputRow=document.createElement('div');inputRow.style.cssText='display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--border)';
@@ -30498,7 +30529,7 @@ function showProjectDetail(proj){
 
     // Stop polling when modal closes
     var origClose = m.close.bind(m);
-    m.close = function(){ _stopPoll(); origClose(); };
+    m.close = function(){ _stopPoll(); CollabStore.clearDiskCallback(proj.id); origClose(); };
   })();
 
   // ── TAB 4: INVITE ──
@@ -30525,9 +30556,21 @@ function showProjectDetail(proj){
 
   // Pre-generate invite link setup function (called on tab click)
   function _initInviteTab(){
+    var me=getCurrentUser();
     var lr=document.getElementById('ct-link-role');
     var urlEl=document.getElementById('ct-inv-url');
-    if(!lr||!urlEl)return;
+    var copyBtn=document.getElementById('ct-copy-inv');
+    var sendBtn=document.getElementById('ct-send-inv');
+    if(!urlEl)return;
+    if(!me||me._isGuest){
+      urlEl.textContent='⚠️ Login Google untuk membuat invite link';
+      urlEl.style.color='#f59e0b';
+      if(copyBtn){copyBtn.disabled=true;copyBtn.style.opacity='0.4';}
+      if(sendBtn){sendBtn.disabled=true;sendBtn.style.opacity='0.4';}
+      return;
+    }
+    if(!lr)return;
+    urlEl.style.color='';
     function _rl(){
       urlEl.textContent='Generating...';
       generateInviteLinkSync(proj.id, lr.value, function(url){ urlEl.textContent=url; });
