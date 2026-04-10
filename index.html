@@ -155,7 +155,7 @@ var _STRINGS = {
     settings_hint: 'Bisa diubah kapan saja di ⚙️ Settings',
     // ── Sync / save ──
     saved: '✓ Tersimpan',
-    sync_activate: '☁️ Aktifkan sync → Masuk dengan Google',
+    sync_activate: '☁️ Aktifkan sync → Maszuk denganss Googlezssss',
     confirm_logout: 'Yakin mau logout?',
     btn_logout: 'Logout',
     // ── Mobile sidebar mode badge ──
@@ -1497,7 +1497,7 @@ function updateAuthUI(user) {
           + '<span style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+guestName+'</span>'
           + '<span style="font-size:8px;background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:auto;white-space:nowrap;flex-shrink:0">TAMU</span>'
           + '</div>'
-          + '<button onclick="showLoginScreen()" style="width:100%;padding:5px 8px;border:1px solid rgba(245,158,11,0.4);border-radius:6px;background:rgba(245,158,11,0.1);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left">☁️ Aktifkan sync → Masuk dengan Google</button>'
+          + '<button onclick="showLoginScreen()" style="width:100%;padding:5px 8px;border:1px solid rgba(245,158,11,0.4);border-radius:6px;background:rgba(245,158,11,0.1);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left">☁️ Aktifkan sync → Maszuk dengan Googlezssss</button>'
           + '</div>';
       } else {
         var offlineBadge = user._isOffline
@@ -10158,22 +10158,23 @@ function getTasksForDate(dateStr){
   var result=[];
   tasks.forEach(function(t){
     if(seen[t.id])return;
-    // Task/habit dengan due = dateStr
+    // Task/habit dengan due = dateStr (belum selesai atau selesai hari itu)
     if(t.due===dateStr){seen[t.id]=true;result.push(t);return;}
+    // Repeat task yang sudah done hari ini — tampilkan di _nextDue (preview cycle berikutnya)
+    if(t.repeat&&t._nextDue&&t._nextDue===dateStr&&!seen[t.id]){seen[t.id]=true;result.push(t);return;}
     // Habit yang dicentang di dateStr (via history)
     // PENTING: Jangan tampilkan habit di dateStr kalau due-nya masih di masa depan dari dateStr
     if(t.type==='Habit'&&t.history&&t.history.indexOf(dateStr)>=0){
       if(t.due&&t.due>dateStr)return; // due di masa depan → jangan tampilkan di dateStr ini
       seen[t.id]=true;result.push(t);return;
     }
-    // Regular task yang diselesaikan di dateStr (doneDate = dateStr, meski due beda)
-    if(t.done&&t.doneDate===dateStr){seen[t.id]=true;result.push(t);return;}
-    // Fix: task biasa yang diselesaikan overdue — due sudah lewat tapi history mencatat tanggal due asli
-    if(t.done&&t.type!=='Habit'&&t.history&&t.history.indexOf(dateStr)>=0){seen[t.id]=true;result.push(t);return;}
-    // Task tanpa due date tidak muncul di kalender (kecuali selesai di dateStr, sudah ditangani di atas)
-    // TIDAK include history umum di sini — repeat task yang sudah reschedule
-    // cukup muncul di due date barunya, bukan di tanggal history lama.
-    // Hanya Habit yang boleh muncul di history (sudah ditangani di atas).
+    // Regular task (NON-repeat) yang diselesaikan di dateStr (doneDate = dateStr, meski due beda)
+    // TIDAK pakai history untuk non-Habit — repeat task punya banyak history entry (tiap completion)
+    // sehingga akan muncul di semua tanggal lama. Cukup tampilkan di doneDate saja.
+    if(t.done&&!t.repeat&&t.doneDate===dateStr){seen[t.id]=true;result.push(t);return;}
+    // Repeat task yang sudah done: tampilkan hanya di doneDate (hari selesainya), bukan di semua history
+    if(t.done&&t.repeat&&t.doneDate===dateStr){seen[t.id]=true;result.push(t);return;}
+    // Task tanpa due date tidak muncul di kalender
   });
   return result;
 }
@@ -12533,6 +12534,9 @@ function addMaintCategory(){
   maintCategories.push({id:id,name:name,icon:icon});
   document.getElementById('maint-cat-icon').value='';
   document.getElementById('maint-cat-name').value='';
+  // FIX: blur aktif input agar guard input-fokus di renderMain() tidak memblokir render
+  var activeEl=document.activeElement;
+  if(activeEl&&activeEl.blur)activeEl.blur();
   saveData(true);render();showToast('Kategori "'+name+'" ditambahkan! 📁');
 }
 
@@ -24869,6 +24873,37 @@ function sholatLoadAndRender() {
   setTimeout(_waitReady, 1500);
 })();
 
+// ── Midnight watcher: deteksi pergantian hari & re-inject sholat ──
+(function _sholatMidnightWatch() {
+  if (!_sholatEnabled || !_sholatKota) return;
+  var _lastWatchDate = localDateStr(new Date());
+  setInterval(function() {
+    if (!_sholatEnabled || !_sholatKota) return;
+    var today = localDateStr(new Date());
+    if (today !== _lastWatchDate) {
+      _lastWatchDate = today;
+      localStorage.removeItem('chitask_sholat_lastrun');
+      sholatAutoInject();
+      localStorage.setItem('chitask_sholat_lastrun', today);
+    }
+  }, 60 * 1000); // cek setiap 1 menit
+})();
+
+// ── Visibility watcher: re-inject sholat saat tab aktif kembali setelah hari berganti ──
+(function _sholatVisibilityWatch() {
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState !== 'visible') return;
+    if (!_sholatEnabled || !_sholatKota) return;
+    var today = localDateStr(new Date());
+    var lastRun = localStorage.getItem('chitask_sholat_lastrun');
+    if (lastRun !== today) {
+      localStorage.removeItem('chitask_sholat_lastrun');
+      sholatAutoInject();
+      localStorage.setItem('chitask_sholat_lastrun', today);
+    }
+  });
+})();
+
 // Update lastrun key setelah inject berhasil (hook ke saveData)
 var _origSaveData = typeof saveData === 'function' ? saveData : null;
 
@@ -29400,6 +29435,7 @@ var CollabStore = (function() {
   // ── In-memory cache only (no localStorage for collab data) ──
   var _cache = { projects:{}, members:{}, activity:{}, projectTasks:{}, assignments:{}, messages:{} };
   var _unsubs = []; // Firestore unsubscribe handles
+  var _diskRenderCallbacks = {}; // For diskusi render callbacks
 
   function _db(){ return (typeof fbDb!=='undefined' && fbDb) ? fbDb : null; }
   function _uid(){ var db=_db(); return (typeof fbUser!=='undefined'&&fbUser&&fbUser.uid)?fbUser.uid:null; }
@@ -29539,7 +29575,12 @@ var CollabStore = (function() {
 
     // Listen: projects owned by me OR where I'm a member
     var u1 = db.collection('projects').where('owner_id','==',uid).onSnapshot(function(snap){
-      snap.docs.forEach(function(d){ _cache.projects[d.id]=d.data(); });
+      snap.docs.forEach(function(d){ 
+        _cache.projects[d.id]=d.data();
+        _listenProjectMembers(d.id);
+        _listenProjectMessages(d.id);
+        _listenProjectTasks(d.id);
+      });
     }, function(e){ console.warn('[Collab] projects listener',e); });
     _unsubs.push(u1);
 
@@ -29585,6 +29626,7 @@ var CollabStore = (function() {
       .orderBy('ts','asc').limit(200)
       .onSnapshot(function(snap){
         _cache.messages[pid] = snap.docs.map(function(d){ return d.data(); });
+        if (_diskRenderCallbacks[pid]) _diskRenderCallbacks[pid]();
       }, function(e){ console.warn('[Collab] messages['+pid+']',e); });
     _unsubs.push(_msgListeners[pid]);
   }
@@ -29687,12 +29729,17 @@ function generateInviteLink(pid,role){
 }
 // Legacy sync version for UI that still calls it sync — returns placeholder while async resolves
 function generateInviteLinkSync(pid, role, callback){
+  var me=getCurrentUser();
+  if(!me||!me.uid||me._isGuest){
+    if(callback) callback('⚠️ Login Google untuk membuat invite link');
+    return;
+  }
   CollabStore.createInvite(pid,role).then(function(data){
     var url = window.location.origin+window.location.pathname+'?invite='+data.id;
     if(callback) callback(url);
   }).catch(function(e){
     console.error('[Collab] generateInviteLink',e);
-    if(callback) callback('Error: '+e.message);
+    if(callback) callback('⚠️ Gagal buat link: '+e.message);
   });
 }
 (function(){
@@ -30042,12 +30089,90 @@ function showProjectTaskModal(pid,task){
   }
   arow.appendChild(albl);arow.appendChild(aval);m.body.appendChild(arow);
 
-  // Due date
-  if(task.due){
+  // Due date (editable)
+  (function(){
     var drow=document.createElement('div');drow.style.cssText='margin-bottom:14px';
-    drow.innerHTML='<div class="ct-label">Due Date</div><div style="font-size:13px;color:var(--text);margin-top:4px">📅 '+task.due+'</div>';
-    m.body.appendChild(drow);
-  }
+    var dlbl=document.createElement('div');dlbl.className='ct-label';dlbl.textContent='📅 Due Date';dlbl.style.marginBottom='6px';
+    var dInp=document.createElement('input');dInp.type='date';dInp.className='ct-input';dInp.style.fontSize='12px';
+    dInp.value=task.due||'';
+    if(canEdit){dInp.onchange=function(){CollabStore.updateProjectTask(pid,task.id,{due:dInp.value||null,updated_at:Date.now()});task.due=dInp.value||null;_showToast('📅 Due date disimpan','success');};}
+    else{dInp.disabled=true;}
+    drow.appendChild(dlbl);drow.appendChild(dInp);m.body.appendChild(drow);
+  })();
+
+  // Shopping (editable)
+  (function(){
+    var srow=document.createElement('div');srow.style.cssText='margin-bottom:14px';
+    var slbl=document.createElement('div');slbl.className='ct-label';slbl.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:6px';
+    var shopChk=document.createElement('input');shopChk.type='checkbox';shopChk.checked=!!task.isShopping;
+    shopChk.style.cssText='width:15px;height:15px;cursor:pointer;accent-color:var(--green)';
+    if(!canEdit)shopChk.disabled=true;
+    var slblTxt=document.createElement('span');slblTxt.textContent='🛒 Belanja';
+    slbl.appendChild(shopChk);slbl.appendChild(slblTxt);srow.appendChild(slbl);
+    var shopBody=document.createElement('div');shopBody.style.cssText='display:'+(task.isShopping?'flex':'none')+';gap:6px;flex-wrap:wrap';
+    var pInp=document.createElement('input');pInp.className='ct-input';pInp.type='number';pInp.min='0';
+    pInp.value=task.price||'';pInp.placeholder='Harga (Rp)';pInp.style.cssText='flex:1;min-width:90px;font-size:12px';
+    var wSel=document.createElement('select');wSel.className='ct-input';wSel.style.cssText='flex:1;min-width:110px;font-size:12px';
+    wSel.innerHTML='<option value="">Pilih Wallet...</option>';
+    finWallets.forEach(function(w){var o=document.createElement('option');o.value=w.id;o.textContent=w.icon+' '+w.name;if(w.id===task.walletId)o.selected=true;wSel.appendChild(o);});
+    var sSaveBtn=document.createElement('button');sSaveBtn.type='button';sSaveBtn.className='ct-btn ct-btn-sm';sSaveBtn.textContent='Simpan';
+    sSaveBtn.onclick=function(){CollabStore.updateProjectTask(pid,task.id,{isShopping:true,price:parseFloat(pInp.value)||0,walletId:wSel.value,updated_at:Date.now()});task.isShopping=true;task.price=parseFloat(pInp.value)||0;task.walletId=wSel.value;_showToast('🛒 Shopping disimpan','success');};
+    shopBody.appendChild(pInp);shopBody.appendChild(wSel);if(canEdit)shopBody.appendChild(sSaveBtn);
+    srow.appendChild(shopBody);
+    if(canEdit){shopChk.onchange=function(){task.isShopping=shopChk.checked;shopBody.style.display=shopChk.checked?'flex':'none';if(!shopChk.checked)CollabStore.updateProjectTask(pid,task.id,{isShopping:false,price:0,walletId:'',updated_at:Date.now()});};}
+    m.body.appendChild(srow);
+  })();
+
+  // Reminder (editable)
+  (function(){
+    var rrow=document.createElement('div');rrow.style.cssText='margin-bottom:14px';
+    var rlbl=document.createElement('div');rlbl.className='ct-label';rlbl.textContent='⏰ Reminder';rlbl.style.marginBottom='6px';
+    var rInp=document.createElement('input');rInp.type='datetime-local';rInp.className='ct-input';rInp.style.fontSize='12px';
+    if(task.reminder_ts){var rd=new Date(task.reminder_ts);rInp.value=rd.getFullYear()+'-'+String(rd.getMonth()+1).padStart(2,'0')+'-'+String(rd.getDate()).padStart(2,'0')+'T'+String(rd.getHours()).padStart(2,'0')+':'+String(rd.getMinutes()).padStart(2,'0');}
+    if(canEdit){rInp.onchange=function(){var ts=rInp.value?new Date(rInp.value).getTime():null;CollabStore.updateProjectTask(pid,task.id,{reminder_ts:ts,updated_at:Date.now()});task.reminder_ts=ts;_showToast('⏰ Reminder disimpan','success');};}
+    else{rInp.disabled=true;}
+    rrow.appendChild(rlbl);rrow.appendChild(rInp);m.body.appendChild(rrow);
+  })();
+
+  // Sub-tasks (interactive: toggle done, add new, delete)
+  (function(){
+    var _subs=(task.subtasks||[]).slice();
+    var strow=document.createElement('div');strow.style.cssText='margin-bottom:14px';
+    var stlbl=document.createElement('div');stlbl.className='ct-label';
+    var stListDiv=document.createElement('div');stListDiv.style.marginTop='6px';
+    function _refreshSubs(){
+      var done=_subs.filter(function(s){return s.done;}).length;
+      stlbl.textContent='Sub-tasks ('+done+'/'+_subs.length+')';
+      stListDiv.innerHTML='';
+      _subs.forEach(function(sub,i){
+        var row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0';
+        var chkDiv=document.createElement('div');
+        chkDiv.style.cssText='width:16px;height:16px;border-radius:4px;border:1.5px solid '+(sub.done?'var(--green)':'#d6d3d1')+';background:'+(sub.done?'var(--green)':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:9px';
+        chkDiv.textContent=sub.done?'✓':'';
+        chkDiv.onclick=function(){sub.done=!sub.done;CollabStore.updateProjectTask(pid,task.id,{subtasks:_subs,updated_at:Date.now()});task.subtasks=_subs;_refreshSubs();};
+        var txt=document.createElement('span');txt.style.cssText='font-size:13px;flex:1;color:var(--text)'+(sub.done?';text-decoration:line-through;color:var(--muted)':'');txt.textContent=sub.title;
+        row.appendChild(chkDiv);row.appendChild(txt);
+        if(canEdit){
+          var del=document.createElement('button');del.type='button';del.textContent='×';
+          del.style.cssText='background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0 3px;margin-left:auto';
+          del.onclick=(function(ii){return function(){_subs.splice(ii,1);CollabStore.updateProjectTask(pid,task.id,{subtasks:_subs,updated_at:Date.now()});task.subtasks=_subs;_refreshSubs();};})(i);
+          row.appendChild(del);
+        }
+        stListDiv.appendChild(row);
+      });
+    }
+    _refreshSubs();
+    strow.appendChild(stlbl);strow.appendChild(stListDiv);
+    if(canEdit){
+      var stAddRow=document.createElement('div');stAddRow.style.cssText='display:flex;gap:6px;margin-top:8px';
+      var stInp=document.createElement('input');stInp.className='ct-input';stInp.placeholder='Tambah sub-task...';stInp.style.cssText='flex:1;font-size:12px';
+      var stAddBt=document.createElement('button');stAddBt.type='button';stAddBt.className='ct-btn ct-btn-sm';stAddBt.textContent='+';
+      stAddBt.onclick=function(){var v=stInp.value.trim();if(!v)return;_subs.push({id:'st_'+Date.now(),title:v,done:false});CollabStore.updateProjectTask(pid,task.id,{subtasks:_subs,updated_at:Date.now()});task.subtasks=_subs;stInp.value='';_refreshSubs();};
+      stInp.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();stAddBt.click();}};
+      stAddRow.appendChild(stInp);stAddRow.appendChild(stAddBt);strow.appendChild(stAddRow);
+    }
+    m.body.appendChild(strow);
+  })();
 
   // Comments
   var cdiv=document.createElement('div');cdiv.className='ct-divider';m.body.appendChild(cdiv);
@@ -30108,23 +30233,116 @@ function showProjectDetail(proj){
     var tc=tabContents[0].content;tc.innerHTML='';
     var tasks=CollabStore.getProjectTasks(proj.id);
 
-    // Add task form
+    // Add task form (expanded)
     if(canEdit){
-      var addRow=document.createElement('div');addRow.style.cssText='display:flex;gap:8px;margin-bottom:14px';
+      var addFormWrap=document.createElement('div');
+      addFormWrap.style.cssText='background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px';
+
+      // Row 1: title + add button
+      var titleRow=document.createElement('div');titleRow.style.cssText='display:flex;gap:8px;margin-bottom:10px';
       var inp=document.createElement('input');inp.className='ct-input';inp.placeholder='Add a new task...';inp.style.flex='1';
       var addBtn=document.createElement('button');addBtn.className='ct-btn ct-btn-primary';addBtn.textContent='+ Add';
+      titleRow.appendChild(inp);titleRow.appendChild(addBtn);addFormWrap.appendChild(titleRow);
+
+      // Row 2: chips
+      var chipRow=document.createElement('div');chipRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';
+
+      // Due date
+      var dueInp=document.createElement('input');dueInp.type='date';dueInp.className='ct-input';
+      dueInp.style.cssText='font-size:11px;height:28px;padding:4px 8px;max-width:130px';dueInp.title='Due date';
+      var dueLbl=document.createElement('label');dueLbl.style.cssText='display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)';
+      dueLbl.innerHTML='📅 ';dueLbl.appendChild(dueInp);chipRow.appendChild(dueLbl);
+
+      // Reminder
+      var remInp=document.createElement('input');remInp.type='datetime-local';remInp.className='ct-input';
+      remInp.style.cssText='font-size:11px;height:28px;padding:4px 8px;max-width:155px';remInp.title='Reminder';
+      var remLbl=document.createElement('label');remLbl.style.cssText='display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)';
+      remLbl.innerHTML='⏰ ';remLbl.appendChild(remInp);chipRow.appendChild(remLbl);
+
+      // Shopping toggle
+      var _shopOn=false;
+      var shopBtn=document.createElement('button');shopBtn.type='button';shopBtn.className='ct-btn ct-btn-sm';
+      shopBtn.textContent='🛒 Belanja';shopBtn.style.cssText='font-size:11px;height:28px;padding:0 9px';
+      shopBtn.onclick=function(){
+        _shopOn=!_shopOn;
+        shopBtn.style.background=_shopOn?'#d1fae5':'';shopBtn.style.color=_shopOn?'#065f46':'';
+        shopBtn.style.borderColor=_shopOn?'#6ee7b7':'';
+        shopPanel.style.display=_shopOn?'flex':'none';
+      };
+      chipRow.appendChild(shopBtn);
+
+      // Subtask toggle
+      var _newSubs=[];
+      var subBtn=document.createElement('button');subBtn.type='button';subBtn.className='ct-btn ct-btn-sm';
+      subBtn.textContent='✅ Sub-task';subBtn.style.cssText='font-size:11px;height:28px;padding:0 9px';
+      subBtn.onclick=function(){
+        var shown=subPanel.style.display==='block';
+        subPanel.style.display=shown?'none':'block';
+        subBtn.style.background=!shown?'var(--hover)':'';
+      };
+      chipRow.appendChild(subBtn);
+      addFormWrap.appendChild(chipRow);
+
+      // Shopping panel
+      var shopPanel=document.createElement('div');
+      shopPanel.style.cssText='display:none;gap:6px;flex-wrap:wrap;margin-top:8px;padding:10px;background:var(--hover);border-radius:8px';
+      var priceInp=document.createElement('input');priceInp.className='ct-input';priceInp.type='number';priceInp.min='0';
+      priceInp.placeholder='Harga (Rp)';priceInp.style.cssText='flex:1;min-width:90px;font-size:12px';
+      var walletSel=document.createElement('select');walletSel.className='ct-input';
+      walletSel.style.cssText='flex:1;min-width:110px;font-size:12px';
+      walletSel.innerHTML='<option value="">Pilih Wallet...</option>';
+      finWallets.forEach(function(w){var o=document.createElement('option');o.value=w.id;o.textContent=w.icon+' '+w.name;walletSel.appendChild(o);});
+      shopPanel.appendChild(priceInp);shopPanel.appendChild(walletSel);
+      addFormWrap.appendChild(shopPanel);
+
+      // Subtask panel
+      var subPanel=document.createElement('div');subPanel.style.cssText='display:none;margin-top:8px;padding:10px;background:var(--hover);border-radius:8px';
+      var subList=document.createElement('div');subList.style.cssText='display:flex;flex-direction:column;gap:4px;margin-bottom:6px';
+      var subAddRow=document.createElement('div');subAddRow.style.cssText='display:flex;gap:6px';
+      var subInp=document.createElement('input');subInp.className='ct-input';subInp.placeholder='Tambah sub-task...';subInp.style.cssText='flex:1;font-size:12px';
+      var subAddBt=document.createElement('button');subAddBt.type='button';subAddBt.className='ct-btn ct-btn-sm';subAddBt.textContent='+';
+      function _refreshNewSubs(){
+        subList.innerHTML='';
+        _newSubs.forEach(function(s,i){
+          var r=document.createElement('div');r.style.cssText='display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text)';
+          var del=document.createElement('button');del.type='button';del.textContent='×';
+          del.style.cssText='background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:0 2px;margin-left:auto';
+          del.onclick=(function(ii){return function(){_newSubs.splice(ii,1);_refreshNewSubs();};})(i);
+          r.innerHTML='☐ '+s.title+' ';r.appendChild(del);subList.appendChild(r);
+        });
+        subBtn.textContent='✅ Sub-task'+(_newSubs.length?' ('+_newSubs.length+')':'');
+      }
+      subAddBt.onclick=function(){
+        var v=subInp.value.trim();if(!v)return;
+        _newSubs.push({id:'st_'+Date.now(),title:v,done:false});
+        subInp.value='';_refreshNewSubs();
+      };
+      subInp.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();subAddBt.click();}};
+      subAddRow.appendChild(subInp);subAddRow.appendChild(subAddBt);
+      subPanel.appendChild(subList);subPanel.appendChild(subAddRow);
+      addFormWrap.appendChild(subPanel);
+
       addBtn.onclick=function(){
         var v=inp.value.trim();if(!v)return;
         var me=getCurrentUser();
         var task={id:'ptsk_'+Date.now(),title:v,desc:'',status:'todo',priority:'normal',
           created_by:me.uid,created_by_name:me.name,assignee_id:null,assignee_name:null,
-          due:null,created_at:Date.now(),updated_at:Date.now()};
+          due:dueInp.value||null,created_at:Date.now(),updated_at:Date.now(),
+          isShopping:_shopOn,price:_shopOn?parseFloat(priceInp.value)||0:0,
+          walletId:_shopOn?walletSel.value:'',
+          reminder_ts:remInp.value?new Date(remInp.value).getTime():null,
+          subtasks:_newSubs.slice()};
         CollabStore.addProjectTask(proj.id,task);
         logActivity(proj.id,'task_created',{task_title:v});
-        inp.value='';_renderTasks();_showToast('✅ Task added','success');
+        // Reset form
+        inp.value='';dueInp.value='';remInp.value='';
+        _shopOn=false;shopBtn.style.cssText='font-size:11px;height:28px;padding:0 9px';
+        shopPanel.style.display='none';priceInp.value='';walletSel.value='';
+        _newSubs=[];_refreshNewSubs();subPanel.style.display='none';subBtn.style.background='';
+        _renderTasks();_showToast('✅ Task added','success');
       };
       inp.onkeydown=function(e){if(e.key==='Enter')addBtn.click();};
-      addRow.appendChild(inp);addRow.appendChild(addBtn);tc.appendChild(addRow);
+      tc.appendChild(addFormWrap);
     }
 
     if(!tasks.length){
@@ -30151,6 +30369,23 @@ function showProjectDetail(proj){
           var newStatus=task.status==='done'?'todo':'done';
           CollabStore.updateProjectTask(proj.id,task.id,{status:newStatus,updated_at:Date.now()});
           if(newStatus==='done')logActivity(proj.id,'task_completed',{task_title:task.title});
+          if(newStatus==='done' && task.isShopping && task.price && task.walletId){
+            var w = getWalletById(task.walletId);
+            if(w){
+              w.balance -= task.price;
+              finTransactions.push({id:'tx'+finNextId++,type:'expense',amount:task.price,category:'Belanja',walletId:task.walletId,date:todayStr,note:'Collab Task: '+task.title});
+            }
+          } else if(newStatus==='todo' && task.isShopping && task.price && task.walletId){
+            var w = getWalletById(task.walletId);
+            if(w){
+              w.balance += task.price;
+              for(var i=finTransactions.length-1;i>=0;i--){
+                if(finTransactions[i].note==='Collab Task: '+task.title && finTransactions[i].type==='expense'){
+                  finTransactions.splice(i,1); break;
+                }
+              }
+            }
+          }
           _renderTasks();
         };
         // Title
@@ -30163,6 +30398,8 @@ function showProjectDetail(proj){
           meta.appendChild(_makeAvatar(asgn,'ct-avatar-sm'));
         }
         if(task.due){var due=document.createElement('span');due.style.cssText='font-size:10px;color:var(--muted)';due.textContent='📅 '+task.due;meta.appendChild(due);}
+        if(task.isShopping && task.price){var shop=document.createElement('span');shop.style.cssText='font-size:10px;color:#15803d;font-weight:600;margin-left:6px';shop.textContent='🛒 '+fmtRp(task.price);meta.appendChild(shop);}
+        if(task.reminder_ts){var rem=document.createElement('span');rem.style.cssText='font-size:10px;color:#d97706;margin-left:6px';rem.textContent='⏰ '+_relTime(task.reminder_ts);meta.appendChild(rem);}
         row.appendChild(chk);row.appendChild(title);row.appendChild(meta);
         row.onclick=function(){showProjectTaskModal(proj.id,task);};
         section.appendChild(row);
@@ -30195,8 +30432,10 @@ function showProjectDetail(proj){
     function _renderDisk(){
       feed.innerHTML='';
       var msgs=CollabStore.getMessages(proj.id);
+      var me0=getCurrentUser();
       if(!msgs.length){
-        feed.innerHTML='<div class="ct-empty" style="padding:20px 0"><div class="ct-empty-icon">💬</div><div class="ct-empty-title">Belum ada diskusi</div><div class="ct-empty-sub">Mulai diskusi terkait project ini.</div></div>';
+        var guestNote=me0&&me0._isGuest?' <br><span style="color:#f59e0b;font-size:11px">⚠️ Login Google untuk ikut diskusi</span>':'';
+        feed.innerHTML='<div class="ct-empty" style="padding:20px 0"><div class="ct-empty-icon">💬</div><div class="ct-empty-title">Belum ada diskusi</div><div class="ct-empty-sub">Mulai diskusi terkait project ini.'+guestNote+'</div></div>';
         return;
       }
       var me=getCurrentUser();
@@ -30224,6 +30463,7 @@ function showProjectDetail(proj){
     function _stopPoll(){ if(_pollInterval){ clearInterval(_pollInterval); _pollInterval=null; } }
 
     _startPoll();
+    _diskRenderCallbacks[proj.id] = _renderDisk;
     dc.appendChild(feed);
 
     var inputRow=document.createElement('div');inputRow.style.cssText='display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--border)';
@@ -30233,6 +30473,7 @@ function showProjectDetail(proj){
     sendBtn.onclick=function(){
       var v=inp.value.trim(); if(!v)return;
       var me=getCurrentUser();
+      if(!me||!me.uid||me._isGuest){_showToast('⚠️ Login dengan Google untuk bisa diskusi','warn');return;}
       var msgObj={user_id:me.uid,user_name:me.name,user_photo:me.photo||null,text:v,ts:Date.now()};
       inp.value='';
       sendBtn.disabled=true;
@@ -30241,7 +30482,7 @@ function showProjectDetail(proj){
         _renderDisk();
       }).catch(function(e){
         sendBtn.disabled=false;
-        _showToast('⚠️ Gagal kirim pesan','warn');
+        _showToast('⚠️ Gagal kirim: '+e.message,'warn');
         console.error('[Collab] sendMessage',e);
       });
       logActivity(proj.id,'comment_added',{task_title:'diskusi project'});
@@ -30250,7 +30491,9 @@ function showProjectDetail(proj){
     inputRow.appendChild(inp);inputRow.appendChild(sendBtn);dc.appendChild(inputRow);
 
     tabContents[3].btn.addEventListener('click',function(){
-      _stopPoll(); _startPoll();
+      // Force re-listen in case we just joined and listener wasn't active
+      CollabStore.listenProject(proj.id);
+      _renderDisk();
     });
 
     // Stop polling when modal closes
@@ -30280,12 +30523,25 @@ function showProjectDetail(proj){
     <div class="ct-invite-box"><div class="ct-invite-url" id="ct-inv-url">Generating...</div><button class="ct-copy-btn" id="ct-copy-inv">Copy</button></div>
     <div style="font-size:10px;color:var(--muted);margin-top:6px">🔒 Expires in 7 days · Link disimpan di Firestore</div>`;
 
-  tabContents[4].btn.addEventListener('click',function(){
+  // Pre-generate invite link setup function (called on tab click)
+  function _initInviteTab(){
     var lr=document.getElementById('ct-link-role');
     var urlEl=document.getElementById('ct-inv-url');
+    if(!lr||!urlEl)return;
     function _rl(){
       urlEl.textContent='Generating...';
       generateInviteLinkSync(proj.id, lr.value, function(url){ urlEl.textContent=url; });
+    }
+    lr.onchange=_rl; _rl();
+  }
+  tabContents[4].btn.addEventListener('click',function(){
+    _initInviteTab();
+    var lr=document.getElementById('ct-link-role');
+    var urlEl=document.getElementById('ct-inv-url');
+    function _rl(){
+      if(!urlEl)return;
+      urlEl.textContent='Generating...';
+      generateInviteLinkSync(proj.id, lr?lr.value:'editor', function(url){ urlEl.textContent=url; });
     }
     if(lr){ lr.onchange=_rl; _rl(); }
 
@@ -30394,7 +30650,7 @@ function _showNewProjForm(container,onSave){
       var name=(document.getElementById('ct-pn').value||'').trim();if(!name){_showToast('⚠️ Name required','warn');return;}
       var me=getCurrentUser();
       var proj={id:'proj_'+Date.now(),title:name,desc:document.getElementById('ct-pd').value.trim(),color:document.getElementById('ct-pc').value,owner_id:me.uid,created_at:Date.now()};
-      CollabStore.saveMembers(proj.id,[{user_id:me.uid,name:me.name,email:me.email,photo:me.photo,role:Roles.OWNER,status:'active'}]);
+      CollabStore.addMember(proj.id,{user_id:me.uid,name:me.name,email:me.email,photo:me.photo,role:Roles.OWNER,status:'active'});
       logActivity(proj.id,'member_added',{target_name:me.name});
       onSave(proj);_showToast('🎉 Project created!','success');
     };
