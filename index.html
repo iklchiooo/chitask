@@ -14729,45 +14729,62 @@ function nlpParseTask(raw) {
   var today = new Date(); today.setHours(0,0,0,0);
 
   // ── NEW: Detect REPEAT pattern FIRST ──
-  // PRIORITAS: Pattern yang lebih spesifik dulu (ada "seminggu sekali" / "minggu sekali")
+  // PRIORITAS: Pattern yang lebih spesifik dulu
+
+  // ── DAILY: "setiap hari", "tiap hari", "sehari sekali", "harian" ──
+  var _dailyMatch = text.match(/\b(?:setiap\s+hari|tiap\s+hari|sehari\s+sekali|setiap\s+harinya|harian)\b/i);
+  if (_dailyMatch) {
+    result.repeat = 'Harian';
+    result.nlpHints.push('🔁 Harian');
+    if (!result.due) result.due = (function(){ var d=new Date(); d.setHours(0,0,0,0); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+    text = text.replace(_dailyMatch[0], '').trim();
+  }
+
   var repeatMatch = null;
-  
-  // Pattern 1: "seminggu sekali tiap/setiap/pada/di hari X"
-  repeatMatch = text.match(/\b(?:se)?minggu\s+sekali\s+(?:tiap|setiap|pada|di)?\s*(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
-  
-  // Pattern 2: "setiap minggu hari X" (tanpa "sekali")
-  if (!repeatMatch) {
-    repeatMatch = text.match(/\bsetiap\s+minggu\s+(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
+
+  // ── WEEKLY: hanya jika belum match daily ──
+  if (!result.repeat) {
+    // Pattern 1: "seminggu sekali tiap/setiap hari X"
+    repeatMatch = text.match(/\b(?:se)?minggu\s+sekali\s+(?:tiap|setiap|pada|di)?\s*(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
+    // Pattern 2: "setiap minggu hari X"
+    if (!repeatMatch) repeatMatch = text.match(/\bsetiap\s+minggu\s+(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
+    // Pattern 3: "tiap minggu hari X"
+    if (!repeatMatch) repeatMatch = text.match(/\btiap\s+minggu\s+(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
+
+    if (repeatMatch) {
+      var dayName = repeatMatch[1].toLowerCase();
+      var _dowMap = {minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
+      var targetDay = _dowMap[dayName];
+      result.repeat = 'Mingguan';
+      result.nlpHints.push('🔁 Mingguan');
+      var d = new Date(today);
+      var cur = d.getDay();
+      var diff = (targetDay - cur + 7) % 7;
+      if (diff === 0) diff = 7;
+      d.setDate(d.getDate() + diff);
+      result.due = _nlpDateStr(d);
+      var dayDisplay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+      result.nlpHints.push('📅 ' + dayDisplay);
+      text = text.replace(repeatMatch[0], '').trim();
+    } else {
+      // Pattern 4: "setiap minggu" / "tiap minggu" / "seminggu sekali" tanpa nama hari
+      var _weeklyMatch = text.match(/\b(?:setiap\s+minggu|tiap\s+minggu|seminggu\s+sekali)\b/i);
+      if (_weeklyMatch) {
+        result.repeat = 'Mingguan';
+        result.nlpHints.push('🔁 Mingguan');
+        text = text.replace(_weeklyMatch[0], '').trim();
+      }
+    }
   }
-  
-  // Pattern 3: "tiap minggu hari X" (tanpa "sekali")
-  if (!repeatMatch) {
-    repeatMatch = text.match(/\btiap\s+minggu\s+(?:hari\s+)?(senin|selasa|rabu|kamis|jumat|sabtu|minggu)\b/i);
-  }
-  
-  if (repeatMatch) {
-    var dayName = repeatMatch[1].toLowerCase();
-    var days = {minggu:0,senin:1,selasa:2,rabu:3,kamis:4,jumat:5,sabtu:6};
-    var targetDay = days[dayName];
-    
-    // Set repeat
-    result.repeat = 'weekly';
-    result.nlpHints.push('🔁 Setiap minggu');
-    
-    // Set due to next occurrence of that day
-    var d = new Date(today);
-    var cur = d.getDay();
-    var diff = (targetDay - cur + 7) % 7;
-    if (diff === 0) diff = 7; // If today is that day, schedule for next week
-    d.setDate(d.getDate() + diff);
-    result.due = _nlpDateStr(d);
-    
-    // Capitalize day name for hint
-    var dayDisplay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
-    result.nlpHints.push('📅 ' + dayDisplay);
-    
-    // Remove from text
-    text = text.replace(repeatMatch[0], '').trim();
+
+  // ── MONTHLY ──
+  if (!result.repeat) {
+    var _monthlyMatch = text.match(/\b(?:setiap\s+bulan|tiap\s+bulan|sebulan\s+sekali|bulanan)\b/i);
+    if (_monthlyMatch) {
+      result.repeat = 'Bulanan';
+      result.nlpHints.push('🔁 Bulanan');
+      text = text.replace(_monthlyMatch[0], '').trim();
+    }
   }
 
   // ── 1. Parse TIME ──
@@ -14931,10 +14948,14 @@ function nlpApplyAndAdd(inputId, addFn) {
   }
   // Apply repeat if detected
   if (p.repeat) {
-    var repeatEl = document.getElementById('chip-repeat');
-    if (repeatEl && !repeatEl.value) {
-      repeatEl.value = p.repeat;
-    }
+    ['chip-repeat', 'mchip-repeat', 'sqa-repeat'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el && !el.value) {
+        el.value = p.repeat;
+        // Trigger onchange so any dependent UI updates (e.g. handleRepeatChange)
+        if (typeof handleRepeatChange === 'function') handleRepeatChange(el);
+      }
+    });
   }
   // Apply important flag
   if (p.important && !chipState.important) {
@@ -29246,22 +29267,47 @@ console.log('[ChiTask+] Features loaded: Recurring, Timer chip, Subtask chip');
     var result = [];
     if (typeof tasks === 'undefined') return result;
 
+    // Today's date string (YYYY-MM-DD) for future-date guard
+    var _todayStr = (typeof todayStr !== 'undefined') ? todayStr
+      : new Date().toISOString().slice(0, 10);
+
     tasks.forEach(function(t) {
       if (seen[t.id]) return;
 
-      // 1. Exact due date match
+      // 1. Exact due date match (past or today only; future: only show if no repeat)
       if (t.due === dateStr) {
-        seen[t.id] = true; result.push(t); return;
-      }
-
-      // 2. Habit/repeat task that fires on this date via interval
-      if (t.repeat && t.due) {
-        if (repeatFiresOnDate(t, dateStr)) {
+        // If it's a future repeat task, only show on due date if it's today or past
+        if (dateStr > _todayStr && t.repeat && t.repeat !== 'Tidak' && t.repeat !== 'None' && t.repeat !== '') {
+          // future repeat — handled by rule 2 below, skip exact-due here to avoid double
+        } else {
           seen[t.id] = true; result.push(t); return;
         }
       }
 
-      // 3. Habit checked on dateStr (history)
+      // 2. Repeat task fires on this date via interval
+      if (t.repeat && t.repeat !== 'Tidak' && t.repeat !== 'None' && t.repeat !== '' && t.due) {
+        if (repeatFiresOnDate(t, dateStr)) {
+          // FUTURE GUARD: don't mark any date strictly after today
+          if (dateStr > _todayStr) return;
+
+          // DONE GUARD: if task was completed (done=true), only show on the date it was completed
+          // so the calendar dot doesn't bleed into every past occurrence
+          if (t.done && t.doneDate && t.doneDate !== dateStr) return;
+
+          // HISTORY GUARD: if this date already has a completion in history, show it (was completed)
+          // If not in history and it's a past date before today, skip — user didn't complete it
+          // (we still show today even without history so the task is actionable)
+          if (dateStr < _todayStr) {
+            var completedOnDate = (t.history && t.history.indexOf(dateStr) >= 0)
+                                || (t.doneDate === dateStr);
+            if (!completedOnDate) return; // past occurrence not completed — don't show dot
+          }
+
+          seen[t.id] = true; result.push(t); return;
+        }
+      }
+
+      // 3. Habit checked on dateStr (history) — always show completed entries
       if (t.type === 'Habit' && t.history && t.history.indexOf(dateStr) >= 0) {
         if (t.due && t.due > dateStr) return; // future due → skip
         seen[t.id] = true; result.push(t); return;
@@ -29506,12 +29552,28 @@ var CollabStore = (function() {
   function getProject(id)  { return _c.projects[id] || null; }
 
   function upsertProject(proj) {
+    var isNew = !_c.projects[proj.id];
     _c.projects[proj.id] = proj;
+    // M1 FIX: Pastikan owner selalu masuk ke koleksi members saat project dibuat
+    if (isNew && proj.owner_id) {
+      var ownerMember = { user_id: proj.owner_id, project_id: proj.id, role: 'owner', status: 'active', joined_at: Date.now() };
+      if (!_c.members[proj.id]) _c.members[proj.id] = [];
+      var ownerExists = _c.members[proj.id].find(function(m){ return m.user_id === proj.owner_id; });
+      if (!ownerExists) _c.members[proj.id].push(ownerMember);
+    }
     _persist();
     _notifyRender();
     var db = _db(); if (!db) return Promise.resolve();
-    return db.collection('projects').doc(proj.id).set(proj)
+    var p = db.collection('projects').doc(proj.id).set(proj)
       .catch(function(e){ console.error('[Collab] upsertProject', e); });
+    // M1 FIX: Tulis owner ke project_members di Firestore juga
+    if (isNew && proj.owner_id) {
+      var me = getCurrentUser();
+      var ownerData = { user_id: proj.owner_id, project_id: proj.id, role: 'owner', status: 'active', joined_at: Date.now(), name: (me && me.displayName) || 'Owner', email: (me && me.email) || '' };
+      db.collection('project_members').doc(proj.id + '_' + proj.owner_id).set(ownerData)
+        .catch(function(e){ console.error('[Collab] upsertProject owner member', e); });
+    }
+    return p;
   }
   function deleteProject(id) {
     delete _c.projects[id];
@@ -29617,7 +29679,7 @@ var CollabStore = (function() {
     var db = _db();
     if (!db) return Promise.resolve(); // offline/guest: local only
     return db.collection('projects').doc(pid).collection('messages').doc(docId).set(data)
-      .catch(function(e){ console.error('[Collab] sendMessage', e); });
+      .catch(function(e){ console.error('[Collab] sendMessage', e); throw e; }); // M2 FIX: re-throw agar error propagate ke UI
   }
 
   // ── Invite Links ──
@@ -29675,6 +29737,11 @@ var CollabStore = (function() {
       snap.docs.forEach(function(d){
         var m = d.data();
         var pid = m.project_id;
+        // M3 FIX: Simpan info member diri sendiri ke cache lokal
+        if (!_c.members[pid]) _c.members[pid] = [];
+        var idx = _c.members[pid].findIndex(function(x){ return x.user_id === m.user_id; });
+        if (idx >= 0) _c.members[pid][idx] = m; else _c.members[pid].push(m);
+
         if (!_c.projects[pid]) {
           db.collection('projects').doc(pid).get().then(function(pd){
             if (pd.exists) { _c.projects[pid] = pd.data(); _persist(); _notifyRender(); }
@@ -29682,6 +29749,9 @@ var CollabStore = (function() {
         }
         _listenProject(pid);
       });
+      // M3 FIX: Trigger render setelah snapshot member berubah
+      _persist();
+      _notifyRender();
     }, function(e){ console.warn('[Collab] member listener', e); });
     _unsubs.push(u2);
 
@@ -30029,7 +30099,9 @@ function _buildModal(title, icon, sizeClass) {
   var overlay = document.createElement('div'); overlay.className = 'ct-overlay';
   var modal   = document.createElement('div'); modal.className   = 'ct-modal ' + (sizeClass || '');
   var hdr     = document.createElement('div'); hdr.className     = 'ct-modal-hdr';
-  hdr.innerHTML = '<div class="ct-modal-icon">' + icon + '</div><div class="ct-modal-title">' + title + '</div>';
+  var iconDiv = document.createElement('div'); iconDiv.className = 'ct-modal-icon'; iconDiv.textContent = icon;
+  var titleDiv = document.createElement('div'); titleDiv.className = 'ct-modal-title'; titleDiv.textContent = title;
+  hdr.appendChild(iconDiv); hdr.appendChild(titleDiv);
   var closeBtn  = document.createElement('button'); closeBtn.className = 'ct-modal-close'; closeBtn.innerHTML = '&#x2715;';
   var _close = function(){ if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
   closeBtn.onclick = _close; hdr.appendChild(closeBtn);
@@ -30046,9 +30118,13 @@ function _buildModal(title, icon, sizeClass) {
 function _getMyRole(pid) {
   var proj = CollabStore.getProject(pid); if (!proj) return null;
   var me   = getCurrentUser();
+  // M4 FIX: Cek members collection dulu (lebih akurat, handle race condition)
+  var members = CollabStore.getMembers(pid);
+  var m = members.find(function(x){ return x.user_id === me.uid; });
+  if (m) return m.role === 'owner' ? Roles.OWNER : (m.role || Roles.MEMBER);
+  // Fallback: cek owner_id di project object
   if (proj.owner_id === me.uid) return Roles.OWNER;
-  var m = CollabStore.getMembers(pid).find(function(x){ return x.user_id === me.uid; });
-  return m ? m.role : null;
+  return null;
 }
 
 // ─────────────────────────────────────────────
@@ -30077,7 +30153,13 @@ function _renderActivityFeed(pid, container) {
     var label = ACTION_LABELS[item.action] || item.action;
     var task  = item.meta && item.meta.task_title ? ' <b>"' + item.meta.task_title + '"</b>' : '';
     var text  = document.createElement('div'); text.className = 'ct-activity-text';
-    text.innerHTML = '<b>' + (item.user_name || '?') + '</b> ' + label + task;
+    var nameB = document.createElement('b'); nameB.textContent = item.user_name || '?';
+    text.appendChild(nameB);
+    text.appendChild(document.createTextNode(' ' + label));
+    if (item.meta && item.meta.task_title) {
+      text.appendChild(document.createTextNode(' '));
+      var taskB = document.createElement('b'); taskB.textContent = '"' + item.meta.task_title + '"'; text.appendChild(taskB);
+    }
     var time = document.createElement('div'); time.className = 'ct-activity-time'; time.textContent = _relTime(item.ts);
     row.appendChild(_makeAvatar({ name: item.user_name, photo: item.user_photo }, 'ct-avatar-sm'));
     row.appendChild(text); row.appendChild(time); container.appendChild(row);
@@ -30099,7 +30181,9 @@ function _renderMemberList(pid, container) {
   members.forEach(function(member){
     var row  = document.createElement('div'); row.className = 'ct-member-row';
     var info = document.createElement('div'); info.className = 'ct-member-info';
-    info.innerHTML = '<div class="ct-member-name">' + member.name + '</div><div class="ct-member-email">' + (member.email || '') + '</div>';
+    var nameDiv = document.createElement('div'); nameDiv.className = 'ct-member-name'; nameDiv.textContent = member.name;
+    var emailDiv = document.createElement('div'); emailDiv.className = 'ct-member-email'; emailDiv.textContent = member.email || '';
+    info.appendChild(nameDiv); info.appendChild(emailDiv);
     var badge = document.createElement('div');
     badge.className = 'ct-role-badge';
     badge.style.color = Roles.color(member.role);
@@ -30133,8 +30217,8 @@ function showProjectTaskModal(pid, task) {
   if (fresh) task = fresh;
 
   var m = _buildModal(task.title, '📌', 'ct-modal-sm');
-  var myRole = _getMyRole(pid) || Roles.OWNER;
-  var canEdit = Roles.canEdit(myRole);
+  var myRole = _getMyRole(pid);
+  var canEdit = !!myRole && Roles.canEdit(myRole);
 
   m.body.innerHTML = '';
 
@@ -30202,9 +30286,10 @@ function showProjectTaskModal(pid, task) {
 
   // Due / Reminder meta
   var meta = document.createElement('div'); meta.style.cssText = 'margin-top:12px;font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap';
-  if (task.due)         meta.innerHTML += '<span>📅 ' + task.due + '</span>';
-  if (task.reminder_ts) meta.innerHTML += '<span>⏰ ' + _relTime(task.reminder_ts) + '</span>';
-  if (task.isShopping && task.price) meta.innerHTML += '<span>🛒 Rp ' + Number(task.price).toLocaleString('id') + '</span>';
+  function _metaSpan(icon, val) { var s = document.createElement('span'); s.textContent = icon + ' ' + val; meta.appendChild(s); }
+  if (task.due) _metaSpan('📅', task.due);
+  if (task.reminder_ts) _metaSpan('⏰', _relTime(task.reminder_ts));
+  if (task.isShopping && task.price) _metaSpan('🛒', 'Rp ' + Number(task.price).toLocaleString('id'));
   m.body.appendChild(meta);
 
   if (canEdit) {
@@ -30238,8 +30323,8 @@ function showProjectTaskModal(pid, task) {
 function showProjectDetail(proj) {
   CollabStore.listenProject(proj.id);
   var m = _buildModal(proj.title, '📋', 'ct-modal-lg');
-  var myRole = _getMyRole(proj.id) || Roles.OWNER;
-  var canEdit = Roles.canEdit(myRole);
+  var myRole = _getMyRole(proj.id);
+  var canEdit = !!myRole && Roles.canEdit(myRole);
 
   var tabDefs    = ['📋 Tasks', '👥 Members', '📈 Activity', '💬 Diskusi', '🔗 Invite'];
   var tabBar     = document.createElement('div'); tabBar.className = 'ct-tabs';
@@ -30408,12 +30493,12 @@ function showProjectDetail(proj) {
       CollabStore.sendMessage(proj.id, msgObj).then(function(){
         sendBtn.disabled = false;
         _renderDisk();
+        logActivity(proj.id, 'comment_added', { task_title: 'diskusi project' });
       }).catch(function(e){
         sendBtn.disabled = false;
         var errMsg = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'Cek koneksi');
         _showToast('⚠️ Gagal kirim: ' + errMsg, 'warn');
       });
-      logActivity(proj.id, 'comment_added', { task_title: 'diskusi project' });
     };
     inp.onkeydown = function(e){ if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendBtn.click(); } };
     inputRow.appendChild(inp); inputRow.appendChild(sendBtn); dc.appendChild(inputRow);
@@ -30491,7 +30576,9 @@ function showProjectDetail(proj) {
       }).catch(function(e){ _showToast('⚠️ Gagal: ' + (e && e.message ? e.message : e), 'warn'); });
     };
   }
-  tabContents[4].btn.addEventListener('click', _initInviteTab);
+  var _inviteTabInited = false;
+  var _initInviteTabOnce = function() { if (_inviteTabInited) return; _inviteTabInited = true; _initInviteTab(); };
+  tabContents[4].btn.addEventListener('click', _initInviteTabOnce);
 }
 
 // ─────────────────────────────────────────────
@@ -30546,7 +30633,7 @@ function showProjectsView() {
       var openBtn = document.createElement('button'); openBtn.className = 'ct-btn ct-btn-sm ct-btn-primary'; openBtn.innerHTML = '📋 Open';
       openBtn.onclick = function(e){ e.stopPropagation(); m.close(); showProjectDetail(proj); };
       acts.appendChild(openBtn);
-      if (Roles.canDelete(myRole || Roles.OWNER)) {
+      if (myRole && Roles.canDelete(myRole)) {
         var delBtn = document.createElement('button'); delBtn.className = 'ct-btn ct-btn-sm ct-btn-danger ct-btn-ghost'; delBtn.innerHTML = '🗑️';
         delBtn.onclick = function(e){ e.stopPropagation(); if(confirm('Delete "'+proj.title+'"?')){ CollabStore.deleteProject(proj.id); _render(); _showToast('🗑️ Deleted','warn'); } };
         acts.appendChild(delBtn);
@@ -30648,7 +30735,16 @@ function showJoinModal(pid, role) {
   var proj  = CollabStore.getProject(pid);
   var title = proj ? proj.title : 'a project';
   var m     = _buildModal("You've been invited!", '🎉', 'ct-modal-sm');
-  m.body.innerHTML = '<div style="text-align:center;padding:12px 0 20px"><div style="font-size:40px;margin-bottom:12px">🤝</div><div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Join <b>' + title + '</b></div><div style="font-size:13px;color:var(--muted);margin-bottom:18px">Role: <b style="color:var(--accent)">' + Roles.label(role) + '</b></div><button class="ct-btn ct-btn-primary" id="ct-join-ok" style="width:100%;padding:12px">✅ Accept Invite</button><button class="ct-btn" id="ct-join-no" style="width:100%;margin-top:8px">Decline</button></div>';
+  var jWrap = document.createElement('div'); jWrap.style.cssText = 'text-align:center;padding:12px 0 20px';
+  var jEmoji = document.createElement('div'); jEmoji.style.cssText = 'font-size:40px;margin-bottom:12px'; jEmoji.textContent = '🤝';
+  var jTitle = document.createElement('div'); jTitle.style.cssText = 'font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px';
+  jTitle.textContent = 'Join '; var jTitleB = document.createElement('b'); jTitleB.textContent = title; jTitle.appendChild(jTitleB);
+  var jRole = document.createElement('div'); jRole.style.cssText = 'font-size:13px;color:var(--muted);margin-bottom:18px';
+  jRole.textContent = 'Role: '; var jRoleB = document.createElement('b'); jRoleB.style.color = 'var(--accent)'; jRoleB.textContent = Roles.label(role); jRole.appendChild(jRoleB);
+  var jOk = document.createElement('button'); jOk.className = 'ct-btn ct-btn-primary'; jOk.id = 'ct-join-ok'; jOk.style.cssText = 'width:100%;padding:12px'; jOk.textContent = '✅ Accept Invite';
+  var jNo = document.createElement('button'); jNo.className = 'ct-btn'; jNo.id = 'ct-join-no'; jNo.style.cssText = 'width:100%;margin-top:8px'; jNo.textContent = 'Decline';
+  jWrap.appendChild(jEmoji); jWrap.appendChild(jTitle); jWrap.appendChild(jRole); jWrap.appendChild(jOk); jWrap.appendChild(jNo);
+  m.body.appendChild(jWrap);
   setTimeout(function(){
     document.getElementById('ct-join-ok').onclick = function(){
       var me  = getCurrentUser();
@@ -30734,8 +30830,10 @@ function _addAssigneeBadges() {
     var badge = document.createElement('div');
     badge.setAttribute('data-ct-badge', '1');
     badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--accent);background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.2);border-radius:20px;padding:1px 7px 1px 4px;margin-top:3px;cursor:pointer';
-    badge.innerHTML = '<span style="width:14px;height:14px;border-radius:50%;background:var(--accent);color:#fff;font-size:8px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">' + asgn.name.charAt(0).toUpperCase() + '</span><span>' + asgn.name.split(' ')[0] + '</span>';
-    badge.onclick = function(e){ e.stopPropagation(); if(typeof openDetail==='function') openDetail(parseInt(taskId)||taskId); };
+    var bAvatar = document.createElement('span'); bAvatar.style.cssText = 'width:14px;height:14px;border-radius:50%;background:var(--accent);color:#fff;font-size:8px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0'; bAvatar.textContent = asgn.name.charAt(0).toUpperCase();
+    var bName = document.createElement('span'); bName.textContent = asgn.name.split(' ')[0];
+    badge.appendChild(bAvatar); badge.appendChild(bName);
+    badge.onclick = function(e){ e.stopPropagation(); if(typeof openDetail==='function') openDetail(taskId); };
     var meta = card.querySelector('.task-meta');
     if (meta) meta.insertAdjacentElement('afterend', badge);
     else { var body = card.querySelector('.task-body'); if (body) body.appendChild(badge); }
@@ -30880,6 +30978,13 @@ window.CT_Collab = {
   var me = getCurrentUser();
   if (!CollabStore.getProject('default_project')) {
     CollabStore.upsertProject({ id:'default_project', title:'My Tasks', color:'#d97706', owner_id:me.uid, created_at:Date.now() });
+  } else {
+    // M5 FIX: Pastikan owner default_project juga ada di members (migrasi data lama)
+    var defMembers = CollabStore.getMembers('default_project');
+    var ownerInMembers = defMembers.find(function(m){ return m.user_id === me.uid && m.role === 'owner'; });
+    if (!ownerInMembers) {
+      CollabStore.addMember('default_project', { user_id: me.uid, role: 'owner', status: 'active', joined_at: Date.now(), name: me.displayName || 'Owner', email: me.email || '' });
+    }
   }
 
   // Sidebar injection with retry
