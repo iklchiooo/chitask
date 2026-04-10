@@ -29240,55 +29240,42 @@ console.log('[ChiTask+] Features loaded: Recurring, Timer chip, Subtask chip');
   }
 
   // Patch getTasksForDate
-  // FIX: Repeat task hanya tampil di 1 tanggal berikutnya, bukan semua tanggal future
   var _origGetTasksForDate = window.getTasksForDate;
   window.getTasksForDate = function(dateStr) {
     var seen = {};
     var result = [];
     if (typeof tasks === 'undefined') return result;
-    var todayS = (typeof todayStr !== 'undefined') ? todayStr : new Date().toISOString().slice(0,10);
 
     tasks.forEach(function(t) {
       if (seen[t.id]) return;
 
-      // ── MASA LALU ──
-      // Hanya tampilkan kalau benar-benar sudah dicentang di tanggal itu
-      if (dateStr < todayS) {
-        if (t.history && t.history.indexOf(dateStr) >= 0) {
-          seen[t.id] = true; result.push(t); return;
-        }
-        if (!t.repeat && t.due === dateStr) {
-          seen[t.id] = true; result.push(t); return;
-        }
-        if (!t.repeat && t.done && t.doneDate === dateStr) {
-          seen[t.id] = true; result.push(t); return;
-        }
-        // Repeat yang belum dicentang TIDAK tampil di masa lalu
-        return;
+      // 1. Exact due date match
+      if (t.due === dateStr) {
+        seen[t.id] = true; result.push(t); return;
       }
 
-      // ── HARI INI ──
-      if (dateStr === todayS) {
-        if (t.due === dateStr) { seen[t.id] = true; result.push(t); return; }
-        if (t.repeat && t._nextDue && t._nextDue === dateStr) { seen[t.id] = true; result.push(t); return; }
-        if (t.repeat && t.due && !t.done && repeatFiresOnDate(t, dateStr)) { seen[t.id] = true; result.push(t); return; }
-        if (t.history && t.history.indexOf(dateStr) >= 0) { seen[t.id] = true; result.push(t); return; }
-        return;
+      // 2. Habit/repeat task that fires on this date via interval
+      if (t.repeat && t.due) {
+        if (repeatFiresOnDate(t, dateStr)) {
+          seen[t.id] = true; result.push(t); return;
+        }
       }
 
-      // ── MASA DEPAN ──
-      // Repeat task: HANYA tampil di 1 tanggal berikutnya
-      if (t.repeat) {
-        // Kalau task sudah dicentang dan punya _nextDue → tampil di _nextDue saja
-        if (t._nextDue && t._nextDue === dateStr) { seen[t.id] = true; result.push(t); return; }
-        // Kalau belum pernah dicentang → tampil hanya di due date aslinya
-        if (!t.done && !t._nextDue && t.due === dateStr) { seen[t.id] = true; result.push(t); return; }
-        // Semua tanggal future lainnya → TIDAK tampil (baru muncul setelah dicentang)
-        return;
+      // 3. Habit checked on dateStr (history)
+      if (t.type === 'Habit' && t.history && t.history.indexOf(dateStr) >= 0) {
+        if (t.due && t.due > dateStr) return; // future due → skip
+        seen[t.id] = true; result.push(t); return;
       }
 
-      // Non-repeat future task
-      if (t.due === dateStr) { seen[t.id] = true; result.push(t); return; }
+      // 4. Completed task with doneDate = dateStr
+      if (t.done && t.doneDate === dateStr) {
+        seen[t.id] = true; result.push(t); return;
+      }
+
+      // 5. Non-habit task completed on dateStr (history)
+      if (t.done && t.type !== 'Habit' && t.history && t.history.indexOf(dateStr) >= 0) {
+        seen[t.id] = true; result.push(t); return;
+      }
     });
 
     return result;
@@ -29446,372 +29433,478 @@ console.log('[ChiTask v2] All upgrades loaded ✅');
 
 
 <!-- ══════════════════════════════════════════════════════════════════════════
-     MODULE 8: COLLABORATION — ChiTask v4
-     Redesign: Projects have their own task list, members, activity, comments.
+     MODULE 8: COLLABORATION — ChiTask v5 (Full Rewrite)
+     Storage: localStorage primary + Firebase sync (optional)
+     Works for both guest and Google-logged-in users.
      ══════════════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
 'use strict';
 
 // ─────────────────────────────────────────────
-// § 1. DATA LAYER
+// § 1. LOCAL STORAGE HELPERS
+// ─────────────────────────────────────────────
+var LS_KEY = 'chitask_collab_v5';
+
+function _lsLoad() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch(e) { return {}; }
+}
+function _lsSave(data) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+}
+function _lsGet(section, defaultVal) {
+  var d = _lsLoad();
+  return d[section] !== undefined ? d[section] : defaultVal;
+}
+function _lsSet(section, val) {
+  var d = _lsLoad();
+  d[section] = val;
+  _lsSave(d);
+}
+
+// ─────────────────────────────────────────────
+// § 2. DATA LAYER — CollabStore
 // ─────────────────────────────────────────────
 var CollabStore = (function() {
-  // ── In-memory cache only (no localStorage for collab data) ──
-  var _cache = { projects:{}, members:{}, activity:{}, projectTasks:{}, assignments:{}, messages:{} };
-  var _unsubs = []; // Firestore unsubscribe handles
-  var _diskRenderCallbacks = {}; // For diskusi render callbacks
+  // In-memory cache — loaded from localStorage on init
+  var _c = { projects:{}, members:{}, activity:{}, projectTasks:{}, assignments:{}, messages:{} };
+  var _unsubs = [];
+  var _diskCbs = {};
+  var _renderCbs = []; // general re-render callbacks
 
-  function _db(){ return (typeof fbDb!=='undefined' && fbDb) ? fbDb : null; }
-  function _uid(){ var db=_db(); return (typeof fbUser!=='undefined'&&fbUser&&fbUser.uid)?fbUser.uid:null; }
+  // ── Bootstrap from localStorage ──
+  (function _bootstrap(){
+    var stored = _lsLoad();
+    if (stored.projects)     _c.projects     = stored.projects;
+    if (stored.members)      _c.members      = stored.members;
+    if (stored.activity)     _c.activity     = stored.activity;
+    if (stored.projectTasks) _c.projectTasks = stored.projectTasks;
+    if (stored.assignments)  _c.assignments  = stored.assignments;
+    if (stored.messages)     _c.messages     = stored.messages;
+  })();
 
-  // ── Projects (collection: /projects/{projectId}) ──
-  function getProjects(){ return Object.values(_cache.projects); }
-  function getProject(id){ return _cache.projects[id]||null; }
-
-  function upsertProject(proj){
-    _cache.projects[proj.id] = proj;
-    var db=_db(); if(!db) return Promise.resolve();
-    return db.collection('projects').doc(proj.id).set(proj).catch(function(e){ console.error('[Collab] upsertProject',e); });
+  function _persist() {
+    _lsSave({
+      projects:     _c.projects,
+      members:      _c.members,
+      activity:     _c.activity,
+      projectTasks: _c.projectTasks,
+      assignments:  _c.assignments,
+      messages:     _c.messages
+    });
   }
-  function deleteProject(id){
-    delete _cache.projects[id];
-    var db=_db(); if(!db) return Promise.resolve();
-    return db.collection('projects').doc(id).delete().catch(function(e){ console.error('[Collab] deleteProject',e); });
+
+  function _db()  { return (typeof fbDb  !== 'undefined' && fbDb)  ? fbDb  : null; }
+  function _uid() { return (typeof fbUser !== 'undefined' && fbUser && fbUser.uid) ? fbUser.uid : null; }
+
+  function _notifyRender() {
+    _renderCbs.forEach(function(fn){ try{fn();}catch(e){} });
   }
 
-  // ── Members (collection: /project_members/{projectId}_{userId}) ──
-  function getMembers(pid){ return _cache.members[pid]||[]; }
+  // ── Projects ──
+  function getProjects()   { return Object.values(_c.projects); }
+  function getProject(id)  { return _c.projects[id] || null; }
 
-  // Add a single member doc
-  function addMember(pid, memberObj){
-    var db=_db(); if(!db) return Promise.resolve();
-    var docId = pid + '_' + memberObj.user_id;
+  function upsertProject(proj) {
+    _c.projects[proj.id] = proj;
+    _persist();
+    _notifyRender();
+    var db = _db(); if (!db) return Promise.resolve();
+    return db.collection('projects').doc(proj.id).set(proj)
+      .catch(function(e){ console.error('[Collab] upsertProject', e); });
+  }
+  function deleteProject(id) {
+    delete _c.projects[id];
+    _persist();
+    _notifyRender();
+    var db = _db(); if (!db) return Promise.resolve();
+    return db.collection('projects').doc(id).delete()
+      .catch(function(e){ console.error('[Collab] deleteProject', e); });
+  }
+
+  // ── Members ──
+  function getMembers(pid) { return _c.members[pid] || []; }
+
+  function addMember(pid, memberObj) {
+    if (!_c.members[pid]) _c.members[pid] = [];
+    var idx = _c.members[pid].findIndex(function(m){ return m.user_id === memberObj.user_id; });
     var data = Object.assign({}, memberObj, { project_id: pid });
-    return db.collection('project_members').doc(docId).set(data).then(function(){
-      if(!_cache.members[pid]) _cache.members[pid]=[];
-      var existing = _cache.members[pid].findIndex(function(m){ return m.user_id===memberObj.user_id; });
-      if(existing>=0) _cache.members[pid][existing] = data;
-      else _cache.members[pid].push(data);
-    }).catch(function(e){ console.error('[Collab] addMember',e); });
+    if (idx >= 0) _c.members[pid][idx] = data;
+    else _c.members[pid].push(data);
+    _persist();
+    _notifyRender();
+    var db = _db(); if (!db) return Promise.resolve();
+    return db.collection('project_members').doc(pid + '_' + memberObj.user_id).set(data)
+      .catch(function(e){ console.error('[Collab] addMember', e); });
   }
 
-  function removeMember(pid, userId){
-    var db=_db(); if(!db) return Promise.resolve();
-    var docId = pid + '_' + userId;
-    return db.collection('project_members').doc(docId).delete().then(function(){
-      if(_cache.members[pid]) _cache.members[pid] = _cache.members[pid].filter(function(m){ return m.user_id!==userId; });
-    }).catch(function(e){ console.error('[Collab] removeMember',e); });
+  function removeMember(pid, userId) {
+    if (_c.members[pid]) _c.members[pid] = _c.members[pid].filter(function(m){ return m.user_id !== userId; });
+    _persist();
+    _notifyRender();
+    var db = _db(); if (!db) return Promise.resolve();
+    return db.collection('project_members').doc(pid + '_' + userId).delete()
+      .catch(function(e){ console.error('[Collab] removeMember', e); });
   }
 
-  // Legacy compat: saveMembers still works (replaces all members)
-  function saveMembers(pid, members){
-    var db=_db(); if(!db){ _cache.members[pid]=members; return; }
-    var batch=db.batch();
-    // Delete old members not in new list
-    var oldIds = (_cache.members[pid]||[]).map(function(m){ return m.user_id; });
-    var newIds = members.map(function(m){ return m.user_id; });
-    oldIds.forEach(function(uid){ if(newIds.indexOf(uid)<0) batch.delete(db.collection('project_members').doc(pid+'_'+uid)); });
-    // Upsert all new
-    members.forEach(function(m){ batch.set(db.collection('project_members').doc(pid+'_'+m.user_id), Object.assign({},m,{project_id:pid})); });
-    _cache.members[pid] = members;
-    batch.commit().catch(function(e){ console.error('[Collab] saveMembers',e); });
+  function saveMembers(pid, members) {
+    _c.members[pid] = members;
+    _persist();
+    var db = _db(); if (!db) return;
+    var batch = db.batch();
+    members.forEach(function(m){
+      batch.set(db.collection('project_members').doc(pid + '_' + m.user_id), Object.assign({}, m, { project_id: pid }));
+    });
+    batch.commit().catch(function(e){ console.error('[Collab] saveMembers', e); });
   }
 
-  // ── Activity (collection: /project_activity/{actId}) ──
-  function getActivity(pid){ return (_cache.activity[pid]||[]).slice(0,100); }
-  function addActivity(pid, entry){
-    if(!_cache.activity[pid]) _cache.activity[pid]=[];
-    _cache.activity[pid].unshift(entry);
-    var db=_db(); if(!db) return;
-    db.collection('project_activity').doc(entry.id).set(Object.assign({},entry,{project_id:pid})).catch(function(e){ console.error('[Collab] addActivity',e); });
+  // ── Activity ──
+  function getActivity(pid) { return (_c.activity[pid] || []).slice(0, 100); }
+  function addActivity(pid, entry) {
+    if (!_c.activity[pid]) _c.activity[pid] = [];
+    _c.activity[pid].unshift(entry);
+    _persist();
+    if (_activityCbs[pid]) _activityCbs[pid]();
+    var db = _db(); if (!db) return;
+    db.collection('project_activity').doc(entry.id).set(Object.assign({}, entry, { project_id: pid }))
+      .catch(function(e){ console.error('[Collab] addActivity', e); });
   }
 
-  // ── Project Tasks (subcollection stored as single doc for simplicity) ──
-  // /projects/{pid}/tasks/{taskId} — each task is its own doc
-  function getProjectTasks(pid){ return _cache.projectTasks[pid]||[]; }
-  function saveProjectTasks(pid, tasks){
-    _cache.projectTasks[pid] = tasks;
-    var db=_db(); if(!db) return;
-    // Store as a map doc under projects/{pid}/tasks/all
-    db.collection('projects').doc(pid).collection('tasks').doc('all').set({tasks:tasks,updated_at:Date.now()}).catch(function(e){ console.error('[Collab] saveProjectTasks',e); });
+  // ── Project Tasks ──
+  function getProjectTasks(pid) { return _c.projectTasks[pid] || []; }
+  function saveProjectTasks(pid, tasks) {
+    _c.projectTasks[pid] = tasks;
+    _persist();
+    var db = _db(); if (!db) return;
+    db.collection('projects').doc(pid).collection('tasks').doc('all')
+      .set({ tasks: tasks, updated_at: Date.now() })
+      .catch(function(e){ console.error('[Collab] saveProjectTasks', e); });
   }
-  function addProjectTask(pid,task){ var tasks=getProjectTasks(pid).slice(); tasks.push(task); saveProjectTasks(pid,tasks); return task; }
-  function updateProjectTask(pid,taskId,patch){ saveProjectTasks(pid,getProjectTasks(pid).map(function(t){ return t.id===taskId?Object.assign({},t,patch):t; })); }
-  function deleteProjectTask(pid,taskId){ saveProjectTasks(pid,getProjectTasks(pid).filter(function(t){ return t.id!==taskId; })); }
+  function addProjectTask(pid, task)           { var t = getProjectTasks(pid).slice(); t.push(task); saveProjectTasks(pid, t); return task; }
+  function updateProjectTask(pid, taskId, patch){ saveProjectTasks(pid, getProjectTasks(pid).map(function(t){ return t.id === taskId ? Object.assign({}, t, patch) : t; })); }
+  function deleteProjectTask(pid, taskId)       { saveProjectTasks(pid, getProjectTasks(pid).filter(function(t){ return t.id !== taskId; })); }
 
-  // ── Assignments (collection: /project_assignments/{assignId}) ──
-  function getAssignment(taskId){ return _cache.assignments[taskId]||null; }
-  function setAssignment(taskId, data, pid){
-    // Fix 4: Include project_id so per-project listener can filter correctly
-    if(data) _cache.assignments[taskId]=data; else delete _cache.assignments[taskId];
-    var db=_db(); if(!db) return;
-    if(data){
-      var docData = Object.assign({taskId:taskId, project_id: pid||'default_project'}, data);
-      db.collection('project_assignments').doc(taskId).set(docData).catch(function(e){ console.error('[Collab] setAssignment',e); });
+  // ── Assignments ──
+  function getAssignment(taskId) { return _c.assignments[taskId] || null; }
+  function getAllAssignments()   { return _c.assignments; }
+  function setAssignment(taskId, data, pid) {
+    if (data) _c.assignments[taskId] = data;
+    else delete _c.assignments[taskId];
+    _persist();
+    var db = _db(); if (!db) return;
+    if (data) {
+      db.collection('project_assignments').doc(String(taskId))
+        .set(Object.assign({ taskId: taskId, project_id: pid || 'default_project' }, data))
+        .catch(function(e){ console.error('[Collab] setAssignment', e); });
     } else {
-      db.collection('project_assignments').doc(taskId).delete().catch(function(e){ console.error('[Collab] delAssignment',e); });
+      db.collection('project_assignments').doc(String(taskId)).delete()
+        .catch(function(e){ console.error('[Collab] delAssignment', e); });
     }
   }
-  function getAllAssignments(){ return _cache.assignments; }
 
-  // ── Messages / Diskusi (subcollection: /projects/{pid}/messages/{msgId}) ──
-  function getMessages(pid){ return _cache.messages[pid]||[]; }
+  // ── Messages / Diskusi ──
+  function getMessages(pid) { return (_c.messages[pid] || []).sort(function(a,b){ return (a.ts||0)-(b.ts||0); }); }
 
-  function sendMessage(pid, msgObj){
-    // Optimistic: langsung insert ke cache supaya UI langsung update
-    var docId = 'msg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
-    var data = Object.assign({}, msgObj, { id: docId, project_id: pid });
-    if(!_cache.messages[pid]) _cache.messages[pid] = [];
-    _cache.messages[pid].push(data);
-    // Trigger diskusi render callback kalau ada
-    if(_diskRenderCallbacks[pid]) _diskRenderCallbacks[pid]();
+  function sendMessage(pid, msgObj) {
+    var docId = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    var data  = Object.assign({}, msgObj, { id: docId, project_id: pid });
+    // Always update local cache first
+    if (!_c.messages[pid]) _c.messages[pid] = [];
+    _c.messages[pid].push(data);
+    _persist();
+    if (_diskCbs[pid]) _diskCbs[pid]();
 
-    // Kirim ke Firestore kalau ada koneksi
-    var db=_db();
-    if(!db) return Promise.resolve(); // guest/offline: cache sudah diupdate, cukup
-    return db.collection('projects').doc(pid).collection('messages').doc(docId).set(data).catch(function(e){ console.error('[Collab] sendMessage',e); });
+    var db = _db();
+    if (!db) return Promise.resolve(); // offline/guest: local only
+    return db.collection('projects').doc(pid).collection('messages').doc(docId).set(data)
+      .catch(function(e){ console.error('[Collab] sendMessage', e); });
   }
 
-  // ── Invite Links (collection: /project_invites/{inviteId}) ──
-  function createInvite(pid, role){
-    var db=_db(); if(!db) return Promise.reject('no db');
-    var inviteId = 'inv_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+  // ── Invite Links ──
+  function createInvite(pid, role) {
+    var db = _db(); if (!db) return Promise.reject('no db');
+    var inviteId = 'inv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     var me = getCurrentUser();
-    var data = { id: inviteId, project_id: pid, role: role, created_by: me.uid, created_at: Date.now(), exp: Date.now()+7*24*3600*1000 };
+    var data = { id: inviteId, project_id: pid, role: role, created_by: me.uid, created_at: Date.now(), exp: Date.now() + 7 * 24 * 3600 * 1000 };
     return db.collection('project_invites').doc(inviteId).set(data).then(function(){ return data; });
   }
-  function getInvite(inviteId){
-    var db=_db(); if(!db) return Promise.reject('no db');
+  function getInvite(inviteId) {
+    var db = _db(); if (!db) return Promise.reject('no db');
     return db.collection('project_invites').doc(inviteId).get().then(function(doc){
-      if(!doc.exists) throw new Error('invite_not_found');
+      if (!doc.exists) throw new Error('invite_not_found');
       return doc.data();
     });
   }
-  function fetchProjectForJoin(pid){
-    var db=_db(); if(!db) return Promise.reject('no db');
+  function fetchProjectForJoin(pid) {
+    var db = _db(); if (!db) return Promise.reject('no db');
     return db.collection('projects').doc(pid).get().then(function(doc){
-      if(!doc.exists) throw new Error('project_not_found');
-      var proj = doc.data();
-      _cache.projects[pid] = proj;
-      return proj;
+      if (!doc.exists) throw new Error('project_not_found');
+      _c.projects[pid] = doc.data();
+      _persist();
+      return doc.data();
     });
   }
 
+  // ── Activity callbacks (per-project, for UI auto-refresh) ──
+  var _activityCbs = {};
+
   // ── Firebase Realtime Listeners ──
-  function initListeners(){
-    var db=_db(); if(!db) return;
-    var uid=_uid(); if(!uid) return;
+  var _memberListeners = {}, _msgListeners = {}, _taskListeners = {}, _assignListeners = {}, _activityListeners = {};
 
-    // Unsubscribe any previous
-    _unsubs.forEach(function(u){ try{u();}catch(e){} }); _unsubs=[];
+  function initListeners() {
+    var db = _db(); if (!db) return;
+    var uid = _uid(); if (!uid) return;
 
-    // Listen: projects owned by me OR where I'm a member
-    var u1 = db.collection('projects').where('owner_id','==',uid).onSnapshot(function(snap){
-      snap.docs.forEach(function(d){ 
-        _cache.projects[d.id]=d.data();
-        _listenProjectMembers(d.id);
-        _listenProjectMessages(d.id);
-        _listenProjectTasks(d.id);
+    _unsubs.forEach(function(u){ try{u();}catch(e){} });
+    _unsubs = [];
+    _memberListeners = {}; _msgListeners = {}; _taskListeners = {}; _assignListeners = {}; _activityListeners = {};
+
+    // Listen: my projects
+    var u1 = db.collection('projects').where('owner_id', '==', uid).onSnapshot(function(snap){
+      snap.docs.forEach(function(d){
+        _c.projects[d.id] = d.data();
+        _listenProject(d.id);
       });
-    }, function(e){ console.warn('[Collab] projects listener',e); });
+      _persist();
+      _notifyRender();
+    }, function(e){ console.warn('[Collab] projects listener', e); });
     _unsubs.push(u1);
 
-    // Listen: project_members where I am a member — gives me the project_ids
-    var u2 = db.collection('project_members').where('user_id','==',uid).onSnapshot(function(snap){
+    // Listen: projects where I'm a member
+    var u2 = db.collection('project_members').where('user_id', '==', uid).onSnapshot(function(snap){
       snap.docs.forEach(function(d){
         var m = d.data();
         var pid = m.project_id;
-        if(!_cache.members[pid]) _cache.members[pid]=[];
-        // Fetch the project itself if we don't have it
-        if(!_cache.projects[pid]){
-          db.collection('projects').doc(pid).get().then(function(pd){ if(pd.exists) _cache.projects[pid]=pd.data(); }).catch(function(){});
+        if (!_c.projects[pid]) {
+          db.collection('projects').doc(pid).get().then(function(pd){
+            if (pd.exists) { _c.projects[pid] = pd.data(); _persist(); _notifyRender(); }
+          }).catch(function(){});
         }
-        // Fetch all members of that project
-        _listenProjectMembers(pid);
-        // Listen to messages
-        _listenProjectMessages(pid);
-        // Listen to tasks
-        _listenProjectTasks(pid);
+        _listenProject(pid);
       });
-    }, function(e){ console.warn('[Collab] member listener',e); });
+    }, function(e){ console.warn('[Collab] member listener', e); });
     _unsubs.push(u2);
 
-    // Fix 3: Assignments listener moved to per-project in _listenProjectAssignments (no unfiltered collection-wide listen)
-    console.log('[CT_Collab] Firebase listeners active');
+    console.log('[CT_Collab v7] Firebase listeners active');
   }
 
-  var _memberListeners = {};
-  function _listenProjectMembers(pid){
-    if(_memberListeners[pid]) return;
-    var db=_db(); if(!db) return;
-    _memberListeners[pid] = db.collection('project_members').where('project_id','==',pid).onSnapshot(function(snap){
-      _cache.members[pid] = snap.docs.map(function(d){ return d.data(); });
-    }, function(e){ console.warn('[Collab] members['+pid+']',e); });
-    _unsubs.push(_memberListeners[pid]);
-  }
-
-  var _msgListeners = {};
-  function _listenProjectMessages(pid){
-    if(_msgListeners[pid]) return;
-    var db=_db(); if(!db) return;
-    _msgListeners[pid] = db.collection('projects').doc(pid).collection('messages')
-      .orderBy('ts','asc').limit(200)
-      .onSnapshot(function(snap){
-        _cache.messages[pid] = snap.docs.map(function(d){ return d.data(); });
-        if (_diskRenderCallbacks[pid]) _diskRenderCallbacks[pid]();
-      }, function(e){ console.warn('[Collab] messages['+pid+']',e); });
-    _unsubs.push(_msgListeners[pid]);
-  }
-
-  var _taskListeners = {};
-  function _listenProjectTasks(pid){
-    if(_taskListeners[pid]) return;
-    var db=_db(); if(!db) return;
-    _taskListeners[pid] = db.collection('projects').doc(pid).collection('tasks').doc('all')
-      .onSnapshot(function(doc){
-        if(doc.exists) _cache.projectTasks[pid] = doc.data().tasks||[];
-        else _cache.projectTasks[pid] = [];
-      }, function(e){ console.warn('[Collab] tasks['+pid+']',e); });
-    _unsubs.push(_taskListeners[pid]);
-  }
-
-  // Fix 3: Per-project assignments listener (filtered by project_id — safe with Firestore rules)
-  var _assignListeners = {};
-  function _listenProjectAssignments(pid){
-    if(_assignListeners[pid]) return;
-    var db=_db(); if(!db) return;
-    _assignListeners[pid] = db.collection('project_assignments').where('project_id','==',pid).onSnapshot(function(snap){
-      snap.docs.forEach(function(d){ _cache.assignments[d.id]=d.data(); });
-    }, function(e){ console.warn('[Collab] assignments['+pid+']',e); });
-    _unsubs.push(_assignListeners[pid]);
-  }
-
-  // Called when a project is opened — ensures listeners are active
-  function listenProject(pid){
+  function _listenProject(pid) {
     _listenProjectMembers(pid);
     _listenProjectMessages(pid);
     _listenProjectTasks(pid);
-    _listenProjectAssignments(pid); // Fix 3: per-project filtered listener
-    // Also fetch activity (not realtime, just load latest)
-    var db=_db(); if(!db) return;
-    db.collection('project_activity').where('project_id','==',pid).orderBy('ts','desc').limit(50)
-      .get().then(function(snap){
-        _cache.activity[pid] = snap.docs.map(function(d){ return d.data(); });
-      }).catch(function(){});
+    _listenProjectAssignments(pid);
+    _listenProjectActivity(pid);
+  }
+
+  function _listenProjectMembers(pid) {
+    if (_memberListeners[pid]) return;
+    var db = _db(); if (!db) return;
+    _memberListeners[pid] = db.collection('project_members').where('project_id', '==', pid).onSnapshot(function(snap){
+      _c.members[pid] = snap.docs.map(function(d){ return d.data(); });
+      _persist();
+      _notifyRender();
+    }, function(e){ console.warn('[Collab] members[' + pid + ']', e); });
+    _unsubs.push(_memberListeners[pid]);
+  }
+
+  function _listenProjectMessages(pid) {
+    if (_msgListeners[pid]) return;
+    var db = _db(); if (!db) return;
+    _msgListeners[pid] = db.collection('projects').doc(pid).collection('messages')
+      .orderBy('ts', 'asc').limit(200)
+      .onSnapshot(function(snap){
+        _c.messages[pid] = snap.docs.map(function(d){ return d.data(); });
+        _persist();
+        if (_diskCbs[pid]) _diskCbs[pid]();
+      }, function(e){ console.warn('[Collab] messages[' + pid + ']', e); });
+    _unsubs.push(_msgListeners[pid]);
+  }
+
+  function _listenProjectTasks(pid) {
+    if (_taskListeners[pid]) return;
+    var db = _db(); if (!db) return;
+    _taskListeners[pid] = db.collection('projects').doc(pid).collection('tasks').doc('all')
+      .onSnapshot(function(doc){
+        _c.projectTasks[pid] = doc.exists ? (doc.data().tasks || []) : [];
+        _persist();
+        _notifyRender();
+      }, function(e){ console.warn('[Collab] tasks[' + pid + ']', e); });
+    _unsubs.push(_taskListeners[pid]);
+  }
+
+  function _listenProjectAssignments(pid) {
+    if (_assignListeners[pid]) return;
+    var db = _db(); if (!db) return;
+    _assignListeners[pid] = db.collection('project_assignments').where('project_id', '==', pid).onSnapshot(function(snap){
+      snap.docChanges().forEach(function(change){
+        if (change.type === 'removed') {
+          delete _c.assignments[change.doc.id];
+        } else {
+          _c.assignments[change.doc.id] = change.doc.data();
+        }
+      });
+      _persist();
+      _notifyRender();
+      // Refresh assignee badges on task cards
+      if (typeof _addAssigneeBadges === 'function') setTimeout(_addAssigneeBadges, 50);
+    }, function(e){ console.warn('[Collab] assignments[' + pid + ']', e); });
+    _unsubs.push(_assignListeners[pid]);
+  }
+
+  function _listenProjectActivity(pid) {
+    if (_activityListeners[pid]) return;
+    var db = _db(); if (!db) return;
+    _activityListeners[pid] = db.collection('project_activity')
+      .where('project_id', '==', pid).orderBy('ts', 'desc').limit(50)
+      .onSnapshot(function(snap){
+        _c.activity[pid] = snap.docs.map(function(d){ return d.data(); });
+        _persist();
+        if (_activityCbs[pid]) _activityCbs[pid]();
+      }, function(e){ console.warn('[Collab] activity[' + pid + ']', e); });
+    _unsubs.push(_activityListeners[pid]);
+  }
+
+  function listenProject(pid) { _listenProject(pid); }
+
+  // Pull activity — now delegates to realtime listener (onSnapshot handles initial load)
+  function pullActivity(pid) {
+    _listenProjectActivity(pid);
   }
 
   return {
-    getProjects, getProject, upsertProject, deleteProject,
-    getMembers, addMember, removeMember, saveMembers,
-    getActivity, addActivity,
-    getProjectTasks, saveProjectTasks, addProjectTask, updateProjectTask, deleteProjectTask,
-    getAssignment, setAssignment, getAllAssignments,
-    getMessages, sendMessage,
-    createInvite, getInvite, fetchProjectForJoin,
-    initListeners, listenProject,
-    // FIX: expose diskusi render callback registry so showProjectDetail (outside IIFE) can register
-    setDiskCallback: function(pid, fn){ _diskRenderCallbacks[pid] = fn; },
-    clearDiskCallback: function(pid){ delete _diskRenderCallbacks[pid]; }
+    getProjects:      getProjects,
+    getProject:       getProject,
+    upsertProject:    upsertProject,
+    deleteProject:    deleteProject,
+    getMembers:       getMembers,
+    addMember:        addMember,
+    removeMember:     removeMember,
+    saveMembers:      saveMembers,
+    getActivity:      getActivity,
+    addActivity:      addActivity,
+    pullActivity:     pullActivity,
+    getProjectTasks:  getProjectTasks,
+    saveProjectTasks: saveProjectTasks,
+    addProjectTask:   addProjectTask,
+    updateProjectTask:updateProjectTask,
+    deleteProjectTask:deleteProjectTask,
+    getAssignment:    getAssignment,
+    setAssignment:    setAssignment,
+    getAllAssignments: getAllAssignments,
+    getMessages:      getMessages,
+    sendMessage:      sendMessage,
+    createInvite:     createInvite,
+    getInvite:        getInvite,
+    fetchProjectForJoin: fetchProjectForJoin,
+    initListeners:    initListeners,
+    listenProject:    listenProject,
+    setDiskCallback:  function(pid, fn){ _diskCbs[pid] = fn; },
+    clearDiskCallback:function(pid){ delete _diskCbs[pid]; },
+    setActivityCallback:  function(pid, fn){ _activityCbs[pid] = fn; },
+    clearActivityCallback:function(pid){ delete _activityCbs[pid]; },
+    onRender:         function(fn){ _renderCbs.push(fn); },
+    offRender:        function(fn){ _renderCbs = _renderCbs.filter(function(x){ return x !== fn; }); }
   };
 })();
 
 // ─────────────────────────────────────────────
-// § 2. ROLE SYSTEM
+// § 3. ROLE SYSTEM
 // ─────────────────────────────────────────────
 var Roles = {
   OWNER:'owner', EDITOR:'editor', VIEWER:'viewer',
-  label:function(r){return{owner:'👑 Owner',editor:'✏️ Editor',viewer:'👁️ Viewer'}[r]||r;},
-  color:function(r){return{owner:'#d97706',editor:'#6366f1',viewer:'#78716c'}[r]||'#78716c';},
-  canEdit:function(r){return r==='owner'||r==='editor';},
-  canDelete:function(r){return r==='owner';},
-  canManageMembers:function(r){return r==='owner';}
+  label: function(r){ return {owner:'👑 Owner', editor:'✏️ Editor', viewer:'👁️ Viewer'}[r] || r; },
+  color: function(r){ return {owner:'#d97706', editor:'#6366f1', viewer:'#78716c'}[r] || '#78716c'; },
+  canEdit:          function(r){ return r === 'owner' || r === 'editor'; },
+  canDelete:        function(r){ return r === 'owner'; },
+  canManageMembers: function(r){ return r === 'owner'; }
 };
 
 // ─────────────────────────────────────────────
-// § 3. CURRENT USER
+// § 4. CURRENT USER
 // ─────────────────────────────────────────────
-function getCurrentUser(){
-  if(typeof fbUser!=='undefined'&&fbUser)
-    return{uid:fbUser.uid||'local_user',name:fbUser.displayName||'You',email:fbUser.email||'',photo:fbUser.photoURL||null,_isGuest:!!(fbUser._isGuest)};
-  try{
-    // Fix 1: Stable guest UID — generate once and persist, independent of username changes
+function getCurrentUser() {
+  if (typeof fbUser !== 'undefined' && fbUser && !fbUser._isGuest && !fbUser._isOffline)
+    return { uid: fbUser.uid, name: fbUser.displayName || 'You', email: fbUser.email || '', photo: fbUser.photoURL || null, _isGuest: false };
+  try {
     var guestUid = localStorage.getItem('chitask_guest_uid');
-    if(!guestUid){
-      guestUid = 'guest_' + Date.now() + '_' + Math.random().toString(36).slice(2,9);
+    if (!guestUid) {
+      guestUid = 'guest_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
       localStorage.setItem('chitask_guest_uid', guestUid);
     }
-    var d=JSON.parse(localStorage.getItem('chitask_v6_data')||'{}');
-    return{uid:guestUid,name:d._userName||'Guest',email:'',photo:null,_isGuest:true};
-  }catch(e){return{uid:'local_user',name:'You',email:'',photo:null,_isGuest:true};}
+    var d = JSON.parse(localStorage.getItem('chitask_v6_data') || '{}');
+    return { uid: guestUid, name: d._userName || 'Guest', email: '', photo: null, _isGuest: true };
+  } catch(e) {
+    return { uid: 'local_user', name: 'You', email: '', photo: null, _isGuest: true };
+  }
 }
 
 // ─────────────────────────────────────────────
-// § 4. ACTIVITY LOGGER
+// § 5. ACTIVITY LOGGER
 // ─────────────────────────────────────────────
-function logActivity(pid,action,meta){
-  var u=getCurrentUser();
-  CollabStore.addActivity(pid,{id:'act_'+Date.now(),user_id:u.uid,user_name:u.name,user_photo:u.photo,action:action,meta:meta||{},ts:Date.now()});
-}
-
-// ─────────────────────────────────────────────
-// § 5. INVITE LINKS
-// ─────────────────────────────────────────────
-function generateInviteLink(pid,role){
-  // Creates a Firestore invite doc and returns the shareable URL
-  return CollabStore.createInvite(pid,role).then(function(data){
-    return window.location.origin+window.location.pathname+'?invite='+data.id;
+function logActivity(pid, action, meta) {
+  var u = getCurrentUser();
+  CollabStore.addActivity(pid, {
+    id: 'act_' + Date.now(), user_id: u.uid, user_name: u.name,
+    user_photo: u.photo, action: action, meta: meta || {}, ts: Date.now()
   });
 }
-// Legacy sync version for UI that still calls it sync — returns placeholder while async resolves
-function generateInviteLinkSync(pid, role, callback){
-  var me=getCurrentUser();
-  if(!me||!me.uid||me._isGuest){
-    if(callback) callback('⚠️ Login Google untuk membuat invite link');
+
+// ─────────────────────────────────────────────
+// § 6. INVITE LINKS
+// ─────────────────────────────────────────────
+function generateInviteLink(pid, role) {
+  return CollabStore.createInvite(pid, role).then(function(data){
+    return window.location.origin + window.location.pathname + '?invite=' + data.id;
+  });
+}
+function generateInviteLinkSync(pid, role, callback) {
+  var me = getCurrentUser();
+  if (!me || !me.uid || me._isGuest) {
+    if (callback) callback('⚠️ Login Google untuk membuat invite link');
     return;
   }
-  CollabStore.createInvite(pid,role).then(function(data){
-    var url = window.location.origin+window.location.pathname+'?invite='+data.id;
-    if(callback) callback(url);
+  CollabStore.createInvite(pid, role).then(function(data){
+    var url = window.location.origin + window.location.pathname + '?invite=' + data.id;
+    if (callback) callback(url);
   }).catch(function(e){
-    console.error('[Collab] generateInviteLink',e);
-    var msg=(e==='no db'||(e&&e.message==='no db'))
-      ?'⚠️ Login Google untuk membuat invite link'
-      :'⚠️ Gagal buat link: '+(e&&e.message?e.message:e);
-    if(callback) callback(msg);
+    var msg = (e === 'no db' || (e && e.message === 'no db'))
+      ? '⚠️ Login Google untuk membuat invite link'
+      : '⚠️ Gagal buat link: ' + (e && e.message ? e.message : e);
+    if (callback) callback(msg);
   });
 }
+
+// Auto-join via invite URL
 (function(){
-  var inviteId=new URLSearchParams(window.location.search).get('invite'); if(!inviteId)return;
-  // Fetch invite from Firestore (rules: allow read: if true — public)
+  var inviteId = new URLSearchParams(window.location.search).get('invite');
+  if (!inviteId) return;
   setTimeout(function(){
     CollabStore.getInvite(inviteId).then(function(data){
-      if(!data||!data.project_id){ _showToast('⚠️ Link tidak valid','warn'); return; }
-      if(Date.now()>data.exp){ _showToast('⚠️ Link sudah expired','warn'); return; }
-      // Fetch the project so the join modal shows the real name
-      CollabStore.fetchProjectForJoin(data.project_id).then(function(){
-        showJoinModal(data.project_id, data.role);
-      }).catch(function(){
-        showJoinModal(data.project_id, data.role); // still show even if project fetch fails
-      });
+      if (!data || !data.project_id) { _showToast('⚠️ Link tidak valid', 'warn'); return; }
+      if (Date.now() > data.exp)     { _showToast('⚠️ Link sudah expired', 'warn'); return; }
+      CollabStore.fetchProjectForJoin(data.project_id)
+        .then(function(){ showJoinModal(data.project_id, data.role); })
+        .catch(function(){ showJoinModal(data.project_id, data.role); });
     }).catch(function(e){
-      console.warn('[Collab] invite fetch',e);
-      _showToast('⚠️ Link tidak valid atau sudah expired','warn');
+      console.warn('[Collab] invite fetch', e);
+      _showToast('⚠️ Link tidak valid atau sudah expired', 'warn');
     });
-  },1500);
+  }, 1500);
 })();
 
 // ─────────────────────────────────────────────
-// § 6. CSS
+// § 7. CSS INJECTION
 // ─────────────────────────────────────────────
 (function(){
-  if(document.getElementById('ct-collab-styles'))return;
-  var s=document.createElement('style'); s.id='ct-collab-styles';
-  s.textContent=`
+  if (document.getElementById('ct-collab-styles')) return;
+  var s = document.createElement('style');
+  s.id = 'ct-collab-styles';
+  s.textContent = `
 .ct-overlay{position:fixed;inset:0;background:rgba(0,0,0,.52);z-index:9800;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .ct-overlay.active{display:flex}
 @keyframes ctSlideUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
 @keyframes ctPop{0%{transform:scale(.88);opacity:0}60%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+@keyframes ct-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.3)}}
 .ct-modal{background:var(--card);border-radius:16px;width:min(560px,95vw);max-height:92vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.28);animation:ctSlideUp .2s ease}
 .ct-modal-sm{width:min(380px,95vw)}.ct-modal-lg{width:min(720px,97vw)}
 .ct-modal-hdr{display:flex;align-items:center;gap:10px;padding:16px 18px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -29848,166 +29941,181 @@ function generateInviteLinkSync(pid, role, callback){
 .ct-role-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;border:1px solid currentColor;white-space:nowrap}
 .ct-invite-box{display:flex;align-items:center;gap:8px;background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:8px 10px}
 .ct-invite-url{flex:1;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace}
-.ct-copy-btn{flex-shrink:0;padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--card);font-size:11px;cursor:pointer;font-weight:600;color:var(--accent)}
-.ct-copy-btn.copied{color:var(--green)}
-.ct-activity-item{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid var(--border);align-items:flex-start}
-.ct-activity-item:last-child{border-bottom:none}
-.ct-activity-text{font-size:12px;color:var(--text);line-height:1.45;flex:1}
-.ct-activity-time{font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0}
-.ct-empty{text-align:center;padding:28px 16px;color:var(--muted)}
-.ct-empty-icon{font-size:34px;margin-bottom:8px;opacity:.6}
-.ct-empty-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px}
-.ct-empty-sub{font-size:12px;line-height:1.5}
-.ct-divider{height:1px;background:var(--border);margin:12px 0}
-.ct-proj-card{border:1.5px solid var(--border);border-radius:12px;padding:14px;background:var(--card);position:relative;overflow:hidden;margin-bottom:10px;cursor:pointer;transition:all .15s}
-.ct-proj-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.1)}
-.ct-proj-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--tc-color,var(--accent));border-radius:12px 12px 0 0}
-/* Project task list */
-.ct-ptask{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:var(--bg);margin-bottom:6px;border:1px solid var(--border);transition:all .12s}
-.ct-ptask:hover{border-color:var(--accent)}
-.ct-ptask-done{opacity:.55}
-.ct-ptask-check{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .12s}
-.ct-ptask-check.checked{background:var(--green);border-color:var(--green);color:#fff;font-size:10px}
-.ct-ptask-title{flex:1;font-size:13px;color:var(--text);font-weight:500}
+.ct-copy-btn{font-size:11px;font-weight:600;padding:4px 10px;border-radius:7px;border:1.5px solid var(--border);background:var(--bg);cursor:pointer;color:var(--text);white-space:nowrap;transition:all .12s}
+.ct-copy-btn.copied{background:#d1fae5;color:#065f46;border-color:#6ee7b7}
+.ct-empty{text-align:center;padding:32px 16px;color:var(--muted)}
+.ct-empty-icon{font-size:36px;margin-bottom:8px}
+.ct-empty-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px}
+.ct-empty-sub{font-size:12px}
+.ct-proj-card{background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:border-color .15s;border-left:4px solid var(--tc-color,var(--accent))}
+.ct-proj-card:hover{border-color:var(--accent)}
+.ct-ptask{display:flex;align-items:flex-start;gap:10px;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:9px;margin-bottom:6px;cursor:pointer;transition:background .12s}
+.ct-ptask:hover{background:var(--hover)}
 .ct-ptask-done .ct-ptask-title{text-decoration:line-through;color:var(--muted)}
-.ct-ptask-meta{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.ct-ptask-priority{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid currentColor}
-.ct-ptask-add{display:flex;gap:8px;margin-top:10px}
-/* Status pills */
-.ct-status-todo{color:#6366f1;border-color:#6366f1}
-.ct-status-inprogress{color:#d97706;border-color:#d97706}
-.ct-status-done{color:var(--green);border-color:var(--green)}
-/* Comments */
-.ct-comment{display:flex;gap:8px;padding:8px 0}
-.ct-comment-bubble{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 12px}
-.ct-comment-header{display:flex;align-items:center;gap:7px;margin-bottom:4px}
-.ct-comment-author{font-size:12px;font-weight:700;color:var(--text)}.ct-comment-time{font-size:10px;color:var(--muted)}
-.ct-comment-body{font-size:13px;color:var(--text);line-height:1.5}
-#ct-toast-container{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:7px;align-items:center;pointer-events:none}
-.ct-toast{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;color:var(--text);box-shadow:0 6px 24px rgba(0,0,0,.15);animation:ctPop .2s ease;white-space:nowrap}
-.ct-toast.success{border-color:var(--green);color:var(--green)}.ct-toast.warn{border-color:var(--gold);color:var(--gold)}.ct-toast.error{border-color:var(--red);color:var(--red)}
-@media(max-width:500px){.ct-modal{width:100vw;max-height:94vh;border-radius:18px 18px 0 0;margin-top:auto;align-self:flex-end}}
-/* Assign panel in detail sidebar */
-.ct-assign-panel{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.ct-ptask-check{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s;font-size:10px;font-weight:700;color:#fff;margin-top:2px}
+.ct-ptask-check.checked{background:var(--green);border-color:var(--green)}
+.ct-ptask-title{font-size:13px;font-weight:500;color:var(--text);flex:1}
+.ct-ptask-meta{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
+.ct-activity-item{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+.ct-activity-item:last-child{border-bottom:none}
+.ct-activity-text{flex:1;font-size:12px;color:var(--text);line-height:1.4}
+.ct-activity-time{font-size:10px;color:var(--muted);white-space:nowrap;margin-left:auto}
+.ct-divider{border:none;border-top:1px solid var(--border);margin:12px 0}
+.ct-assign-panel{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
 .ct-assign-title{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
-.ct-assign-pick{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:9px;background:var(--bg);border:1.5px solid var(--border);cursor:pointer;transition:all .12s;font-size:13px;color:var(--text)}
+.ct-assign-pick{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:9px;cursor:pointer;background:var(--bg);transition:border-color .15s}
 .ct-assign-pick:hover{border-color:var(--accent)}
-.ct-assign-current{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text);font-weight:600}
-.ct-assign-dropdown{position:absolute;background:var(--card);border:1.5px solid var(--border);border-radius:11px;padding:6px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.18);min-width:180px}
-.ct-assign-opt{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--text);transition:background .1s}
-.ct-assign-opt:hover{background:var(--hover)}
-.ct-assign-opt.selected{background:rgba(217,119,6,.08);font-weight:600}
+.ct-assign-dropdown{position:fixed;z-index:10000;background:var(--card);border:1.5px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);min-width:180px;overflow:hidden}
+.ct-assign-opt{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;font-size:13px;color:var(--text);transition:background .1s}
+.ct-assign-opt:hover,.ct-assign-opt.selected{background:var(--hover)}
+.ct-chat-bubble-me{background:var(--accent);color:#fff;border-radius:14px 14px 4px 14px}
+.ct-chat-bubble-other{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:14px 14px 14px 4px}
+@media(max-width:500px){.ct-modal{width:100vw;max-height:94vh;border-radius:18px 18px 0 0;margin-top:auto;align-self:flex-end}}
 `;
   document.head.appendChild(s);
 })();
 
 // ─────────────────────────────────────────────
-// § 7. HELPERS
+// § 8. UI HELPERS
 // ─────────────────────────────────────────────
-function _showToast(msg,type,dur){
-  var tc=document.getElementById('ct-toast-container');
-  if(!tc){tc=document.createElement('div');tc.id='ct-toast-container';document.body.appendChild(tc);}
-  var el=document.createElement('div');el.className='ct-toast '+(type||'');el.textContent=msg;
-  tc.appendChild(el);
-  setTimeout(function(){el.style.opacity='0';el.style.transition='opacity .15s';setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},150);},dur||2600);
+function _showToast(msg, type) {
+  if (typeof showToast === 'function') { showToast(msg); return; }
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:99999;pointer-events:none;animation:ctSlideUp .2s ease';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); }, 2500);
 }
 
-function _makeAvatar(user,sizeClass){
-  var el=document.createElement('div');el.className='ct-avatar '+(sizeClass||'');
-  if(user&&user.photo){var img=document.createElement('img');img.src=user.photo;img.alt=user.name||'';el.appendChild(img);}
-  else{
-    var init=((user&&user.name)?user.name.charAt(0):'?').toUpperCase();
-    el.textContent=init;
-    var cols=['#d97706','#6366f1','#16a34a','#0891b2','#dc2626','#7c3aed','#c2410c'];
-    el.style.background=cols[(user&&user.name?user.name.charCodeAt(0):0)%cols.length];
+function _relTime(ts) {
+  var diff = Date.now() - (ts || 0);
+  if (diff < 60000)   return 'Baru saja';
+  if (diff < 3600000) return Math.floor(diff/60000) + 'm lalu';
+  if (diff < 86400000)return Math.floor(diff/3600000) + 'j lalu';
+  return Math.floor(diff/86400000) + 'h lalu';
+}
+
+function _makeAvatar(user, cls) {
+  var el = document.createElement('div');
+  el.className = 'ct-avatar ' + (cls || '');
+  var name = (user && user.name) ? user.name : '?';
+  if (user && user.photo) {
+    var img = document.createElement('img');
+    img.src = user.photo;
+    img.alt = name;
+    img.onerror = function(){ el.textContent = name.charAt(0).toUpperCase(); };
+    el.appendChild(img);
+  } else {
+    el.textContent = name.charAt(0).toUpperCase();
   }
   return el;
 }
 
-function _makeAvatarStack(users,max){
-  max=max||3;
-  var stack=document.createElement('div');stack.className='ct-avatar-stack';
-  users.slice(0,max).reverse().forEach(function(u){stack.appendChild(_makeAvatar(u,'ct-avatar-sm'));});
-  if(users.length>max){var m=document.createElement('div');m.className='ct-avatar ct-avatar-sm';m.textContent='+'+(users.length-max);m.style.background='#78716c';stack.insertBefore(m,stack.firstChild);}
-  return stack;
+function _makeAvatarStack(members) {
+  var wrap = document.createElement('div');
+  wrap.className = 'ct-avatar-stack';
+  members.slice(0, 4).forEach(function(m){ wrap.appendChild(_makeAvatar(m, 'ct-avatar-sm')); });
+  if (members.length > 4) {
+    var more = document.createElement('div');
+    more.className = 'ct-avatar ct-avatar-sm';
+    more.style.cssText = 'background:var(--border);color:var(--muted);font-size:8px';
+    more.textContent = '+' + (members.length - 4);
+    wrap.appendChild(more);
+  }
+  return wrap;
 }
 
-function _relTime(ts){
-  var d=Date.now()-ts;
-  if(d<60000)return'just now';if(d<3600000)return Math.floor(d/60000)+'m ago';
-  if(d<86400000)return Math.floor(d/3600000)+'h ago';return Math.floor(d/86400000)+'d ago';
-}
-
-function _buildModal(title,icon,sizeClass){
-  var overlay=document.createElement('div');overlay.className='ct-overlay';
-  var modal=document.createElement('div');modal.className='ct-modal '+(sizeClass||'');
-  var hdr=document.createElement('div');hdr.className='ct-modal-hdr';
-  hdr.innerHTML='<div class="ct-modal-icon">'+icon+'</div><div class="ct-modal-title">'+title+'</div>';
-  var closeBtn=document.createElement('button');closeBtn.className='ct-modal-close';closeBtn.innerHTML='&#x2715;';
-  var _close=function(){if(overlay.parentNode)overlay.parentNode.removeChild(overlay);};
-  closeBtn.onclick=_close;hdr.appendChild(closeBtn);
-  var body=document.createElement('div');body.className='ct-modal-body';
-  var footer=document.createElement('div');footer.className='ct-modal-footer';
-  modal.appendChild(hdr);modal.appendChild(body);modal.appendChild(footer);
+function _buildModal(title, icon, sizeClass) {
+  var overlay = document.createElement('div'); overlay.className = 'ct-overlay';
+  var modal   = document.createElement('div'); modal.className   = 'ct-modal ' + (sizeClass || '');
+  var hdr     = document.createElement('div'); hdr.className     = 'ct-modal-hdr';
+  hdr.innerHTML = '<div class="ct-modal-icon">' + icon + '</div><div class="ct-modal-title">' + title + '</div>';
+  var closeBtn  = document.createElement('button'); closeBtn.className = 'ct-modal-close'; closeBtn.innerHTML = '&#x2715;';
+  var _close = function(){ if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+  closeBtn.onclick = _close; hdr.appendChild(closeBtn);
+  var body   = document.createElement('div'); body.className   = 'ct-modal-body';
+  var footer = document.createElement('div'); footer.className = 'ct-modal-footer';
+  modal.appendChild(hdr); modal.appendChild(body); modal.appendChild(footer);
   overlay.appendChild(modal);
-  overlay.onclick=function(e){if(e.target===overlay)_close();};
+  overlay.onclick = function(e){ if (e.target === overlay) _close(); };
   document.body.appendChild(overlay);
-  requestAnimationFrame(function(){overlay.classList.add('active');});
-  return{overlay:overlay,modal:modal,body:body,footer:footer,close:_close};
+  requestAnimationFrame(function(){ overlay.classList.add('active'); });
+  return { overlay:overlay, modal:modal, body:body, footer:footer, close:_close };
 }
 
-function _getMyRole(pid){
-  var proj=CollabStore.getProject(pid);if(!proj)return null;
-  var me=getCurrentUser();
-  if(proj.owner_id===me.uid)return Roles.OWNER;
-  var m=CollabStore.getMembers(pid).find(function(x){return x.user_id===me.uid;});
-  return m?m.role:null;
+function _getMyRole(pid) {
+  var proj = CollabStore.getProject(pid); if (!proj) return null;
+  var me   = getCurrentUser();
+  if (proj.owner_id === me.uid) return Roles.OWNER;
+  var m = CollabStore.getMembers(pid).find(function(x){ return x.user_id === me.uid; });
+  return m ? m.role : null;
 }
 
 // ─────────────────────────────────────────────
-// § 8. ACTIVITY FEED
+// § 9. ACTIVITY FEED RENDERER
 // ─────────────────────────────────────────────
-var ACTION_LABELS={
-  task_completed:'✅ completed',task_created:'➕ added task',task_edited:'✏️ edited',
-  task_deleted:'🗑️ deleted',member_added:'👋 joined',member_removed:'🚫 was removed',
-  comment_added:'💬 commented on'
+var ACTION_LABELS = {
+  task_completed:'✅ completed', task_created:'➕ added task', task_edited:'✏️ edited',
+  task_deleted:'🗑️ deleted', member_added:'👋 joined', member_removed:'🚫 was removed',
+  comment_added:'💬 commented on', member_invited:'✉️ invited'
 };
-function _renderActivityFeed(pid,container){
-  container.innerHTML='';
-  var items=CollabStore.getActivity(pid);
-  if(!items.length){container.innerHTML='<div class="ct-empty"><div class="ct-empty-icon">📋</div><div class="ct-empty-title">No activity yet</div></div>';return;}
-  items.slice(0,50).forEach(function(item){
-    var row=document.createElement('div');row.className='ct-activity-item';
-    var label=ACTION_LABELS[item.action]||item.action;
-    var task=item.meta&&item.meta.task_title?' <b>"'+item.meta.task_title+'"</b>':'';
-    var text=document.createElement('div');text.className='ct-activity-text';
-    text.innerHTML='<b>'+(item.user_name||'?')+'</b> '+label+task;
-    var time=document.createElement('div');time.className='ct-activity-time';time.textContent=_relTime(item.ts);
-    row.appendChild(_makeAvatar({name:item.user_name,photo:item.user_photo},'ct-avatar-sm'));
-    row.appendChild(text);row.appendChild(time);container.appendChild(row);
+
+function _renderActivityFeed(pid, container) {
+  container.innerHTML = '';
+  // Listener sudah aktif via setActivityCallback; tidak perlu pull manual
+  var items = CollabStore.getActivity(pid);
+  if (!items.length) {
+    container.innerHTML = '<div class="ct-empty"><div class="ct-empty-icon">📋</div><div class="ct-empty-title">No activity yet</div><div class="ct-empty-sub" style="font-size:11px;margin-top:4px">🟢 Live — akan muncul otomatis</div></div>';
+    return;
+  }
+  var liveBar = document.createElement('div');
+  liveBar.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);margin-bottom:10px';
+  liveBar.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:ct-pulse 1.5s infinite"></span> Live updates aktif';
+  container.appendChild(liveBar);
+  items.slice(0, 50).forEach(function(item){
+    var row = document.createElement('div'); row.className = 'ct-activity-item';
+    var label = ACTION_LABELS[item.action] || item.action;
+    var task  = item.meta && item.meta.task_title ? ' <b>"' + item.meta.task_title + '"</b>' : '';
+    var text  = document.createElement('div'); text.className = 'ct-activity-text';
+    text.innerHTML = '<b>' + (item.user_name || '?') + '</b> ' + label + task;
+    var time = document.createElement('div'); time.className = 'ct-activity-time'; time.textContent = _relTime(item.ts);
+    row.appendChild(_makeAvatar({ name: item.user_name, photo: item.user_photo }, 'ct-avatar-sm'));
+    row.appendChild(text); row.appendChild(time); container.appendChild(row);
   });
 }
 
 // ─────────────────────────────────────────────
-// § 9. MEMBER LIST
+// § 10. MEMBER LIST RENDERER
 // ─────────────────────────────────────────────
-function _renderMemberList(pid,container){
-  container.innerHTML='';
-  var members=CollabStore.getMembers(pid),me=getCurrentUser(),myRole=_getMyRole(pid);
-  if(!members.length){container.innerHTML='<div class="ct-empty"><div class="ct-empty-icon">👥</div><div class="ct-empty-title">No members yet</div></div>';return;}
-  members.forEach(function(m){
-    var row=document.createElement('div');row.className='ct-member-row';
-    var info=document.createElement('div');info.className='ct-member-info';
-    info.innerHTML='<div class="ct-member-name">'+(m.name||m.email||'User')+'</div><div class="ct-member-email">'+(m.email||m.user_id||'')+'</div>';
-    var badge=document.createElement('div');badge.className='ct-role-badge';badge.style.color=Roles.color(m.role);badge.textContent=Roles.label(m.role);
-    row.appendChild(_makeAvatar(m,''));row.appendChild(info);row.appendChild(badge);
-    if(Roles.canManageMembers(myRole)&&m.user_id!==me.uid){
-      var rm=document.createElement('button');rm.className='ct-btn ct-btn-sm ct-btn-danger ct-btn-ghost';rm.textContent='✕';
-      rm.onclick=function(e){
-        e.stopPropagation();
-        CollabStore.saveMembers(pid,members.filter(function(x){return x.user_id!==m.user_id;}));
-        logActivity(pid,'member_removed',{target_name:m.name});
-        _renderMemberList(pid,container);_showToast('🚫 Removed','warn');
+function _renderMemberList(pid, container) {
+  container.innerHTML = '';
+  var members = CollabStore.getMembers(pid);
+  var myRole  = _getMyRole(pid);
+  var me      = getCurrentUser();
+  if (!members.length) {
+    container.innerHTML = '<div class="ct-empty"><div class="ct-empty-icon">👥</div><div class="ct-empty-title">No members yet</div><div class="ct-empty-sub">Invite via the Invite tab.</div></div>';
+    return;
+  }
+  members.forEach(function(member){
+    var row  = document.createElement('div'); row.className = 'ct-member-row';
+    var info = document.createElement('div'); info.className = 'ct-member-info';
+    info.innerHTML = '<div class="ct-member-name">' + member.name + '</div><div class="ct-member-email">' + (member.email || '') + '</div>';
+    var badge = document.createElement('div');
+    badge.className = 'ct-role-badge';
+    badge.style.color = Roles.color(member.role);
+    badge.textContent = Roles.label(member.role);
+    row.appendChild(_makeAvatar(member));
+    row.appendChild(info);
+    row.appendChild(badge);
+    if (Roles.canManageMembers(myRole) && member.user_id !== me.uid) {
+      var rm = document.createElement('button'); rm.className = 'ct-btn ct-btn-sm ct-btn-danger ct-btn-ghost'; rm.textContent = '✕';
+      rm.onclick = function(){
+        if (!confirm('Remove ' + member.name + '?')) return;
+        CollabStore.removeMember(pid, member.user_id).then(function(){
+          logActivity(pid, 'member_removed', { target_name: member.name });
+          _renderMemberList(pid, container);
+          _showToast('🚫 Removed', 'warn');
+        });
       };
       row.appendChild(rm);
     }
@@ -30016,533 +30124,315 @@ function _renderMemberList(pid,container){
 }
 
 // ─────────────────────────────────────────────
-// § 10. COMMENTS
+// § 11. PROJECT TASK MODAL
 // ─────────────────────────────────────────────
-function renderCommentsPanel(taskId,pid,containerEl){
-  var KEY='ct_cmts_'+taskId;
-  function _get(){try{return JSON.parse(localStorage.getItem(KEY)||'[]');}catch(e){return[];}}
-  function _put(c){try{localStorage.setItem(KEY,JSON.stringify(c));}catch(e){}}
-  var panel=document.createElement('div');panel.style.marginTop='12px';
-  panel.innerHTML='<div class="ct-label" style="margin-bottom:8px">💬 Comments</div>';
-  var feed=document.createElement('div');panel.appendChild(feed);
-  function _render(){
-    feed.innerHTML='';
-    var cmts=_get();
-    if(!cmts.length){feed.innerHTML='<div style="font-size:12px;color:var(--muted);padding:6px 0">No comments yet.</div>';}
-    cmts.forEach(function(c){
-      var row=document.createElement('div');row.className='ct-comment';
-      row.innerHTML='<div class="ct-comment-bubble"><div class="ct-comment-header"><span class="ct-comment-author">'+c.author+'</span><span class="ct-comment-time">'+_relTime(c.ts)+'</span></div><div class="ct-comment-body">'+c.text+'</div></div>';
-      feed.appendChild(row);
-    });
-  }
-  _render();
-  var box=document.createElement('div');box.style.cssText='display:flex;gap:8px;margin-top:10px';
-  var inp=document.createElement('input');inp.className='ct-input';inp.placeholder='Add a comment...';inp.style.flex='1';
-  var btn=document.createElement('button');btn.className='ct-btn ct-btn-primary ct-btn-sm';btn.textContent='Send';
-  btn.onclick=function(){
-    var v=inp.value.trim();if(!v)return;
-    var me=getCurrentUser();
-    var cmts=_get();cmts.push({id:'cmt_'+Date.now(),author:me.name,text:v,ts:Date.now()});_put(cmts);
-    if(pid)logActivity(pid,'comment_added',{task_title:taskId});
-    inp.value='';_render();
-  };
-  inp.onkeydown=function(e){if(e.key==='Enter')btn.click();};
-  box.appendChild(inp);box.appendChild(btn);panel.appendChild(box);
-  containerEl.appendChild(panel);
-}
+function showProjectTaskModal(pid, task) {
+  // Always pull latest task data from store (in case of remote update)
+  var latestTasks = CollabStore.getProjectTasks(pid);
+  var fresh = latestTasks.find(function(t){ return t.id === task.id; });
+  if (fresh) task = fresh;
 
-// ─────────────────────────────────────────────
-// § 11. PROJECT TASK DETAIL MODAL
-// ─────────────────────────────────────────────
-function showProjectTaskModal(pid,task){
-  var m=_buildModal(task.title,'📌','ct-modal-sm');
-  var members=CollabStore.getMembers(pid);
-  var myRole=_getMyRole(pid);
-  var canEdit=Roles.canEdit(myRole||Roles.OWNER);
+  var m = _buildModal(task.title, '📌', 'ct-modal-sm');
+  var myRole = _getMyRole(pid) || Roles.OWNER;
+  var canEdit = Roles.canEdit(myRole);
 
-  // Status
-  var statusOpts=['todo','inprogress','done'];
-  var statusLabels={todo:'To Do',inprogress:'In Progress',done:'Done'};
-  var statusColors={todo:'#6366f1',inprogress:'#d97706',done:'var(--green)'};
+  m.body.innerHTML = '';
 
-  m.body.innerHTML='';
-
-  // Status selector
-  var srow=document.createElement('div');srow.style.cssText='display:flex;gap:6px;margin-bottom:14px';
-  statusOpts.forEach(function(s){
-    var btn=document.createElement('button');
-    btn.className='ct-btn ct-btn-sm';btn.textContent=statusLabels[s];
-    btn.style.color=statusColors[s];btn.style.borderColor=statusColors[s];
-    if(task.status===s){btn.style.background=statusColors[s];btn.style.color='#fff';}
-    btn.onclick=function(){
-      if(!canEdit){_showToast('⚠️ No permission','warn');return;}
-      CollabStore.updateProjectTask(pid,task.id,{status:s,updated_at:Date.now()});
-      task.status=s;
-      logActivity(pid,'task_edited',{task_title:task.title});
-      m.close();showProjectTaskModal(pid,Object.assign({},task,{status:s}));
+  // Status buttons
+  var statusRow = document.createElement('div'); statusRow.style.cssText = 'display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap';
+  [{val:'todo',label:'⏳ To Do'},{val:'inprogress',label:'🔄 In Progress'},{val:'done',label:'✅ Done'}].forEach(function(s){
+    var btn = document.createElement('button'); btn.className = 'ct-btn ct-btn-sm' + (task.status === s.val ? ' ct-btn-primary' : '');
+    btn.textContent = s.label;
+    if (canEdit) btn.onclick = function(){
+      CollabStore.updateProjectTask(pid, task.id, { status: s.val, updated_at: Date.now() });
+      if (s.val === 'done') logActivity(pid, 'task_completed', { task_title: task.title });
+      m.close(); showProjectTaskModal(pid, Object.assign({}, task, { status: s.val }));
     };
-    srow.appendChild(btn);
+    statusRow.appendChild(btn);
   });
-  m.body.appendChild(srow);
+  m.body.appendChild(statusRow);
 
   // Description
-  var desc=document.createElement('div');desc.style.cssText='font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5';
-  desc.textContent=task.desc||'No description.';m.body.appendChild(desc);
+  if (task.desc) { var desc = document.createElement('div'); desc.style.cssText = 'font-size:13px;color:var(--muted);margin-bottom:12px'; desc.textContent = task.desc; m.body.appendChild(desc); }
 
-  // Assignee
-  var arow=document.createElement('div');arow.style.cssText='margin-bottom:14px';
-  var albl=document.createElement('div');albl.className='ct-label';albl.textContent='Assigned to';
-  var aval=document.createElement('div');aval.style.cssText='display:flex;align-items:center;gap:8px;margin-top:5px';
-  var assignee=task.assignee_id?members.find(function(x){return x.user_id===task.assignee_id;}):null;
-  if(assignee){
-    aval.appendChild(_makeAvatar(assignee,''));
-    var aname=document.createElement('span');aname.style.cssText='font-size:13px;font-weight:600;color:var(--text)';aname.textContent=assignee.name;aval.appendChild(aname);
-  } else {
-    aval.innerHTML='<span style="font-size:12px;color:var(--muted)">Unassigned</span>';
+  // Assignee picker
+  var members = CollabStore.getMembers(pid);
+  var me = getCurrentUser();
+  var allUsers = [{ user_id: me.uid, name: me.name + ' (kamu)', email: me.email, photo: me.photo }];
+  members.forEach(function(x){ if (x.user_id !== me.uid) allUsers.push(x); });
+
+  var asnLbl = document.createElement('div'); asnLbl.className = 'ct-label'; asnLbl.textContent = 'ASSIGNEE';
+  var asnSel = document.createElement('select'); asnSel.className = 'ct-select'; asnSel.style.marginBottom = '12px';
+  var noOpt  = document.createElement('option'); noOpt.value = ''; noOpt.textContent = '— Unassigned —'; asnSel.appendChild(noOpt);
+  allUsers.forEach(function(u){
+    var opt = document.createElement('option'); opt.value = u.user_id; opt.textContent = u.name;
+    if (task.assignee_id === u.user_id) opt.selected = true;
+    asnSel.appendChild(opt);
+  });
+  if (canEdit) asnSel.onchange = function(){
+    var sel = allUsers.find(function(u){ return u.user_id === asnSel.value; });
+    CollabStore.updateProjectTask(pid, task.id, {
+      assignee_id: sel ? sel.user_id : null,
+      assignee_name: sel ? sel.name.replace(' (kamu)', '') : null,
+      updated_at: Date.now()
+    });
+    logActivity(pid, 'task_assigned', { task_title: task.title });
+    _showToast('📌 Assigned to ' + (sel ? sel.name.replace(' (kamu)','') : 'nobody'), 'success');
+  };
+  else asnSel.disabled = true;
+  m.body.appendChild(asnLbl); m.body.appendChild(asnSel);
+
+  // Subtasks
+  if (task.subtasks && task.subtasks.length) {
+    var stLbl = document.createElement('div'); stLbl.className = 'ct-label'; stLbl.textContent = 'SUB-TASKS';
+    m.body.appendChild(stLbl);
+    task.subtasks.forEach(function(st){
+      var row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px';
+      var chk = document.createElement('span'); chk.style.cssText = 'width:16px;height:16px;border-radius:4px;border:2px solid '+(st.done?'var(--green)':'var(--border)')+';background:'+(st.done?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:#fff;font-size:9px';
+      chk.textContent = st.done ? '✓' : '';
+      if (canEdit) chk.onclick = function(){
+        var updated = task.subtasks.map(function(s){ return s.id === st.id ? Object.assign({}, s, { done: !s.done }) : s; });
+        CollabStore.updateProjectTask(pid, task.id, { subtasks: updated, updated_at: Date.now() });
+        m.close(); showProjectTaskModal(pid, Object.assign({}, task, { subtasks: updated }));
+      };
+      var ttl = document.createElement('span'); ttl.textContent = st.title; if (st.done) ttl.style.textDecoration = 'line-through';
+      row.appendChild(chk); row.appendChild(ttl); m.body.appendChild(row);
+    });
   }
-  if(canEdit&&members.length){
-    var aBtn=document.createElement('button');aBtn.className='ct-btn ct-btn-sm ct-btn-ghost';aBtn.textContent='Change';aBtn.style.marginLeft='auto';
-    aBtn.onclick=function(){
-      // inline assignee picker
-      var picker=document.createElement('div');picker.style.cssText='position:absolute;background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:8px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.15);min-width:160px';
-      [{user_id:null,name:'Unassigned'}].concat(members).forEach(function(u){
-        var opt=document.createElement('div');opt.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--text)';
-        if(u.user_id)opt.appendChild(_makeAvatar(u,'ct-avatar-sm'));
-        var lbl=document.createElement('span');lbl.textContent=u.name;opt.appendChild(lbl);
-        opt.onmouseenter=function(){opt.style.background='var(--hover)';};
-        opt.onmouseleave=function(){opt.style.background='';};
-        opt.onclick=function(){
-          CollabStore.updateProjectTask(pid,task.id,{assignee_id:u.user_id||null,assignee_name:u.user_id?u.name:null,updated_at:Date.now()});
-          logActivity(pid,'task_edited',{task_title:task.title});
-          if(picker.parentNode)picker.parentNode.removeChild(picker);
-          m.close();showProjectTaskModal(pid,Object.assign({},task,{assignee_id:u.user_id||null,assignee_name:u.user_id?u.name:null}));
-        };
-        picker.appendChild(opt);
-      });
-      document.body.appendChild(picker);
-      var rect=aBtn.getBoundingClientRect();
-      picker.style.top=(rect.bottom+window.scrollY+4)+'px';picker.style.left=rect.left+'px';
-      setTimeout(function(){document.addEventListener('click',function _c(){if(picker.parentNode)picker.parentNode.removeChild(picker);document.removeEventListener('click',_c);},true);},0);
+
+  // Due / Reminder meta
+  var meta = document.createElement('div'); meta.style.cssText = 'margin-top:12px;font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap';
+  if (task.due)         meta.innerHTML += '<span>📅 ' + task.due + '</span>';
+  if (task.reminder_ts) meta.innerHTML += '<span>⏰ ' + _relTime(task.reminder_ts) + '</span>';
+  if (task.isShopping && task.price) meta.innerHTML += '<span>🛒 Rp ' + Number(task.price).toLocaleString('id') + '</span>';
+  m.body.appendChild(meta);
+
+  if (canEdit) {
+    var delBtn = document.createElement('button'); delBtn.className = 'ct-btn ct-btn-sm ct-btn-danger'; delBtn.style.cssText = 'margin-top:16px;width:100%'; delBtn.textContent = '🗑️ Delete Task';
+    delBtn.onclick = function(){
+      if (!confirm('Delete "' + task.title + '"?')) return;
+      CollabStore.deleteProjectTask(pid, task.id);
+      logActivity(pid, 'task_deleted', { task_title: task.title });
+      m.close(); _showToast('🗑️ Deleted', 'warn');
     };
-    aval.appendChild(aBtn);
+    m.body.appendChild(delBtn);
   }
-  arow.appendChild(albl);arow.appendChild(aval);m.body.appendChild(arow);
 
-  // Due date (editable)
-  (function(){
-    var drow=document.createElement('div');drow.style.cssText='margin-bottom:14px';
-    var dlbl=document.createElement('div');dlbl.className='ct-label';dlbl.textContent='📅 Due Date';dlbl.style.marginBottom='6px';
-    var dInp=document.createElement('input');dInp.type='date';dInp.className='ct-input';dInp.style.fontSize='12px';
-    dInp.value=task.due||'';
-    if(canEdit){dInp.onchange=function(){CollabStore.updateProjectTask(pid,task.id,{due:dInp.value||null,updated_at:Date.now()});task.due=dInp.value||null;_showToast('📅 Due date disimpan','success');};}
-    else{dInp.disabled=true;}
-    drow.appendChild(dlbl);drow.appendChild(dInp);m.body.appendChild(drow);
-  })();
-
-  // Shopping (editable)
-  (function(){
-    var srow=document.createElement('div');srow.style.cssText='margin-bottom:14px';
-    var slbl=document.createElement('div');slbl.className='ct-label';slbl.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:6px';
-    var shopChk=document.createElement('input');shopChk.type='checkbox';shopChk.checked=!!task.isShopping;
-    shopChk.style.cssText='width:15px;height:15px;cursor:pointer;accent-color:var(--green)';
-    if(!canEdit)shopChk.disabled=true;
-    var slblTxt=document.createElement('span');slblTxt.textContent='🛒 Belanja';
-    slbl.appendChild(shopChk);slbl.appendChild(slblTxt);srow.appendChild(slbl);
-    var shopBody=document.createElement('div');shopBody.style.cssText='display:'+(task.isShopping?'flex':'none')+';gap:6px;flex-wrap:wrap';
-    var pInp=document.createElement('input');pInp.className='ct-input';pInp.type='number';pInp.min='0';
-    pInp.value=task.price||'';pInp.placeholder='Harga (Rp)';pInp.style.cssText='flex:1;min-width:90px;font-size:12px';
-    var wSel=document.createElement('select');wSel.className='ct-input';wSel.style.cssText='flex:1;min-width:110px;font-size:12px';
-    wSel.innerHTML='<option value="">Pilih Wallet...</option>';
-    finWallets.forEach(function(w){var o=document.createElement('option');o.value=w.id;o.textContent=w.icon+' '+w.name;if(w.id===task.walletId)o.selected=true;wSel.appendChild(o);});
-    var sSaveBtn=document.createElement('button');sSaveBtn.type='button';sSaveBtn.className='ct-btn ct-btn-sm';sSaveBtn.textContent='Simpan';
-    sSaveBtn.onclick=function(){CollabStore.updateProjectTask(pid,task.id,{isShopping:true,price:parseFloat(pInp.value)||0,walletId:wSel.value,updated_at:Date.now()});task.isShopping=true;task.price=parseFloat(pInp.value)||0;task.walletId=wSel.value;_showToast('🛒 Shopping disimpan','success');};
-    shopBody.appendChild(pInp);shopBody.appendChild(wSel);if(canEdit)shopBody.appendChild(sSaveBtn);
-    srow.appendChild(shopBody);
-    if(canEdit){shopChk.onchange=function(){task.isShopping=shopChk.checked;shopBody.style.display=shopChk.checked?'flex':'none';if(!shopChk.checked)CollabStore.updateProjectTask(pid,task.id,{isShopping:false,price:0,walletId:'',updated_at:Date.now()});};}
-    m.body.appendChild(srow);
-  })();
-
-  // Reminder (editable)
-  (function(){
-    var rrow=document.createElement('div');rrow.style.cssText='margin-bottom:14px';
-    var rlbl=document.createElement('div');rlbl.className='ct-label';rlbl.textContent='⏰ Reminder';rlbl.style.marginBottom='6px';
-    var rInp=document.createElement('input');rInp.type='datetime-local';rInp.className='ct-input';rInp.style.fontSize='12px';
-    if(task.reminder_ts){var rd=new Date(task.reminder_ts);rInp.value=rd.getFullYear()+'-'+String(rd.getMonth()+1).padStart(2,'0')+'-'+String(rd.getDate()).padStart(2,'0')+'T'+String(rd.getHours()).padStart(2,'0')+':'+String(rd.getMinutes()).padStart(2,'0');}
-    if(canEdit){rInp.onchange=function(){var ts=rInp.value?new Date(rInp.value).getTime():null;CollabStore.updateProjectTask(pid,task.id,{reminder_ts:ts,updated_at:Date.now()});task.reminder_ts=ts;_showToast('⏰ Reminder disimpan','success');};}
-    else{rInp.disabled=true;}
-    rrow.appendChild(rlbl);rrow.appendChild(rInp);m.body.appendChild(rrow);
-  })();
-
-  // Sub-tasks (interactive: toggle done, add new, delete)
-  (function(){
-    var _subs=(task.subtasks||[]).slice();
-    var strow=document.createElement('div');strow.style.cssText='margin-bottom:14px';
-    var stlbl=document.createElement('div');stlbl.className='ct-label';
-    var stListDiv=document.createElement('div');stListDiv.style.marginTop='6px';
-    function _refreshSubs(){
-      var done=_subs.filter(function(s){return s.done;}).length;
-      stlbl.textContent='Sub-tasks ('+done+'/'+_subs.length+')';
-      stListDiv.innerHTML='';
-      _subs.forEach(function(sub,i){
-        var row=document.createElement('div');row.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 0';
-        var chkDiv=document.createElement('div');
-        chkDiv.style.cssText='width:16px;height:16px;border-radius:4px;border:1.5px solid '+(sub.done?'var(--green)':'#d6d3d1')+';background:'+(sub.done?'var(--green)':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:9px';
-        chkDiv.textContent=sub.done?'✓':'';
-        chkDiv.onclick=function(){sub.done=!sub.done;CollabStore.updateProjectTask(pid,task.id,{subtasks:_subs,updated_at:Date.now()});task.subtasks=_subs;_refreshSubs();};
-        var txt=document.createElement('span');txt.style.cssText='font-size:13px;flex:1;color:var(--text)'+(sub.done?';text-decoration:line-through;color:var(--muted)':'');txt.textContent=sub.title;
-        row.appendChild(chkDiv);row.appendChild(txt);
-        if(canEdit){
-          var del=document.createElement('button');del.type='button';del.textContent='×';
-          del.style.cssText='background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0 3px;margin-left:auto';
-          del.onclick=(function(ii){return function(){_subs.splice(ii,1);CollabStore.updateProjectTask(pid,task.id,{subtasks:_subs,updated_at:Date.now()});task.subtasks=_subs;_refreshSubs();};})(i);
-          row.appendChild(del);
-        }
-        stListDiv.appendChild(row);
-      });
+  // Auto-refresh modal jika ada update remote dari user lain
+  function _onRemoteUpdate() {
+    var updated = CollabStore.getProjectTasks(pid).find(function(t){ return t.id === task.id; });
+    if (!updated) { m.close(); return; } // task dihapus user lain
+    if (JSON.stringify(updated) !== JSON.stringify(task)) {
+      m.close();
+      showProjectTaskModal(pid, updated);
     }
-    _refreshSubs();
-    strow.appendChild(stlbl);strow.appendChild(stListDiv);
-    if(canEdit){
-      var stAddRow=document.createElement('div');stAddRow.style.cssText='display:flex;gap:6px;margin-top:8px';
-      var stInp=document.createElement('input');stInp.className='ct-input';stInp.placeholder='Tambah sub-task...';stInp.style.cssText='flex:1;font-size:12px';
-      var stAddBt=document.createElement('button');stAddBt.type='button';stAddBt.className='ct-btn ct-btn-sm';stAddBt.textContent='+';
-      stAddBt.onclick=function(){var v=stInp.value.trim();if(!v)return;_subs.push({id:'st_'+Date.now(),title:v,done:false});CollabStore.updateProjectTask(pid,task.id,{subtasks:_subs,updated_at:Date.now()});task.subtasks=_subs;stInp.value='';_refreshSubs();};
-      stInp.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();stAddBt.click();}};
-      stAddRow.appendChild(stInp);stAddRow.appendChild(stAddBt);strow.appendChild(stAddRow);
-    }
-    m.body.appendChild(strow);
-  })();
-
-  // Comments
-  var cdiv=document.createElement('div');cdiv.className='ct-divider';m.body.appendChild(cdiv);
-  renderCommentsPanel(task.id,pid,m.body);
-
-  // Delete button (owner only)
-  if(Roles.canDelete(myRole||Roles.OWNER)){
-    m.footer.innerHTML='';
-    var delBtn=document.createElement('button');delBtn.className='ct-btn ct-btn-danger';delBtn.textContent='🗑️ Delete Task';
-    delBtn.onclick=function(){
-      if(!confirm('Delete "'+task.title+'"?'))return;
-      CollabStore.deleteProjectTask(pid,task.id);
-      logActivity(pid,'task_deleted',{task_title:task.title});
-      _showToast('🗑️ Task deleted','warn');m.close();
-    };
-    m.footer.appendChild(delBtn);
-    m.footer.style.display='flex';
-  } else {
-    m.footer.style.display='none';
   }
+  CollabStore.onRender(_onRemoteUpdate);
+  var origCloseTM = m.close.bind(m);
+  m.close = function(){ CollabStore.offRender(_onRemoteUpdate); origCloseTM(); };
 }
 
 // ─────────────────────────────────────────────
 // § 12. PROJECT DETAIL VIEW
 // ─────────────────────────────────────────────
-function showProjectDetail(proj){
-  // Activate realtime listeners for this project's messages, members, tasks
+function showProjectDetail(proj) {
   CollabStore.listenProject(proj.id);
-  var m=_buildModal(proj.title,'📋','ct-modal-lg');
-  var myRole=_getMyRole(proj.id)||Roles.OWNER;
-  var canEdit=Roles.canEdit(myRole);
+  var m = _buildModal(proj.title, '📋', 'ct-modal-lg');
+  var myRole = _getMyRole(proj.id) || Roles.OWNER;
+  var canEdit = Roles.canEdit(myRole);
 
-  // Tabs: Tasks | Members | Activity | Invite
-  var tabBar=document.createElement('div');tabBar.className='ct-tabs';
-  var tabDefs=['📋 Tasks','👥 Members','📈 Activity','💬 Diskusi','🔗 Invite'];
-  var tabContents=[];
-  tabDefs.forEach(function(name,i){
-    var btn=document.createElement('button');btn.className='ct-tab'+(i===0?' active':'');btn.textContent=name;
-    var content=document.createElement('div');content.className='ct-tab-content'+(i===0?' active':'');
-    tabContents.push({btn:btn,content:content});
-    btn.onclick=function(){
-      tabContents.forEach(function(x){x.btn.classList.remove('active');x.content.classList.remove('active');});
-      btn.classList.add('active');content.classList.add('active');
+  var tabDefs    = ['📋 Tasks', '👥 Members', '📈 Activity', '💬 Diskusi', '🔗 Invite'];
+  var tabBar     = document.createElement('div'); tabBar.className = 'ct-tabs';
+  var tabContents = [];
+  tabDefs.forEach(function(name, i){
+    var btn     = document.createElement('button'); btn.className = 'ct-tab' + (i===0?' active':''); btn.textContent = name;
+    var content = document.createElement('div');   content.className = 'ct-tab-content' + (i===0?' active':'');
+    tabContents.push({ btn:btn, content:content });
+    btn.onclick = function(){
+      tabContents.forEach(function(x){ x.btn.classList.remove('active'); x.content.classList.remove('active'); });
+      btn.classList.add('active'); content.classList.add('active');
     };
     tabBar.appendChild(btn);
   });
-  m.modal.insertBefore(tabBar,m.body);
-  var wrap=document.createElement('div');wrap.style.cssText='overflow-y:auto;max-height:calc(92vh - 115px);padding:16px 18px';
-  tabContents.forEach(function(x){wrap.appendChild(x.content);});
-  m.modal.insertBefore(wrap,m.body);
-  m.modal.removeChild(m.body);m.modal.removeChild(m.footer);
+  m.modal.insertBefore(tabBar, m.body);
+  var wrap = document.createElement('div'); wrap.style.cssText = 'overflow-y:auto;max-height:calc(92vh - 115px);padding:16px 18px';
+  tabContents.forEach(function(x){ wrap.appendChild(x.content); });
+  m.modal.insertBefore(wrap, m.body);
+  m.modal.removeChild(m.body); m.modal.removeChild(m.footer);
 
   // ── TAB 0: TASKS ──
-  var STATUS_ORDER=['todo','inprogress','done'];
-  var STATUS_LABELS={todo:'⏳ To Do',inprogress:'🔄 In Progress',done:'✅ Done'};
+  var STATUS_ORDER  = ['todo', 'inprogress', 'done'];
+  var STATUS_LABELS = { todo:'⏳ To Do', inprogress:'🔄 In Progress', done:'✅ Done' };
 
-  function _renderTasks(){
-    var tc=tabContents[0].content;tc.innerHTML='';
-    var tasks=CollabStore.getProjectTasks(proj.id);
+  function _renderTasks() {
+    var tc = tabContents[0].content; tc.innerHTML = '';
+    var pTasks = CollabStore.getProjectTasks(proj.id);
+    if (canEdit) {
+      var addWrap = document.createElement('div');
+      addWrap.style.cssText = 'background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px';
+      var titleRow = document.createElement('div'); titleRow.style.cssText = 'display:flex;gap:8px;margin-bottom:8px';
+      var inp    = document.createElement('input'); inp.className = 'ct-input'; inp.placeholder = 'Add a new task...'; inp.style.flex = '1';
+      var addBtn = document.createElement('button'); addBtn.className = 'ct-btn ct-btn-primary'; addBtn.textContent = '+ Add';
+      titleRow.appendChild(inp); titleRow.appendChild(addBtn); addWrap.appendChild(titleRow);
 
-    // Add task form (expanded)
-    if(canEdit){
-      var addFormWrap=document.createElement('div');
-      addFormWrap.style.cssText='background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px';
+      var chipRow = document.createElement('div'); chipRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px';
+      var dueInp = document.createElement('input'); dueInp.type = 'date'; dueInp.className = 'ct-input';
+      dueInp.style.cssText = 'font-size:11px;height:28px;padding:4px 8px;max-width:130px';
+      var dueLbl = document.createElement('label'); dueLbl.style.cssText = 'display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)';
+      dueLbl.innerHTML = '📅 '; dueLbl.appendChild(dueInp); chipRow.appendChild(dueLbl);
+      addWrap.appendChild(chipRow);
+      tc.appendChild(addWrap);
 
-      // Row 1: title + add button
-      var titleRow=document.createElement('div');titleRow.style.cssText='display:flex;gap:8px;margin-bottom:10px';
-      var inp=document.createElement('input');inp.className='ct-input';inp.placeholder='Add a new task...';inp.style.flex='1';
-      var addBtn=document.createElement('button');addBtn.className='ct-btn ct-btn-primary';addBtn.textContent='+ Add';
-      titleRow.appendChild(inp);titleRow.appendChild(addBtn);addFormWrap.appendChild(titleRow);
-
-      // Row 2: chips
-      var chipRow=document.createElement('div');chipRow.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center';
-
-      // Due date
-      var dueInp=document.createElement('input');dueInp.type='date';dueInp.className='ct-input';
-      dueInp.style.cssText='font-size:11px;height:28px;padding:4px 8px;max-width:130px';dueInp.title='Due date';
-      var dueLbl=document.createElement('label');dueLbl.style.cssText='display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)';
-      dueLbl.innerHTML='📅 ';dueLbl.appendChild(dueInp);chipRow.appendChild(dueLbl);
-
-      // Reminder
-      var remInp=document.createElement('input');remInp.type='datetime-local';remInp.className='ct-input';
-      remInp.style.cssText='font-size:11px;height:28px;padding:4px 8px;max-width:155px';remInp.title='Reminder';
-      var remLbl=document.createElement('label');remLbl.style.cssText='display:flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)';
-      remLbl.innerHTML='⏰ ';remLbl.appendChild(remInp);chipRow.appendChild(remLbl);
-
-      // Shopping toggle
-      var _shopOn=false;
-      var shopBtn=document.createElement('button');shopBtn.type='button';shopBtn.className='ct-btn ct-btn-sm';
-      shopBtn.textContent='🛒 Belanja';shopBtn.style.cssText='font-size:11px;height:28px;padding:0 9px';
-      shopBtn.onclick=function(){
-        _shopOn=!_shopOn;
-        shopBtn.style.background=_shopOn?'#d1fae5':'';shopBtn.style.color=_shopOn?'#065f46':'';
-        shopBtn.style.borderColor=_shopOn?'#6ee7b7':'';
-        shopPanel.style.display=_shopOn?'flex':'none';
+      addBtn.onclick = function(){
+        var v = inp.value.trim(); if (!v) return;
+        var me = getCurrentUser();
+        var task = { id:'ptsk_'+Date.now(), title:v, desc:'', status:'todo', priority:'normal',
+          created_by:me.uid, created_by_name:me.name, assignee_id:null, assignee_name:null,
+          due:dueInp.value||null, created_at:Date.now(), updated_at:Date.now(), subtasks:[] };
+        CollabStore.addProjectTask(proj.id, task);
+        logActivity(proj.id, 'task_created', { task_title: v });
+        inp.value = ''; dueInp.value = '';
+        _renderTasks(); _showToast('✅ Task added', 'success');
       };
-      chipRow.appendChild(shopBtn);
-
-      // Subtask toggle
-      var _newSubs=[];
-      var subBtn=document.createElement('button');subBtn.type='button';subBtn.className='ct-btn ct-btn-sm';
-      subBtn.textContent='✅ Sub-task';subBtn.style.cssText='font-size:11px;height:28px;padding:0 9px';
-      subBtn.onclick=function(){
-        var shown=subPanel.style.display==='block';
-        subPanel.style.display=shown?'none':'block';
-        subBtn.style.background=!shown?'var(--hover)':'';
-      };
-      chipRow.appendChild(subBtn);
-      addFormWrap.appendChild(chipRow);
-
-      // Shopping panel
-      var shopPanel=document.createElement('div');
-      shopPanel.style.cssText='display:none;gap:6px;flex-wrap:wrap;margin-top:8px;padding:10px;background:var(--hover);border-radius:8px';
-      var priceInp=document.createElement('input');priceInp.className='ct-input';priceInp.type='number';priceInp.min='0';
-      priceInp.placeholder='Harga (Rp)';priceInp.style.cssText='flex:1;min-width:90px;font-size:12px';
-      var walletSel=document.createElement('select');walletSel.className='ct-input';
-      walletSel.style.cssText='flex:1;min-width:110px;font-size:12px';
-      walletSel.innerHTML='<option value="">Pilih Wallet...</option>';
-      finWallets.forEach(function(w){var o=document.createElement('option');o.value=w.id;o.textContent=w.icon+' '+w.name;walletSel.appendChild(o);});
-      shopPanel.appendChild(priceInp);shopPanel.appendChild(walletSel);
-      addFormWrap.appendChild(shopPanel);
-
-      // Subtask panel
-      var subPanel=document.createElement('div');subPanel.style.cssText='display:none;margin-top:8px;padding:10px;background:var(--hover);border-radius:8px';
-      var subList=document.createElement('div');subList.style.cssText='display:flex;flex-direction:column;gap:4px;margin-bottom:6px';
-      var subAddRow=document.createElement('div');subAddRow.style.cssText='display:flex;gap:6px';
-      var subInp=document.createElement('input');subInp.className='ct-input';subInp.placeholder='Tambah sub-task...';subInp.style.cssText='flex:1;font-size:12px';
-      var subAddBt=document.createElement('button');subAddBt.type='button';subAddBt.className='ct-btn ct-btn-sm';subAddBt.textContent='+';
-      function _refreshNewSubs(){
-        subList.innerHTML='';
-        _newSubs.forEach(function(s,i){
-          var r=document.createElement('div');r.style.cssText='display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text)';
-          var del=document.createElement('button');del.type='button';del.textContent='×';
-          del.style.cssText='background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:0 2px;margin-left:auto';
-          del.onclick=(function(ii){return function(){_newSubs.splice(ii,1);_refreshNewSubs();};})(i);
-          r.innerHTML='☐ '+s.title+' ';r.appendChild(del);subList.appendChild(r);
-        });
-        subBtn.textContent='✅ Sub-task'+(_newSubs.length?' ('+_newSubs.length+')':'');
-      }
-      subAddBt.onclick=function(){
-        var v=subInp.value.trim();if(!v)return;
-        _newSubs.push({id:'st_'+Date.now(),title:v,done:false});
-        subInp.value='';_refreshNewSubs();
-      };
-      subInp.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();subAddBt.click();}};
-      subAddRow.appendChild(subInp);subAddRow.appendChild(subAddBt);
-      subPanel.appendChild(subList);subPanel.appendChild(subAddRow);
-      addFormWrap.appendChild(subPanel);
-
-      addBtn.onclick=function(){
-        var v=inp.value.trim();if(!v)return;
-        var me=getCurrentUser();
-        var task={id:'ptsk_'+Date.now(),title:v,desc:'',status:'todo',priority:'normal',
-          created_by:me.uid,created_by_name:me.name,assignee_id:null,assignee_name:null,
-          due:dueInp.value||null,created_at:Date.now(),updated_at:Date.now(),
-          isShopping:_shopOn,price:_shopOn?parseFloat(priceInp.value)||0:0,
-          walletId:_shopOn?walletSel.value:'',
-          reminder_ts:remInp.value?new Date(remInp.value).getTime():null,
-          subtasks:_newSubs.slice()};
-        CollabStore.addProjectTask(proj.id,task);
-        logActivity(proj.id,'task_created',{task_title:v});
-        // Reset form
-        inp.value='';dueInp.value='';remInp.value='';
-        _shopOn=false;shopBtn.style.cssText='font-size:11px;height:28px;padding:0 9px';
-        shopPanel.style.display='none';priceInp.value='';walletSel.value='';
-        _newSubs=[];_refreshNewSubs();subPanel.style.display='none';subBtn.style.background='';
-        _renderTasks();_showToast('✅ Task added','success');
-      };
-      inp.onkeydown=function(e){if(e.key==='Enter')addBtn.click();};
-      tc.appendChild(addFormWrap);
+      inp.onkeydown = function(e){ if (e.key === 'Enter') addBtn.click(); };
     }
 
-    if(!tasks.length){
-      tc.insertAdjacentHTML('beforeend','<div class="ct-empty"><div class="ct-empty-icon">📋</div><div class="ct-empty-title">No tasks yet</div><div class="ct-empty-sub">Add the first task above.</div></div>');
+    if (!pTasks.length) {
+      tc.insertAdjacentHTML('beforeend', '<div class="ct-empty"><div class="ct-empty-icon">📋</div><div class="ct-empty-title">No tasks yet</div></div>');
       return;
     }
-
-    // Group by status
     STATUS_ORDER.forEach(function(status){
-      var filtered=tasks.filter(function(t){return (t.status||'todo')===status;});
-      if(!filtered.length&&status==='done')return;
-      var section=document.createElement('div');section.style.marginBottom='14px';
-      var shdr=document.createElement('div');shdr.style.cssText='font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;display:flex;align-items:center;gap:6px';
-      shdr.innerHTML=STATUS_LABELS[status]+'<span style="background:var(--border);border-radius:20px;padding:1px 7px;font-size:10px">'+filtered.length+'</span>';
+      var filtered = pTasks.filter(function(t){ return (t.status || 'todo') === status; });
+      if (!filtered.length && status === 'done') return;
+      var section = document.createElement('div'); section.style.marginBottom = '14px';
+      var shdr = document.createElement('div');
+      shdr.style.cssText = 'font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;display:flex;align-items:center;gap:6px';
+      shdr.innerHTML = STATUS_LABELS[status] + '<span style="background:var(--border);border-radius:20px;padding:1px 7px;font-size:10px">' + filtered.length + '</span>';
       section.appendChild(shdr);
       filtered.forEach(function(task){
-        var row=document.createElement('div');row.className='ct-ptask'+(task.status==='done'?' ct-ptask-done':'');
-        // Checkbox
-        var chk=document.createElement('div');chk.className='ct-ptask-check'+(task.status==='done'?' checked':'');
-        chk.innerHTML=task.status==='done'?'✓':'';
-        chk.onclick=function(e){
+        var row = document.createElement('div'); row.className = 'ct-ptask' + (task.status === 'done' ? ' ct-ptask-done' : '');
+        var chk = document.createElement('div'); chk.className = 'ct-ptask-check' + (task.status === 'done' ? ' checked' : '');
+        chk.innerHTML = task.status === 'done' ? '✓' : '';
+        chk.onclick = function(e){
           e.stopPropagation();
-          if(!canEdit){_showToast('⚠️ No permission','warn');return;}
-          var newStatus=task.status==='done'?'todo':'done';
-          CollabStore.updateProjectTask(proj.id,task.id,{status:newStatus,updated_at:Date.now()});
-          if(newStatus==='done')logActivity(proj.id,'task_completed',{task_title:task.title});
-          if(newStatus==='done' && task.isShopping && task.price && task.walletId){
-            var w = getWalletById(task.walletId);
-            if(w){
-              w.balance -= task.price;
-              finTransactions.push({id:'tx'+finNextId++,type:'expense',amount:task.price,category:'Belanja',walletId:task.walletId,date:todayStr,note:'Collab Task: '+task.title});
-            }
-          } else if(newStatus==='todo' && task.isShopping && task.price && task.walletId){
-            var w = getWalletById(task.walletId);
-            if(w){
-              w.balance += task.price;
-              for(var i=finTransactions.length-1;i>=0;i--){
-                if(finTransactions[i].note==='Collab Task: '+task.title && finTransactions[i].type==='expense'){
-                  finTransactions.splice(i,1); break;
-                }
-              }
-            }
-          }
+          if (!canEdit) { _showToast('⚠️ No permission', 'warn'); return; }
+          var newStatus = task.status === 'done' ? 'todo' : 'done';
+          CollabStore.updateProjectTask(proj.id, task.id, { status: newStatus, updated_at: Date.now() });
+          if (newStatus === 'done') logActivity(proj.id, 'task_completed', { task_title: task.title });
           _renderTasks();
         };
-        // Title
-        var title=document.createElement('div');title.className='ct-ptask-title';title.textContent=task.title;
-        // Meta
-        var meta=document.createElement('div');meta.className='ct-ptask-meta';
-        if(task.assignee_name){
-          var members=CollabStore.getMembers(proj.id);
-          var asgn=members.find(function(x){return x.user_id===task.assignee_id;})||{name:task.assignee_name};
-          meta.appendChild(_makeAvatar(asgn,'ct-avatar-sm'));
+        var title = document.createElement('div'); title.className = 'ct-ptask-title'; title.textContent = task.title;
+        var meta  = document.createElement('div'); meta.className  = 'ct-ptask-meta';
+        if (task.assignee_name) {
+          var asgn = CollabStore.getMembers(proj.id).find(function(x){ return x.user_id === task.assignee_id; }) || { name: task.assignee_name };
+          meta.appendChild(_makeAvatar(asgn, 'ct-avatar-sm'));
         }
-        if(task.due){var due=document.createElement('span');due.style.cssText='font-size:10px;color:var(--muted)';due.textContent='📅 '+task.due;meta.appendChild(due);}
-        if(task.isShopping && task.price){var shop=document.createElement('span');shop.style.cssText='font-size:10px;color:#15803d;font-weight:600;margin-left:6px';shop.textContent='🛒 '+fmtRp(task.price);meta.appendChild(shop);}
-        if(task.reminder_ts){var rem=document.createElement('span');rem.style.cssText='font-size:10px;color:#d97706;margin-left:6px';rem.textContent='⏰ '+_relTime(task.reminder_ts);meta.appendChild(rem);}
-        row.appendChild(chk);row.appendChild(title);row.appendChild(meta);
-        row.onclick=function(){showProjectTaskModal(proj.id,task);};
+        if (task.due) { var due = document.createElement('span'); due.style.cssText = 'font-size:10px;color:var(--muted)'; due.textContent = '📅 ' + task.due; meta.appendChild(due); }
+        row.appendChild(chk); row.appendChild(title); row.appendChild(meta);
+        row.onclick = function(){ showProjectTaskModal(proj.id, task); };
         section.appendChild(row);
       });
       tc.appendChild(section);
     });
   }
   _renderTasks();
-  // Refresh tasks tab when switching back
-  tabContents[0].btn.addEventListener('click',_renderTasks);
+  tabContents[0].btn.addEventListener('click', _renderTasks);
+  // Auto-refresh when Firestore pushes task/member/assignment updates
+  CollabStore.onRender(_renderTasks);
 
   // ── TAB 1: MEMBERS ──
-  var ml=document.createElement('div');tabContents[1].content.appendChild(ml);
-  tabContents[1].btn.addEventListener('click',function(){_renderMemberList(proj.id,ml);});
-  _renderMemberList(proj.id,ml);
+  var ml = document.createElement('div'); tabContents[1].content.appendChild(ml);
+  function _refreshMembers() { _renderMemberList(proj.id, ml); }
+  _refreshMembers();
+  tabContents[1].btn.addEventListener('click', _refreshMembers);
+  CollabStore.onRender(_refreshMembers);
 
   // ── TAB 2: ACTIVITY ──
-  var af=document.createElement('div');tabContents[2].content.appendChild(af);
-  tabContents[2].btn.addEventListener('click',function(){_renderActivityFeed(proj.id,af);});
+  var af = document.createElement('div'); tabContents[2].content.appendChild(af);
+  function _refreshActivity() { _renderActivityFeed(proj.id, af); }
+  CollabStore.setActivityCallback(proj.id, _refreshActivity);
+  _renderActivityFeed(proj.id, af);
+  tabContents[2].btn.addEventListener('click', _refreshActivity);
 
   // ── TAB 3: DISKUSI ──
   (function(){
-    var dc=tabContents[3].content;
-    // Ensure listener is active for this project
     CollabStore.listenProject(proj.id);
+    var dc   = tabContents[3].content;
+    var feed = document.createElement('div');
+    feed.style.cssText = 'margin-bottom:12px;max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px';
 
-    var feed=document.createElement('div');
-    feed.style.cssText='margin-bottom:12px;max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px';
-
-    function _renderDisk(){
-      feed.innerHTML='';
-      var msgs=CollabStore.getMessages(proj.id);
-      var me0=getCurrentUser();
-      if(!msgs.length){
-        var guestNote=me0&&me0._isGuest?' <br><span style="color:#f59e0b;font-size:11px">⚠️ Login Google untuk ikut diskusi</span>':'';
-        feed.innerHTML='<div class="ct-empty" style="padding:20px 0"><div class="ct-empty-icon">💬</div><div class="ct-empty-title">Belum ada diskusi</div><div class="ct-empty-sub">Mulai diskusi terkait project ini.'+guestNote+'</div></div>';
+    function _renderDisk() {
+      feed.innerHTML = '';
+      var msgs = CollabStore.getMessages(proj.id);
+      var me   = getCurrentUser();
+      if (!msgs.length) {
+        feed.innerHTML = '<div class="ct-empty" style="padding:20px 0"><div class="ct-empty-icon">💬</div><div class="ct-empty-title">Belum ada diskusi</div><div class="ct-empty-sub">Mulai diskusi terkait project ini.</div></div>';
         return;
       }
-      var me=getCurrentUser();
       msgs.forEach(function(msg){
-        var isMe=msg.user_id===me.uid;
-        var wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-direction:'+(isMe?'row-reverse':'row')+';align-items:flex-end;gap:8px';
-        var bubble=document.createElement('div');
-        bubble.style.cssText='max-width:72%;padding:9px 12px;border-radius:'+(isMe?'14px 14px 4px 14px':'14px 14px 14px 4px')+';font-size:13px;line-height:1.5;'+(isMe?'background:var(--accent);color:#fff':'background:var(--bg);border:1px solid var(--border);color:var(--text)');
-        var header=document.createElement('div');header.style.cssText='font-size:10px;font-weight:700;margin-bottom:3px;opacity:.75';header.textContent=msg.user_name+' · '+_relTime(msg.ts);
-        var body=document.createElement('div');body.textContent=msg.text;
-        bubble.appendChild(header);bubble.appendChild(body);
-        wrap.appendChild(_makeAvatar({name:msg.user_name,photo:msg.user_photo},'ct-avatar-sm'));
+        var isMe = msg.user_id === me.uid;
+        var wrap = document.createElement('div'); wrap.style.cssText = 'display:flex;flex-direction:' + (isMe?'row-reverse':'row') + ';align-items:flex-end;gap:8px';
+        var bubble = document.createElement('div');
+        bubble.className = isMe ? 'ct-chat-bubble-me' : 'ct-chat-bubble-other';
+        bubble.style.cssText = 'max-width:72%;padding:9px 12px;font-size:13px;line-height:1.5';
+        var header = document.createElement('div'); header.style.cssText = 'font-size:10px;font-weight:700;margin-bottom:3px;opacity:.75';
+        header.textContent = msg.user_name + ' · ' + _relTime(msg.ts);
+        var body = document.createElement('div'); body.textContent = msg.text;
+        bubble.appendChild(header); bubble.appendChild(body);
+        wrap.appendChild(_makeAvatar({ name: msg.user_name, photo: msg.user_photo }, 'ct-avatar-sm'));
         wrap.appendChild(bubble);
         feed.appendChild(wrap);
       });
-      feed.scrollTop=feed.scrollHeight;
+      feed.scrollTop = feed.scrollHeight;
     }
 
-    // Poll every 3 seconds for new messages (Firestore listener updates cache automatically)
-    var _pollInterval=null;
-    function _startPoll(){
-      _renderDisk();
-      _pollInterval=setInterval(_renderDisk,3000);
-    }
-    function _stopPoll(){ if(_pollInterval){ clearInterval(_pollInterval); _pollInterval=null; } }
+    // Auto-refresh relTime setiap 60 detik agar timestamp tidak stale
+    var _relTimeInterval = setInterval(_renderDisk, 60000);
 
-    _startPoll();
+    // Realtime via setDiskCallback — no polling needed
     CollabStore.setDiskCallback(proj.id, _renderDisk);
+    _renderDisk();
     dc.appendChild(feed);
 
-    var inputRow=document.createElement('div');inputRow.style.cssText='display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--border)';
-    var inp=document.createElement('input');inp.className='ct-input';inp.placeholder='Tulis pesan...';inp.style.flex='1';
-    var sendBtn=document.createElement('button');sendBtn.className='ct-btn ct-btn-primary';sendBtn.innerHTML='➤';sendBtn.style.padding='8px 14px';
+    // Input row
+    var inputRow = document.createElement('div'); inputRow.style.cssText = 'display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--border)';
+    var inp     = document.createElement('input'); inp.className = 'ct-input'; inp.placeholder = 'Tulis pesan...'; inp.style.flex = '1';
+    var sendBtn = document.createElement('button'); sendBtn.className = 'ct-btn ct-btn-primary'; sendBtn.innerHTML = '➤'; sendBtn.style.padding = '8px 14px';
 
-    sendBtn.onclick=function(){
-      var v=inp.value.trim(); if(!v)return;
-      var me=getCurrentUser();
-      if(!me||!me.uid||me._isGuest){_showToast('⚠️ Login dengan Google untuk bisa diskusi','warn');return;}
-      var msgObj={user_id:me.uid,user_name:me.name,user_photo:me.photo||null,text:v,ts:Date.now()};
-      inp.value='';
-      sendBtn.disabled=true;
+    sendBtn.onclick = function(){
+      var v = inp.value.trim(); if (!v) return;
+      var me = getCurrentUser();
+      var msgObj = { user_id: me.uid, user_name: me.name, user_photo: me.photo || null, text: v, ts: Date.now() };
+      inp.value = '';
+      sendBtn.disabled = true;
       CollabStore.sendMessage(proj.id, msgObj).then(function(){
-        sendBtn.disabled=false;
+        sendBtn.disabled = false;
         _renderDisk();
       }).catch(function(e){
-        sendBtn.disabled=false;
-        var errMsg = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'Cek koneksi internet');
-        _showToast('⚠️ Gagal kirim: '+errMsg,'warn');
-        console.error('[Collab] sendMessage',e);
+        sendBtn.disabled = false;
+        var errMsg = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'Cek koneksi');
+        _showToast('⚠️ Gagal kirim: ' + errMsg, 'warn');
       });
-      logActivity(proj.id,'comment_added',{task_title:'diskusi project'});
+      logActivity(proj.id, 'comment_added', { task_title: 'diskusi project' });
     };
-    inp.onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendBtn.click();}};
-    inputRow.appendChild(inp);inputRow.appendChild(sendBtn);dc.appendChild(inputRow);
+    inp.onkeydown = function(e){ if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendBtn.click(); } };
+    inputRow.appendChild(inp); inputRow.appendChild(sendBtn); dc.appendChild(inputRow);
 
-    tabContents[3].btn.addEventListener('click',function(){
-      // Force re-listen in case we just joined and listener wasn't active
-      CollabStore.listenProject(proj.id);
-      _renderDisk();
-    });
-
-    // Stop polling when modal closes
+    tabContents[3].btn.addEventListener('click', function(){ CollabStore.listenProject(proj.id); _renderDisk(); });
+    // Override m.close: chain semua cleanup (diskusi + tasks + members + activity)
     var origClose = m.close.bind(m);
-    m.close = function(){ _stopPoll(); CollabStore.clearDiskCallback(proj.id); origClose(); };
+    m.close = function(){
+      clearInterval(_relTimeInterval);
+      CollabStore.clearDiskCallback(proj.id);
+      CollabStore.clearActivityCallback(proj.id);
+      CollabStore.offRender(_renderTasks);
+      CollabStore.offRender(_refreshMembers);
+      origClose();
+    };
   })();
 
   // ── TAB 4: INVITE ──
-  tabContents[4].content.innerHTML=`
+  tabContents[4].content.innerHTML = `
     <div class="ct-field">
       <div class="ct-label">Invite by email</div>
       <div class="ct-row">
@@ -30554,168 +30444,165 @@ function showProjectDetail(proj){
       </div>
     </div>
     <button class="ct-btn ct-btn-primary" id="ct-send-inv" style="width:100%;margin-bottom:16px">✉️ Send Invite</button>
-    <div class="ct-divider" style="margin-top:0"></div>
+    <hr class="ct-divider">
     <div class="ct-label" style="margin-bottom:8px">Share via link</div>
     <select id="ct-link-role" class="ct-select" style="width:170px;margin-bottom:8px">
       <option value="editor">Link for Editors</option>
       <option value="viewer">Link for Viewers</option>
     </select>
     <div class="ct-invite-box"><div class="ct-invite-url" id="ct-inv-url">Generating...</div><button class="ct-copy-btn" id="ct-copy-inv">Copy</button></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:6px">🔒 Expires in 7 days · Link disimpan di Firestore</div>`;
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">🔒 Expires in 7 days · Requires Firebase</div>`;
 
-  // Pre-generate invite link setup function (called on tab click)
-  function _initInviteTab(){
-    var me=getCurrentUser();
-    var lr=document.getElementById('ct-link-role');
-    var urlEl=document.getElementById('ct-inv-url');
-    var copyBtn=document.getElementById('ct-copy-inv');
-    var sendBtn=document.getElementById('ct-send-inv');
-    if(!urlEl)return;
-    if(!me||me._isGuest){
-      urlEl.textContent='⚠️ Login Google untuk membuat invite link';
-      urlEl.style.color='#f59e0b';
-      if(copyBtn){copyBtn.disabled=true;copyBtn.style.opacity='0.4';}
-      if(sendBtn){sendBtn.disabled=true;sendBtn.style.opacity='0.4';}
+  function _initInviteTab() {
+    var me    = getCurrentUser();
+    var lr    = document.getElementById('ct-link-role');
+    var urlEl = document.getElementById('ct-inv-url');
+    var cpBtn = document.getElementById('ct-copy-inv');
+    var sbBtn = document.getElementById('ct-send-inv');
+    if (!urlEl) return;
+    if (me._isGuest) {
+      urlEl.textContent = '⚠️ Login Google untuk membuat invite link'; urlEl.style.color = '#f59e0b';
+      if (cpBtn) { cpBtn.disabled = true; cpBtn.style.opacity = '0.4'; }
+      if (sbBtn) { sbBtn.disabled = true; sbBtn.style.opacity = '0.4'; }
       return;
     }
-    if(!lr)return;
-    urlEl.style.color='';
-    function _rl(){
-      urlEl.textContent='Generating...';
-      generateInviteLinkSync(proj.id, lr.value, function(url){ urlEl.textContent=url; });
-    }
-    lr.onchange=_rl; _rl();
-  }
-  tabContents[4].btn.addEventListener('click',function(){
-    _initInviteTab();
-    var lr=document.getElementById('ct-link-role');
-    var urlEl=document.getElementById('ct-inv-url');
-    function _rl(){
-      if(!urlEl)return;
-      urlEl.textContent='Generating...';
-      generateInviteLinkSync(proj.id, lr?lr.value:'editor', function(url){ urlEl.textContent=url; });
-    }
-    if(lr){ lr.onchange=_rl; _rl(); }
-
-    var cb=document.getElementById('ct-copy-inv');
-    if(cb)cb.onclick=function(){
-      var txt=document.getElementById('ct-inv-url').textContent;
-      if(!txt||txt==='Generating...')return;
+    function _genLink(){ urlEl.textContent = 'Generating...'; generateInviteLinkSync(proj.id, lr ? lr.value : 'editor', function(url){ urlEl.textContent = url; }); }
+    if (lr) { lr.onchange = _genLink; _genLink(); }
+    if (cpBtn) cpBtn.onclick = function(){
+      var txt = urlEl.textContent;
+      if (!txt || txt === 'Generating...') return;
       navigator.clipboard.writeText(txt).catch(function(){});
-      cb.textContent='✓ Copied!';cb.classList.add('copied');_showToast('🔗 Copied!','success');
+      cpBtn.textContent = '✓ Copied!'; cpBtn.classList.add('copied');
+      _showToast('🔗 Copied!', 'success');
     };
-    var sb=document.getElementById('ct-send-inv');
-    if(sb)sb.onclick=function(){
-      var email=(document.getElementById('ct-inv-inp').value||'').trim();
-      if(!email){_showToast('⚠️ Enter email','warn');return;}
-      var members=CollabStore.getMembers(proj.id);
-      if(members.find(function(x){return x.email===email;})){_showToast('ℹ️ Already member','warn');return;}
-      var role=document.getElementById('ct-inv-role').value;
-      var me=getCurrentUser();
-      var pendingMember={user_id:'pend_'+Date.now(),name:email.split('@')[0],email:email,role:role,status:'pending',invited_at:Date.now(),invited_by:me.uid};
-      CollabStore.addMember(proj.id, pendingMember).then(function(){
-        logActivity(proj.id,'member_invited',{target_name:email});
-        document.getElementById('ct-inv-inp').value='';
-        _showToast('✉️ Invited '+email,'success');
+    if (sbBtn) sbBtn.onclick = function(){
+      var email = (document.getElementById('ct-inv-inp').value || '').trim();
+      if (!email) { _showToast('⚠️ Enter email', 'warn'); return; }
+      var members = CollabStore.getMembers(proj.id);
+      if (members.find(function(x){ return x.email === email; })) { _showToast('ℹ️ Already member', 'warn'); return; }
+      var role = document.getElementById('ct-inv-role').value;
+      var me2 = getCurrentUser();
+      CollabStore.addMember(proj.id, { user_id:'pend_'+Date.now(), name:email.split('@')[0], email:email, role:role, status:'pending', invited_at:Date.now(), invited_by:me2.uid }).then(function(){
+        logActivity(proj.id, 'member_invited', { target_name: email });
+        document.getElementById('ct-inv-inp').value = '';
+        _showToast('✉️ Invited ' + email, 'success');
+        _renderMemberList(proj.id, ml);
         tabContents[1].btn.click();
-      }).catch(function(e){ _showToast('⚠️ Gagal invite: '+e.message,'warn'); });
+      }).catch(function(e){ _showToast('⚠️ Gagal: ' + (e && e.message ? e.message : e), 'warn'); });
     };
-  });
-} // end showProjectDetail
+  }
+  tabContents[4].btn.addEventListener('click', _initInviteTab);
+}
 
 // ─────────────────────────────────────────────
 // § 13. PROJECTS LIST VIEW
 // ─────────────────────────────────────────────
-function showProjectsView(){
-  var m=_buildModal('🤝 Projects','🤝','ct-modal-lg');
-  var wrap=document.createElement('div');wrap.style.cssText='overflow-y:auto;max-height:calc(92vh - 70px);padding:16px 18px';
-  m.modal.insertBefore(wrap,m.body);
-  m.modal.removeChild(m.body);m.modal.removeChild(m.footer);
+function showProjectsView() {
+  var m = _buildModal('🤝 Projects', '🤝', 'ct-modal-lg');
+  m.modal.removeChild(m.body); m.modal.removeChild(m.footer);
+  var wrap = document.createElement('div'); wrap.style.cssText = 'overflow-y:auto;max-height:calc(92vh - 70px);padding:16px 18px';
+  m.modal.appendChild(wrap);
 
-  function _render(){
-    wrap.innerHTML='';
-    // New project button
-    var newBtn=document.createElement('button');newBtn.className='ct-btn ct-btn-primary';
-    newBtn.style.cssText='width:100%;margin-bottom:8px';newBtn.textContent='＋ New Project';
-    newBtn.onclick=function(){_showNewProjForm(wrap,function(proj){CollabStore.upsertProject(proj);_render();});};
+  function _render() {
+    wrap.innerHTML = '';
+    var newBtn = document.createElement('button'); newBtn.className = 'ct-btn ct-btn-primary';
+    newBtn.style.cssText = 'width:100%;margin-bottom:8px'; newBtn.textContent = '＋ New Project';
+    newBtn.onclick = function(){ _showNewProjForm(wrap, function(proj){ CollabStore.upsertProject(proj); _render(); }); };
     wrap.appendChild(newBtn);
 
-    var joinLinkBtn=document.createElement('button');joinLinkBtn.className='ct-btn';
-    joinLinkBtn.style.cssText='width:100%;margin-bottom:14px;border:1.5px dashed var(--border);color:var(--accent);background:rgba(217,119,6,.06)';
-    joinLinkBtn.innerHTML='🔗 Join via Link';
-    joinLinkBtn.onclick=function(){m.close();showJoinViaLinkModal();};
-    wrap.appendChild(joinLinkBtn);
+    var joinBtn = document.createElement('button'); joinBtn.className = 'ct-btn';
+    joinBtn.style.cssText = 'width:100%;margin-bottom:14px;border:1.5px dashed var(--border);color:var(--accent);background:rgba(217,119,6,.06)';
+    joinBtn.innerHTML = '🔗 Join via Link';
+    joinBtn.onclick = function(){ m.close(); showJoinViaLinkModal(); };
+    wrap.appendChild(joinBtn);
 
-    var list=CollabStore.getProjects();
-    if(!list.length){
-      wrap.insertAdjacentHTML('beforeend','<div class="ct-empty"><div class="ct-empty-icon">📂</div><div class="ct-empty-title">No projects yet</div><div class="ct-empty-sub">Create a project to collaborate with your team.</div></div>');
+    var list = CollabStore.getProjects();
+    if (!list.length) {
+      wrap.insertAdjacentHTML('beforeend', '<div class="ct-empty"><div class="ct-empty-icon">📂</div><div class="ct-empty-title">No projects yet</div><div class="ct-empty-sub">Create a project to collaborate with your team.</div></div>');
       return;
     }
     list.forEach(function(proj){
-      var members=CollabStore.getMembers(proj.id);
-      var tasks=CollabStore.getProjectTasks(proj.id);
-      var doneCnt=tasks.filter(function(t){return t.status==='done';}).length;
-      var myRole=_getMyRole(proj.id);
-      var card=document.createElement('div');card.className='ct-proj-card';
-      card.style.setProperty('--tc-color',proj.color||'#6366f1');
-      var hdr=document.createElement('div');hdr.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:6px';
-      var title=document.createElement('div');title.style.cssText='font-size:15px;font-weight:700;color:var(--text)';title.textContent=proj.title;
-      var right=document.createElement('div');right.style.cssText='display:flex;align-items:center;gap:8px';
-      if(members.length)right.appendChild(_makeAvatarStack(members));
-      if(myRole){var rb=document.createElement('div');rb.className='ct-role-badge';rb.style.color=Roles.color(myRole);rb.textContent=Roles.label(myRole);right.appendChild(rb);}
-      hdr.appendChild(title);hdr.appendChild(right);
-      var meta=document.createElement('div');meta.style.cssText='font-size:11px;color:var(--muted);margin-bottom:10px';
-      meta.textContent=tasks.length+' task'+(tasks.length!==1?'s':'')+' · '+doneCnt+' done · '+members.length+' member'+(members.length!==1?'s':'');
-      // Progress bar
-      if(tasks.length){
-        var pct=Math.round(doneCnt/tasks.length*100);
-        var bar=document.createElement('div');bar.style.cssText='height:4px;background:var(--border);border-radius:4px;margin-bottom:10px;overflow:hidden';
-        var fill=document.createElement('div');fill.style.cssText='height:100%;width:'+pct+'%;background:var(--green);border-radius:4px;transition:width .3s';
-        bar.appendChild(fill);meta.insertAdjacentElement('afterend',bar);
+      var members = CollabStore.getMembers(proj.id);
+      var pTasks  = CollabStore.getProjectTasks(proj.id);
+      var doneCnt = pTasks.filter(function(t){ return t.status === 'done'; }).length;
+      var myRole  = _getMyRole(proj.id);
+      var card = document.createElement('div'); card.className = 'ct-proj-card';
+      card.style.setProperty('--tc-color', proj.color || '#6366f1');
+      var hdr = document.createElement('div'); hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:6px';
+      var title = document.createElement('div'); title.style.cssText = 'font-size:15px;font-weight:700;color:var(--text)'; title.textContent = proj.title;
+      var right = document.createElement('div'); right.style.cssText = 'display:flex;align-items:center;gap:8px';
+      if (members.length) right.appendChild(_makeAvatarStack(members));
+      if (myRole) { var rb = document.createElement('div'); rb.className = 'ct-role-badge'; rb.style.color = Roles.color(myRole); rb.textContent = Roles.label(myRole); right.appendChild(rb); }
+      hdr.appendChild(title); hdr.appendChild(right);
+      var meta = document.createElement('div'); meta.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:10px';
+      meta.textContent = pTasks.length + ' task' + (pTasks.length!==1?'s':'') + ' · ' + doneCnt + ' done · ' + members.length + ' member' + (members.length!==1?'s':'');
+      if (pTasks.length) {
+        var pct = Math.round(doneCnt / pTasks.length * 100);
+        var bar = document.createElement('div'); bar.style.cssText = 'height:4px;background:var(--border);border-radius:4px;margin-bottom:10px;overflow:hidden';
+        var fill = document.createElement('div'); fill.style.cssText = 'height:100%;width:' + pct + '%;background:var(--green);border-radius:4px;transition:width .3s';
+        bar.appendChild(fill); meta.insertAdjacentElement('afterend', bar);
       }
-      var acts=document.createElement('div');acts.style.cssText='display:flex;gap:8px';
-      var openBtn=document.createElement('button');openBtn.className='ct-btn ct-btn-sm ct-btn-primary';openBtn.innerHTML='📋 Open';
-      openBtn.onclick=function(e){e.stopPropagation();m.close();showProjectDetail(proj);};
+      var acts = document.createElement('div'); acts.style.cssText = 'display:flex;gap:8px';
+      var openBtn = document.createElement('button'); openBtn.className = 'ct-btn ct-btn-sm ct-btn-primary'; openBtn.innerHTML = '📋 Open';
+      openBtn.onclick = function(e){ e.stopPropagation(); m.close(); showProjectDetail(proj); };
       acts.appendChild(openBtn);
-      if(Roles.canDelete(myRole||Roles.OWNER)){
-        var delBtn=document.createElement('button');delBtn.className='ct-btn ct-btn-sm ct-btn-danger ct-btn-ghost';delBtn.innerHTML='🗑️';
-        delBtn.onclick=function(e){e.stopPropagation();if(confirm('Delete "'+proj.title+'"?')){CollabStore.deleteProject(proj.id);_render();_showToast('🗑️ Deleted','warn');}};
+      if (Roles.canDelete(myRole || Roles.OWNER)) {
+        var delBtn = document.createElement('button'); delBtn.className = 'ct-btn ct-btn-sm ct-btn-danger ct-btn-ghost'; delBtn.innerHTML = '🗑️';
+        delBtn.onclick = function(e){ e.stopPropagation(); if(confirm('Delete "'+proj.title+'"?')){ CollabStore.deleteProject(proj.id); _render(); _showToast('🗑️ Deleted','warn'); } };
         acts.appendChild(delBtn);
       }
-      card.appendChild(hdr);card.appendChild(meta);card.appendChild(acts);
-      card.onclick=function(){m.close();showProjectDetail(proj);};
+      card.appendChild(hdr); card.appendChild(meta); card.appendChild(acts);
+      card.onclick = function(){ m.close(); showProjectDetail(proj); };
       wrap.appendChild(card);
     });
   }
   _render();
-}
-
-function _showNewProjForm(container,onSave){
-  container.innerHTML=`
-    <div class="ct-field"><div class="ct-label">Project Name *</div><input id="ct-pn" class="ct-input" placeholder="e.g. Website Redesign"></div>
-    <div class="ct-field"><div class="ct-label">Description</div><input id="ct-pd" class="ct-input" placeholder="What is this project about?"></div>
-    <div class="ct-field"><div class="ct-label">Color</div><input id="ct-pc" type="color" value="#6366f1" class="ct-input" style="padding:4px;height:38px;cursor:pointer"></div>
-    <button class="ct-btn ct-btn-primary" id="ct-ps" style="width:100%;margin-top:4px">🚀 Create Project</button>
-    <button class="ct-btn" id="ct-pcx" style="width:100%;margin-top:8px">Cancel</button>`;
-  setTimeout(function(){
-    document.getElementById('ct-ps').onclick=function(){
-      var name=(document.getElementById('ct-pn').value||'').trim();if(!name){_showToast('⚠️ Name required','warn');return;}
-      var me=getCurrentUser();
-      var proj={id:'proj_'+Date.now(),title:name,desc:document.getElementById('ct-pd').value.trim(),color:document.getElementById('ct-pc').value,owner_id:me.uid,created_at:Date.now()};
-      CollabStore.addMember(proj.id,{user_id:me.uid,name:me.name,email:me.email,photo:me.photo,role:Roles.OWNER,status:'active'});
-      logActivity(proj.id,'member_added',{target_name:me.name});
-      onSave(proj);_showToast('🎉 Project created!','success');
-    };
-    document.getElementById('ct-pcx').onclick=function(){showProjectsView();};
-  },40);
+  // Auto-refresh when collab store notifies
+  CollabStore.onRender(_render);
+  var origClose = m.close.bind(m);
+  m.close = function(){ CollabStore.offRender(_render); origClose(); };
 }
 
 // ─────────────────────────────────────────────
-// § 13b. JOIN VIA LINK MODAL
+// § 14. NEW PROJECT FORM
 // ─────────────────────────────────────────────
-function showJoinViaLinkModal(){
-  var m=_buildModal('🔗 Join via Invite Link','🔗','ct-modal-sm');
-  m.body.innerHTML=`
+function _showNewProjForm(container, onSave) {
+  container.innerHTML = '';
+  var me = getCurrentUser();
+  var colors = ['#d97706','#6366f1','#ec4899','#10b981','#3b82f6','#f59e0b','#8b5cf6','#ef4444'];
+  var selColor = colors[0];
+  var form = document.createElement('div');
+  form.innerHTML = '<div class="ct-label">PROJECT NAME</div><input id="ct-pc-name" class="ct-input" placeholder="e.g. Q2 Marketing" style="margin-bottom:12px"><div class="ct-label">COLOR</div>';
+  var colorRow = document.createElement('div'); colorRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px';
+  colors.forEach(function(c){
+    var dot = document.createElement('div');
+    dot.style.cssText = 'width:26px;height:26px;border-radius:50%;background:'+c+';cursor:pointer;border:3px solid '+(c===selColor?'#fff':'transparent')+';box-shadow:0 0 0 2px '+(c===selColor?c:'transparent');
+    dot.onclick = function(){ selColor = c; colorRow.querySelectorAll('div').forEach(function(d){ d.style.borderColor='transparent';d.style.boxShadow='none'; }); dot.style.borderColor='#fff';dot.style.boxShadow='0 0 0 2px '+c; };
+    colorRow.appendChild(dot);
+  });
+  form.appendChild(colorRow);
+  var saveBtn = document.createElement('button'); saveBtn.className = 'ct-btn ct-btn-primary'; saveBtn.style.cssText = 'width:100%;margin-bottom:8px'; saveBtn.textContent = '✓ Create Project';
+  var cancelBtn = document.createElement('button'); cancelBtn.className = 'ct-btn'; cancelBtn.style.cssText = 'width:100%'; cancelBtn.textContent = 'Cancel';
+  form.appendChild(saveBtn); form.appendChild(cancelBtn);
+  container.appendChild(form);
+  setTimeout(function(){ var n=document.getElementById('ct-pc-name'); if(n)n.focus(); }, 50);
+  var pcx = document.createElement('button'); pcx.id = 'ct-pcx'; pcx.style.display = 'none'; container.appendChild(pcx);
+  saveBtn.onclick = function(){
+    var name = (document.getElementById('ct-pc-name').value || '').trim();
+    if (!name) { _showToast('⚠️ Enter project name', 'warn'); return; }
+    var proj = { id:'proj_'+Date.now(), title:name, color:selColor, owner_id:me.uid, created_at:Date.now() };
+    onSave(proj);
+  };
+  cancelBtn.onclick = function(){ document.getElementById('ct-pcx').click(); };
+  setTimeout(function(){ if(document.getElementById('ct-pcx')) document.getElementById('ct-pcx').onclick = function(){ showProjectsView(); }; }, 40);
+}
+
+// ─────────────────────────────────────────────
+// § 15. JOIN VIA LINK MODAL
+// ─────────────────────────────────────────────
+function showJoinViaLinkModal() {
+  var m = _buildModal('🔗 Join via Invite Link', '🔗', 'ct-modal-sm');
+  m.body.innerHTML = `
     <div style="text-align:center;padding:8px 0 4px">
       <div style="font-size:36px;margin-bottom:10px">🔗</div>
       <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Join sebuah Project</div>
@@ -30728,364 +30615,318 @@ function showJoinViaLinkModal(){
     <div id="ct-jvl-status" style="min-height:18px;font-size:12px;margin-bottom:10px;text-align:center"></div>
     <button class="ct-btn ct-btn-primary" id="ct-jvl-go" style="width:100%;padding:11px">🚀 Join Project</button>`;
   setTimeout(function(){
-    var inp=document.getElementById('ct-jvl-inp');
-    var status=document.getElementById('ct-jvl-status');
-    var goBtn=document.getElementById('ct-jvl-go');
-
-    // Auto-paste from clipboard if available
-    if(navigator.clipboard&&navigator.clipboard.readText){
-      navigator.clipboard.readText().then(function(txt){
-        if(txt&&txt.indexOf('invite=')>-1) inp.value=txt.trim();
-      }).catch(function(){});
+    var inp    = document.getElementById('ct-jvl-inp');
+    var status = document.getElementById('ct-jvl-status');
+    var goBtn  = document.getElementById('ct-jvl-go');
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText().then(function(txt){ if (txt && txt.indexOf('invite=') > -1) inp.value = txt.trim(); }).catch(function(){});
     }
-
-    goBtn.onclick=function(){
-      var raw=(inp.value||'').trim();
-      if(!raw){_showToast('⚠️ Masukkan invite link','warn');return;}
-
-      // Extract invite ID from URL param
-      var inviteId=null;
-      try{
-        var urlObj=new URL(raw);
-        inviteId=urlObj.searchParams.get('invite');
-      }catch(e){
-        // Try regex fallback for non-full URLs
-        var m2=raw.match(/[?&]invite=([^&]+)/);
-        if(m2)inviteId=m2[1];
-      }
-      if(!inviteId){
-        status.innerHTML='<span style="color:var(--red)">⚠️ Link tidak valid. Pastikan link lengkap.</span>';
-        return;
-      }
-
-      goBtn.disabled=true;goBtn.textContent='⏳ Memproses...';
-      status.innerHTML='<span style="color:var(--muted)">Mengecek link...</span>';
-
+    goBtn.onclick = function(){
+      var raw = (inp.value || '').trim(); if (!raw) { _showToast('⚠️ Masukkan invite link', 'warn'); return; }
+      var inviteId = null;
+      try { inviteId = new URL(raw).searchParams.get('invite'); } catch(e) { var m2 = raw.match(/[?&]invite=([^&]+)/); if (m2) inviteId = m2[1]; }
+      if (!inviteId) { status.innerHTML = '<span style="color:var(--red)">⚠️ Link tidak valid.</span>'; return; }
+      goBtn.disabled = true; goBtn.textContent = '⏳ Memproses...';
+      status.innerHTML = '<span style="color:var(--muted)">Mengecek link...</span>';
       CollabStore.getInvite(inviteId).then(function(data){
-        if(!data||!data.project_id){
-          status.innerHTML='<span style="color:var(--red)">⚠️ Link tidak valid.</span>';
-          goBtn.disabled=false;goBtn.innerHTML='🚀 Join Project';return;
-        }
-        if(Date.now()>data.exp){
-          status.innerHTML='<span style="color:var(--red)">⚠️ Link sudah expired (7 hari).</span>';
-          goBtn.disabled=false;goBtn.innerHTML='🚀 Join Project';return;
-        }
-        // Check if already member
-        var me=getCurrentUser();
-        var members=CollabStore.getMembers(data.project_id);
-        if(members.find(function(x){return x.user_id===me.uid;})){
-          status.innerHTML='<span style="color:var(--green)">✅ Kamu sudah jadi member project ini.</span>';
-          goBtn.disabled=false;goBtn.innerHTML='🚀 Join Project';return;
-        }
-        status.innerHTML='<span style="color:var(--green)">✓ Link valid!</span>';
-        CollabStore.fetchProjectForJoin(data.project_id).then(function(){
-          m.close();showJoinModal(data.project_id,data.role);
-        }).catch(function(){
-          m.close();showJoinModal(data.project_id,data.role);
-        });
-      }).catch(function(e){
-        status.innerHTML='<span style="color:var(--red)">⚠️ Link tidak valid atau sudah expired.</span>';
-        goBtn.disabled=false;goBtn.innerHTML='🚀 Join Project';
-        console.warn('[Collab] join via link',e);
-      });
+        if (!data || !data.project_id) { status.innerHTML='<span style="color:var(--red)">⚠️ Link tidak valid.</span>'; goBtn.disabled=false; goBtn.innerHTML='🚀 Join Project'; return; }
+        if (Date.now() > data.exp)    { status.innerHTML='<span style="color:var(--red)">⚠️ Link expired.</span>'; goBtn.disabled=false; goBtn.innerHTML='🚀 Join Project'; return; }
+        var me = getCurrentUser();
+        var members = CollabStore.getMembers(data.project_id);
+        if (members.find(function(x){ return x.user_id === me.uid; })) { status.innerHTML='<span style="color:var(--green)">✅ Sudah jadi member.</span>'; goBtn.disabled=false; goBtn.innerHTML='🚀 Join Project'; return; }
+        CollabStore.fetchProjectForJoin(data.project_id).then(function(){ m.close(); showJoinModal(data.project_id, data.role); }).catch(function(){ m.close(); showJoinModal(data.project_id, data.role); });
+      }).catch(function(e){ status.innerHTML='<span style="color:var(--red)">⚠️ Link tidak valid atau expired.</span>'; goBtn.disabled=false; goBtn.innerHTML='🚀 Join Project'; console.warn('[Collab] join link', e); });
     };
-
-    // Enter key support
-    inp.onkeydown=function(e){if(e.key==='Enter')goBtn.click();};
-  },40);
+    inp.onkeydown = function(e){ if (e.key === 'Enter') goBtn.click(); };
+  }, 40);
 }
 
 // ─────────────────────────────────────────────
-// § 14. JOIN MODAL
+// § 16. JOIN MODAL
 // ─────────────────────────────────────────────
-function showJoinModal(pid,role){
-  var proj=CollabStore.getProject(pid);
-  var title=proj?proj.title:'a project';
-  var m=_buildModal("You've been invited!",'🎉','ct-modal-sm');
-  m.body.innerHTML='<div style="text-align:center;padding:12px 0 20px"><div style="font-size:40px;margin-bottom:12px">🤝</div><div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Join <b>'+title+'</b></div><div style="font-size:13px;color:var(--muted);margin-bottom:18px">Role: <b style="color:var(--accent)">'+Roles.label(role)+'</b></div><button class="ct-btn ct-btn-primary" id="ct-join-ok" style="width:100%;padding:12px">✅ Accept Invite</button><button class="ct-btn" id="ct-join-no" style="width:100%;margin-top:8px">Decline</button></div>';
+function showJoinModal(pid, role) {
+  var proj  = CollabStore.getProject(pid);
+  var title = proj ? proj.title : 'a project';
+  var m     = _buildModal("You've been invited!", '🎉', 'ct-modal-sm');
+  m.body.innerHTML = '<div style="text-align:center;padding:12px 0 20px"><div style="font-size:40px;margin-bottom:12px">🤝</div><div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Join <b>' + title + '</b></div><div style="font-size:13px;color:var(--muted);margin-bottom:18px">Role: <b style="color:var(--accent)">' + Roles.label(role) + '</b></div><button class="ct-btn ct-btn-primary" id="ct-join-ok" style="width:100%;padding:12px">✅ Accept Invite</button><button class="ct-btn" id="ct-join-no" style="width:100%;margin-top:8px">Decline</button></div>';
   setTimeout(function(){
-    document.getElementById('ct-join-ok').onclick=function(){
-      var me=getCurrentUser();
-      var btn=document.getElementById('ct-join-ok');
-      if(btn){btn.disabled=true;btn.textContent='Joining...';}
-      // Fix 5+6: Fetch fresh members from Firestore (not stale cache) before already-member check,
-      // then use addMember() (atomic single doc write) instead of saveMembers() (read-modify-write race condition)
-      var db=(typeof fbDb!=='undefined'&&fbDb)?fbDb:null;
-      function _doJoin(freshMembers){
-        var alreadyMember = freshMembers && freshMembers.find(function(x){return x.user_id===me.uid;});
-        if(alreadyMember){
-          _showToast('Kamu sudah menjadi member project ini','warn');
-          m.close();history.replaceState({},'',window.location.pathname);
-          return;
+    document.getElementById('ct-join-ok').onclick = function(){
+      var me  = getCurrentUser();
+      var btn = document.getElementById('ct-join-ok');
+      if (btn) { btn.disabled = true; btn.textContent = 'Joining...'; }
+      var db = (typeof fbDb !== 'undefined' && fbDb) ? fbDb : null;
+      function _doJoin(freshMembers) {
+        if (freshMembers && freshMembers.find(function(x){ return x.user_id === me.uid; })) {
+          _showToast('Kamu sudah menjadi member', 'warn');
+          m.close(); history.replaceState({}, '', window.location.pathname); return;
         }
-        var memberObj={user_id:me.uid,name:me.name,email:me.email,photo:me.photo,role:role,status:'active',joined_at:Date.now(),project_id:pid};
-        CollabStore.addMember(pid,memberObj).then(function(){
-          logActivity(pid,'member_added',{target_name:me.name});
-          _showToast('🎉 Joined '+title+'!','success');
-          m.close();history.replaceState({},'',window.location.pathname);
-        }).catch(function(e){
-          console.error('[Collab] join failed',e);
-          _showToast('Gagal join: '+e.message,'error');
-          if(btn){btn.disabled=false;btn.textContent='✅ Accept Invite';}
-        });
+        var memberObj = { user_id:me.uid, name:me.name, email:me.email, photo:me.photo, role:role, status:'active', joined_at:Date.now(), project_id:pid };
+        CollabStore.addMember(pid, memberObj).then(function(){
+          logActivity(pid, 'member_added', { target_name: me.name });
+          _showToast('🎉 Joined ' + title + '!', 'success');
+          m.close(); history.replaceState({}, '', window.location.pathname);
+        }).catch(function(e){ _showToast('Gagal join: ' + (e && e.message ? e.message : e), 'error'); if(btn){btn.disabled=false;btn.textContent='✅ Accept Invite';} });
       }
-      if(db){
-        // Fresh fetch from Firestore to avoid stale cache race
-        db.collection('project_members').where('project_id','==',pid).get()
-          .then(function(snap){ _doJoin(snap.docs.map(function(d){return d.data();})); })
-          .catch(function(){ _doJoin(CollabStore.getMembers(pid)); }); // fallback to cache on network error
-      } else {
-        _doJoin(CollabStore.getMembers(pid));
-      }
+      if (db) {
+        db.collection('project_members').where('project_id', '==', pid).get()
+          .then(function(snap){ _doJoin(snap.docs.map(function(d){ return d.data(); })); })
+          .catch(function(){ _doJoin(CollabStore.getMembers(pid)); });
+      } else { _doJoin(CollabStore.getMembers(pid)); }
     };
-    document.getElementById('ct-join-no').onclick=function(){m.close();history.replaceState({},'',window.location.pathname);};
-  },40);
+    document.getElementById('ct-join-no').onclick = function(){ m.close(); history.replaceState({}, '', window.location.pathname); };
+  }, 40);
 }
 
 // ─────────────────────────────────────────────
-// § 15. SHARE MODAL (for personal tasks)
+// § 17. SHARE / ASSIGN MODALS (compat shims)
 // ─────────────────────────────────────────────
-function showShareModal(pid,taskId){
-  showProjectDetail(CollabStore.getProject(pid)||{id:pid||'default_project',title:'My Tasks',owner_id:getCurrentUser().uid,color:'#d97706',created_at:Date.now()});
-}
-function showAssignModal(taskId,taskTitle,pid){
-  showProjectsView();
-}
+function showShareModal(pid) { showProjectDetail(CollabStore.getProject(pid) || { id: pid || 'default_project', title:'My Tasks', owner_id:getCurrentUser().uid, color:'#d97706', created_at:Date.now() }); }
+function showAssignModal() { showProjectsView(); }
+function renderCommentsPanel() {}
 
 // ─────────────────────────────────────────────
-// § 16. SIDEBAR INJECTION
+// § 18. SIDEBAR INJECTION
 // ─────────────────────────────────────────────
-function _injectSidebar(){
-  // bail out if nav-collab already exists in HTML (avoids duplicate Projects section)
-  if(document.getElementById('nav-collab'))return;
-  if(document.getElementById('ct-sidebar-nav'))return;
-  var navSec=document.getElementById('navSecTask');if(!navSec)return;
-  var navContainer=navSec.parentNode;if(!navContainer)return;
-  var section=document.createElement('div');section.id='ct-sidebar-nav';section.style.cssText='padding:8px 12px 4px;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px';
-  section.innerHTML='<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:.9px;margin-bottom:6px">🤝 Collaboration</div>';
-  function _navItem(icon,label,fn){
-    var item=document.createElement('div');item.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;transition:background .1s;color:rgba(255,255,255,0.75);font-size:13px;margin-bottom:2px';
-    item.innerHTML='<span style="font-size:15px">'+icon+'</span><span style="flex:1">'+label+'</span>';
-    item.onmouseenter=function(){item.style.background='rgba(255,255,255,0.08)';};
-    item.onmouseleave=function(){item.style.background='';};
-    item.onclick=fn;return item;
+function _injectSidebar() {
+  if (document.getElementById('nav-collab')) return; // already in HTML
+  if (document.getElementById('ct-sidebar-nav')) return;
+  var navContainer = document.querySelector('#navgroup-task') || document.querySelector('.nav-group');
+  if (!navContainer) return;
+  var section = document.createElement('div');
+  section.id = 'ct-sidebar-nav';
+  section.innerHTML = '<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:.9px;margin-bottom:6px">🤝 Collaboration</div>';
+  function _navItem(icon, label, fn) {
+    var el = document.createElement('div'); el.className = 'nav-item'; el.onclick = fn;
+    el.innerHTML = '<div class="ic">' + icon + '</div><div class="lbl">' + label + '</div>';
+    return el;
   }
-  section.appendChild(_navItem('🤝','Projects',function(){showProjectsView();}));
-  section.appendChild(_navItem('🔗','Join via Link',function(){showJoinViaLinkModal();}));
-  var nextSec=document.getElementById('navSecFin');
-  if(nextSec&&nextSec.parentNode===navContainer)navContainer.insertBefore(section,nextSec);
+  var projNavItem = _navItem('🤝', 'Projects', function(){ showProjectsView(); });
+  // Live project count badge
+  var projBadge = document.createElement('span');
+  projBadge.id = 'ct-proj-badge';
+  projBadge.style.cssText = 'margin-left:auto;font-size:9px;font-weight:700;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;display:none';
+  projNavItem.appendChild(projBadge);
+  function _updateBadge() {
+    var cnt = CollabStore.getProjects().length;
+    if (cnt > 0) { projBadge.textContent = cnt; projBadge.style.display = 'inline'; }
+    else projBadge.style.display = 'none';
+  }
+  _updateBadge();
+  CollabStore.onRender(_updateBadge);
+  section.appendChild(projNavItem);
+  var nextSec = document.querySelector('#navgroup-fin');
+  if (nextSec && nextSec.parentNode === navContainer) navContainer.insertBefore(section, nextSec);
   else navContainer.appendChild(section);
 }
 
 // ─────────────────────────────────────────────
-// § 17. INIT (no render() patching — was causing stack overflow)
+// § 19. ASSIGNEE BADGES ON TASK CARDS
 // ─────────────────────────────────────────────
-
-// § 18. PUBLIC API — assigned early so CT_Collab is always defined
-window.CT_Collab={
-  showProjectsView:showProjectsView,
-  showProjectDetail:showProjectDetail,
-  showShareModal:showShareModal,
-  showAssignModal:showAssignModal,
-  showJoinModal:showJoinModal,
-  showJoinViaLinkModal:showJoinViaLinkModal,
-  renderCommentsPanel:renderCommentsPanel,
-  logActivity:logActivity,
-  getCurrentUser:getCurrentUser,
-  CollabStore:CollabStore,
-  Roles:Roles,
-  generateInviteLink:generateInviteLink,
-  showToast:_showToast,
-  makeAvatar:_makeAvatar,
-  makeAvatarStack:_makeAvatarStack
-};
-
-// ─────────────────────────────────────────────
-// § 16c. ASSIGNEE BADGES ON TASK CARDS
-// ─────────────────────────────────────────────
-function _addAssigneeBadges(){
+function _addAssigneeBadges() {
   var assignments = CollabStore.getAllAssignments();
-  if(!Object.keys(assignments).length) return;
   document.querySelectorAll('[data-task-id]').forEach(function(card){
     var taskId = card.getAttribute('data-task-id');
-    if(!taskId || card.querySelector('[data-ct-badge]')) return;
-    var asgn = assignments[taskId];
-    if(!asgn) return;
+    if (!taskId) return;
+    // Always remove stale badge first so remote changes reflect immediately
+    var old = card.querySelector('[data-ct-badge]');
+    if (old) old.parentNode.removeChild(old);
+    var asgn = assignments[taskId]; if (!asgn) return;
     var badge = document.createElement('div');
-    badge.setAttribute('data-ct-badge','1');
+    badge.setAttribute('data-ct-badge', '1');
     badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--accent);background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.2);border-radius:20px;padding:1px 7px 1px 4px;margin-top:3px;cursor:pointer';
-    badge.innerHTML = '<span style="width:14px;height:14px;border-radius:50%;background:var(--accent);color:#fff;font-size:8px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">'+asgn.name.charAt(0).toUpperCase()+'</span><span>'+asgn.name.split(' ')[0]+'</span>';
-    badge.onclick = function(e){ e.stopPropagation(); openDetail(parseInt(taskId)||taskId); };
+    badge.innerHTML = '<span style="width:14px;height:14px;border-radius:50%;background:var(--accent);color:#fff;font-size:8px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">' + asgn.name.charAt(0).toUpperCase() + '</span><span>' + asgn.name.split(' ')[0] + '</span>';
+    badge.onclick = function(e){ e.stopPropagation(); if(typeof openDetail==='function') openDetail(parseInt(taskId)||taskId); };
     var meta = card.querySelector('.task-meta');
-    if(meta) meta.insertAdjacentElement('afterend', badge);
-    else card.querySelector('.task-body')&&card.querySelector('.task-body').appendChild(badge);
+    if (meta) meta.insertAdjacentElement('afterend', badge);
+    else { var body = card.querySelector('.task-body'); if (body) body.appendChild(badge); }
   });
 }
 
-
 // ─────────────────────────────────────────────
-// § 16b. ASSIGN FROM MY DAY (openDetail patch)
+// § 20. ASSIGN PANEL IN DETAIL VIEW
 // ─────────────────────────────────────────────
-function _injectAssignPanelIntoDetail(taskId){
-  // Find the detail panel sidebar - look for the note/group section at bottom
-  var detailPanel = document.getElementById('detailPanel');
-  if(!detailPanel) return;
-  // Remove any existing assign panel
-  var existing = document.getElementById('ct-assign-panel-'+taskId);
-  if(existing) existing.parentNode.removeChild(existing);
+var _assignPanelListeners = {}; // track per-taskId to avoid accumulation
 
-  var panel = document.createElement('div');
-  panel.id = 'ct-assign-panel-'+taskId;
-  panel.className = 'ct-assign-panel';
-
-  var title = document.createElement('div');
-  title.className = 'ct-assign-title';
-  title.textContent = '👤 Assign ke';
-  panel.appendChild(title);
-
+// Build the full interactive assign panel element (used both on first inject and on remote refresh)
+function _buildAssignPanelEl(taskId) {
+  var panel = document.createElement('div'); panel.id = 'ct-assign-panel-' + taskId; panel.className = 'ct-assign-panel';
+  var titleEl = document.createElement('div'); titleEl.className = 'ct-assign-title'; titleEl.textContent = '👤 Assign ke'; panel.appendChild(titleEl);
   var projects = CollabStore.getProjects();
-  if(!projects.length){
-    var hint = document.createElement('div');
-    hint.style.cssText = 'font-size:12px;color:var(--muted)';
+  if (!projects.length) {
+    var hint = document.createElement('div'); hint.style.cssText = 'font-size:12px;color:var(--muted)';
     hint.innerHTML = 'Belum ada project. <a href="#" onclick="event.preventDefault();showProjectsView()" style="color:var(--accent)">Buat project</a> dulu.';
     panel.appendChild(hint);
   } else {
-    // Project picker if multiple
     var pid = projects[0].id;
-    if(projects.length > 1){
-      var psel = document.createElement('select');
-      psel.className = 'ct-select';
-      psel.style.cssText = 'margin-bottom:8px;font-size:12px';
-      projects.forEach(function(p){
-        var opt = document.createElement('option');opt.value=p.id;opt.textContent=p.title;psel.appendChild(opt);
-      });
-      psel.onchange = function(){ pid = psel.value; _refreshAssignee(); };
-      panel.appendChild(psel);
+    if (projects.length > 1) {
+      var psel = document.createElement('select'); psel.className = 'ct-select'; psel.style.cssText = 'margin-bottom:8px;font-size:12px';
+      projects.forEach(function(p){ var opt=document.createElement('option');opt.value=p.id;opt.textContent=p.title;psel.appendChild(opt); });
+      psel.onchange = function(){ pid = psel.value; _refresh(); }; panel.appendChild(psel);
     }
-
-    var assignRow = document.createElement('div');
-    assignRow.style.cssText = 'position:relative';
-    panel.appendChild(assignRow);
-
-    function _refreshAssignee(){
+    var assignRow = document.createElement('div'); assignRow.style.cssText = 'position:relative'; panel.appendChild(assignRow);
+    function _refresh() {
       assignRow.innerHTML = '';
       var asgn = CollabStore.getAssignment(taskId);
       var members = CollabStore.getMembers(pid);
-      var pick = document.createElement('div');
-      pick.className = 'ct-assign-pick';
-      if(asgn){
+      var pick = document.createElement('div'); pick.className = 'ct-assign-pick';
+      if (asgn) {
         var av = _makeAvatar({name:asgn.name,photo:asgn.photo},'ct-avatar-sm');
-        var nm = document.createElement('span');nm.textContent = asgn.name;
-        var cl = document.createElement('span');cl.style.cssText='margin-left:auto;font-size:11px;color:var(--muted);cursor:pointer';cl.textContent='✕ Hapus';
-        cl.onclick = function(e){
-          e.stopPropagation();
-          CollabStore.setAssignment(taskId,null,pid);
-          _refreshAssignee();
-          _showToast('Assignment dihapus','');
-        };
-        pick.appendChild(av);pick.appendChild(nm);pick.appendChild(cl);
+        var nm = document.createElement('span'); nm.textContent = asgn.name;
+        var cl = document.createElement('span'); cl.style.cssText = 'margin-left:auto;font-size:11px;color:var(--muted);cursor:pointer'; cl.textContent = '✕ Hapus';
+        cl.onclick = function(e){ e.stopPropagation(); CollabStore.setAssignment(taskId,null,pid); _refresh(); _showToast('Assignment dihapus',''); };
+        pick.appendChild(av); pick.appendChild(nm); pick.appendChild(cl);
       } else {
         pick.innerHTML = '<span style="color:var(--muted);font-size:13px">Pilih anggota...</span><span style="margin-left:auto;font-size:12px">▾</span>';
       }
-      pick.onclick = function(e){
+      pick.onclick = function(e) {
         e.stopPropagation();
-        // Remove existing dropdown
-        var old = document.querySelector('.ct-assign-dropdown');
-        if(old && old.parentNode) old.parentNode.removeChild(old);
-        var dd = document.createElement('div');dd.className = 'ct-assign-dropdown';
+        var old = document.querySelector('.ct-assign-dropdown'); if (old && old.parentNode) old.parentNode.removeChild(old);
+        var dd = document.createElement('div'); dd.className = 'ct-assign-dropdown';
         var me = getCurrentUser();
         var allUsers = [{user_id:me.uid,name:me.name+' (kamu)',email:me.email,photo:me.photo}];
-        members.forEach(function(x){if(x.user_id!==me.uid)allUsers.push(x);});
+        members.forEach(function(x){ if(x.user_id!==me.uid) allUsers.push(x); });
+        if (!allUsers.length) { dd.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px">Belum ada member.</div>'; }
         allUsers.forEach(function(u){
-          var opt=document.createElement('div');opt.className='ct-assign-opt'+(asgn&&asgn.user_id===u.user_id?' selected':'');
+          var opt = document.createElement('div'); opt.className = 'ct-assign-opt' + (asgn && asgn.user_id===u.user_id?' selected':'');
           opt.appendChild(_makeAvatar(u,'ct-avatar-sm'));
-          var nm=document.createElement('span');nm.textContent=u.name;opt.appendChild(nm);
-          opt.onclick=function(e2){
+          var nm2 = document.createElement('span'); nm2.textContent = u.name; opt.appendChild(nm2);
+          opt.onclick = function(e2){
             e2.stopPropagation();
             CollabStore.setAssignment(taskId,{user_id:u.user_id,name:u.name.replace(' (kamu)',''),photo:u.photo||null},pid);
             logActivity(pid,'task_assigned',{task_title:taskId});
-            if(dd.parentNode)dd.parentNode.removeChild(dd);
-            _refreshAssignee();
-            _showToast('📌 Di-assign ke '+(u.name.replace(' (kamu)','')), 'success');
+            if(dd.parentNode) dd.parentNode.removeChild(dd);
+            _refresh(); _showToast('📌 Di-assign ke '+u.name.replace(' (kamu)',''),'success');
           };
           dd.appendChild(opt);
         });
-        if(!allUsers.length){dd.innerHTML='<div style="font-size:12px;color:var(--muted);padding:8px">Belum ada member di project ini.</div>';}
         document.body.appendChild(dd);
         var rect = pick.getBoundingClientRect();
         dd.style.top = (rect.bottom+window.scrollY+4)+'px';
         dd.style.left = Math.min(rect.left, window.innerWidth-190)+'px';
         setTimeout(function(){
-          document.addEventListener('click', function _cl(){
-            if(dd.parentNode)dd.parentNode.removeChild(dd);
-            document.removeEventListener('click',_cl,true);
-          }, true);
+          document.addEventListener('click', function _cl(){ if(dd.parentNode) dd.parentNode.removeChild(dd); document.removeEventListener('click',_cl,true); }, true);
         }, 0);
       };
       assignRow.appendChild(pick);
     }
-    _refreshAssignee();
+    _refresh();
   }
+  return panel;
+}
 
-  // Inject into detail panel — find a stable anchor
+// Inject panel into detailPanel DOM
+function _injectAssignPanelEl(taskId, panel) {
+  var detailPanel = document.getElementById('detailPanel'); if (!detailPanel) return;
+  var existing = document.getElementById('ct-assign-panel-' + taskId);
+  if (existing) existing.parentNode.removeChild(existing);
   var detNote = detailPanel.querySelector('#det-note') || detailPanel.querySelector('.det-note-field');
-  var injTarget = detNote ? detNote.closest('.field-group')||detNote.parentNode : detailPanel.querySelector('.detail-scroll')||detailPanel;
-  if(injTarget){
-    // Try to add before the save/close buttons area
+  var injTarget = detNote ? (detNote.closest('.field-group') || detNote.parentNode) : (detailPanel.querySelector('.detail-scroll') || detailPanel);
+  if (injTarget) {
     var saveArea = detailPanel.querySelector('.detail-actions') || detailPanel.querySelector('[id*="det-save"]');
-    if(saveArea && saveArea.parentNode === injTarget){
-      injTarget.insertBefore(panel, saveArea);
-    } else {
-      injTarget.appendChild(panel);
-    }
+    if (saveArea && saveArea.parentNode === injTarget) injTarget.insertBefore(panel, saveArea);
+    else injTarget.appendChild(panel);
   }
 }
 
-(function _init(){
-  // Fix 2: Retry loop — wait for fbDb up to 15s (30 x 500ms), no fixed 1500ms assumption
-  var _tries=0;
-  function _tryFb(){
-    if(typeof fbDb!=='undefined'&&fbDb){CollabStore.initListeners();}
-    else if(_tries++<30){setTimeout(_tryFb,500);}
-    else{console.warn('[CT_Collab] fbDb never ready after 15s — listeners skipped');}
+function _injectAssignPanelIntoDetail(taskId) {
+  // Cleanup previous listener for this taskId before registering a new one
+  if (_assignPanelListeners[taskId]) {
+    CollabStore.offRender(_assignPanelListeners[taskId]);
+    delete _assignPanelListeners[taskId];
   }
-  setTimeout(_tryFb,800);
+  _injectAssignPanelEl(taskId, _buildAssignPanelEl(taskId));
 
-  // Fix 2: Also use retry loop for sidebar injection instead of fixed 1500ms
-  var _uiTries=0;
-  function _tryUi(){
-    if(document.body){
+  // Auto-refresh panel (full rebuild with dropdown) while panel is in DOM
+  function _onAssignRemoteUpdate() {
+    if (!document.getElementById('ct-assign-panel-' + taskId)) {
+      // Panel gone — unsubscribe
+      CollabStore.offRender(_onAssignRemoteUpdate);
+      delete _assignPanelListeners[taskId];
+      return;
+    }
+    // Rebuild full interactive panel with latest assignment data
+    _injectAssignPanelEl(taskId, _buildAssignPanelEl(taskId));
+  }
+  _assignPanelListeners[taskId] = _onAssignRemoteUpdate;
+  CollabStore.onRender(_onAssignRemoteUpdate);
+}
+
+// ─────────────────────────────────────────────
+// § 21. PUBLIC API
+// ─────────────────────────────────────────────
+window.CT_Collab = {
+  showProjectsView:    showProjectsView,
+  showProjectDetail:   showProjectDetail,
+  showShareModal:      showShareModal,
+  showAssignModal:     showAssignModal,
+  showJoinModal:       showJoinModal,
+  showJoinViaLinkModal:showJoinViaLinkModal,
+  renderCommentsPanel: renderCommentsPanel,
+  logActivity:         logActivity,
+  getCurrentUser:      getCurrentUser,
+  CollabStore:         CollabStore,
+  Roles:               Roles,
+  generateInviteLink:  generateInviteLink,
+  showToast:           _showToast,
+  makeAvatar:          _makeAvatar,
+  makeAvatarStack:     _makeAvatarStack
+};
+
+// ─────────────────────────────────────────────
+// § 22. INIT — hook Firebase auth + ensure default project
+// ─────────────────────────────────────────────
+(function _init() {
+  // Ensure default project exists in localStorage
+  var me = getCurrentUser();
+  if (!CollabStore.getProject('default_project')) {
+    CollabStore.upsertProject({ id:'default_project', title:'My Tasks', color:'#d97706', owner_id:me.uid, created_at:Date.now() });
+  }
+
+  // Sidebar injection with retry
+  var _uiTries = 0;
+  function _tryUi() {
+    if (document.body) {
       _injectSidebar();
-      // Ensure default project exists
-      if(!CollabStore.getProject('default_project')){
-        var me=getCurrentUser();
-        CollabStore.upsertProject({id:'default_project',title:'My Tasks',color:'#d97706',owner_id:me.uid,created_at:Date.now()});
-      }
-      // Patch openDetail to inject assign panel
-      if(typeof openDetail==='function' && !openDetail._ctPatched){
+      // Patch openDetail
+      if (typeof openDetail === 'function' && !openDetail._ctPatched) {
         var _origOD = openDetail;
-        openDetail = function(id){
-          _origOD.apply(this, arguments);
-          setTimeout(function(){ _injectAssignPanelIntoDetail(id); }, 80);
-        };
+        openDetail = function(id){ _origOD.apply(this,arguments); setTimeout(function(){ _injectAssignPanelIntoDetail(id); }, 80); };
         openDetail._ctPatched = true;
       }
-      // Patch render() once to add assignee badges to task cards (no recursion guard)
-      if(typeof render==='function' && !render._ctPatched){
+      // Patch render — also refresh badges on every main app render
+      if (typeof render === 'function' && !render._ctPatched) {
         var _origR = render;
-        render = function(){
-          _origR.apply(this, arguments);
-          setTimeout(_addAssigneeBadges, 80);
-        };
+        render = function(){ _origR.apply(this,arguments); setTimeout(_addAssigneeBadges, 80); };
         render._ctPatched = true;
       }
       _addAssigneeBadges();
-      console.log('[CT_Collab v4] Loaded ✅');
-    } else if(_uiTries++<30){
-      setTimeout(_tryUi, 500);
-    }
+      // Named function agar bisa di-offRender jika diperlukan; guard agar tidak double-register
+      if (!_tryUi._badgeListenerRegistered) {
+        function _globalBadgeRefresh(){ setTimeout(_addAssigneeBadges, 50); }
+        CollabStore.onRender(_globalBadgeRefresh);
+        _tryUi._badgeListenerRegistered = true;
+      }
+      console.log('[CT_Collab v7] Loaded ✅');
+    } else if (_uiTries++ < 30) { setTimeout(_tryUi, 500); }
   }
   setTimeout(_tryUi, 800);
+
+  // Hook Firebase — retry until fbDb ready, then re-init listeners on auth change
+  var _fbTries = 0;
+  function _tryFb() {
+    if (typeof fbDb !== 'undefined' && fbDb && typeof fbAuth !== 'undefined' && fbAuth) {
+      // Listen to auth state changes so listeners auto-restart after login
+      fbAuth.onAuthStateChanged(function(user) {
+        if (user && !user.isAnonymous) {
+          setTimeout(function(){ CollabStore.initListeners(); }, 500);
+        }
+      });
+      // Also try immediately
+      CollabStore.initListeners();
+    } else if (_fbTries++ < 30) { setTimeout(_tryFb, 500); }
+    else { console.warn('[CT_Collab v7] Firebase not available — running in local mode'); }
+  }
+  setTimeout(_tryFb, 800);
 })();
 
 })(); // end IIFE
