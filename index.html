@@ -29559,9 +29559,17 @@ var CollabStore = (function() {
   function getMessages(pid){ return _cache.messages[pid]||[]; }
 
   function sendMessage(pid, msgObj){
-    var db=_db(); if(!db) return Promise.reject('no db');
+    // Optimistic: langsung insert ke cache supaya UI langsung update
     var docId = 'msg_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
     var data = Object.assign({}, msgObj, { id: docId, project_id: pid });
+    if(!_cache.messages[pid]) _cache.messages[pid] = [];
+    _cache.messages[pid].push(data);
+    // Trigger diskusi render callback kalau ada
+    if(_diskRenderCallbacks[pid]) _diskRenderCallbacks[pid]();
+
+    // Kirim ke Firestore kalau ada koneksi
+    var db=_db();
+    if(!db) return Promise.resolve(); // guest/offline: cache sudah diupdate, cukup
     return db.collection('projects').doc(pid).collection('messages').doc(docId).set(data).catch(function(e){ console.error('[Collab] sendMessage',e); });
   }
 
@@ -30513,7 +30521,8 @@ function showProjectDetail(proj){
         _renderDisk();
       }).catch(function(e){
         sendBtn.disabled=false;
-        _showToast('⚠️ Gagal kirim: '+e.message,'warn');
+        var errMsg = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'Cek koneksi internet');
+        _showToast('⚠️ Gagal kirim: '+errMsg,'warn');
         console.error('[Collab] sendMessage',e);
       });
       logActivity(proj.id,'comment_added',{task_title:'diskusi project'});
