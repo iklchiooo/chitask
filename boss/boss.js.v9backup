@@ -1,0 +1,2390 @@
+// ══════════════════════════════════════════════
+// ⚔️ BOSS BATTLE RPG — Full Redesign v3
+// ══════════════════════════════════════════════
+
+// ── Boss Registry ──
+// BOSS_DEFS diisi secara dinamis oleh tiap file boss_*.js
+// Urutan boss ditentukan oleh urutan load script di HTML
+var BOSS_DEFS = [];
+var _bossSprites = {};  // { id: spriteFunction }
+
+// CT_Boss.register(def) — dipanggil oleh tiap boss_*.js
+// def wajib punya: id, name, sub, maxHp, col, glow, aura, death,
+//                  phrase[], ragePhrases[], sprite(ctx,pct,defeated,P)
+window.CT_Boss = {
+  register: function(def) {
+    if (!def || !def.id) { console.warn('[CT_Boss] register: def.id wajib ada'); return; }
+    // Simpan sprite function terpisah, jangan masuk ke BOSS_DEFS
+    _bossSprites[def.id] = def.sprite || function(){};
+    var d = {};
+    for (var k in def) { if (k !== 'sprite') d[k] = def[k]; }
+    // Cegah duplikat
+    for (var i = 0; i < BOSS_DEFS.length; i++) {
+      if (BOSS_DEFS[i].id === def.id) { BOSS_DEFS[i] = d; return; }
+    }
+    BOSS_DEFS.push(d);
+    console.log('[CT_Boss] Registered:', def.id, '(' + BOSS_DEFS.length + ' bosses total)');
+  }
+};
+
+var bossState = { idx:0, hp:0, maxHp:0, day:'', defeated:false };
+var BOSS_KEY = 'chitask_boss_v3';
+var bossSpriteRaf = null;
+var bossHitFlash = false;
+var bossShaking = false;
+var bossPhraseTimeout = null;
+
+function bossLoad(){ try{ var r=JSON.parse(localStorage.getItem(BOSS_KEY)||'null'); if(r)bossState=r; }catch(e){} }
+function bossSave(){ try{ localStorage.setItem(BOSS_KEY,JSON.stringify(bossState)); }catch(e){} }
+function bossToday(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function bossCur(){ return BOSS_DEFS[bossState.idx]||BOSS_DEFS[0]; }
+
+function bossInit(){
+  bossLoad();
+  var today = bossToday();
+  if(bossState.day !== today){
+    var idx = Math.floor(Math.random()*BOSS_DEFS.length);
+    // HP multiplier: Mon=hard, Fri=medium, weekend=easy
+    var mult = [0.85,1.2,1.0,1.0,1.0,0.9,0.8][new Date().getDay()];
+    var maxHp = Math.round(BOSS_DEFS[idx].maxHp * mult);
+    bossState = { idx:idx, hp:maxHp, maxHp:maxHp, day:today, defeated:false };
+    bossSave();
+  }
+  bossBuildCard();
+  bossRefresh();   // bossRefresh already calls bossApplyTheme
+  bossStartLoop();
+  bossTauntLoop();
+}
+
+function bossTauntLoop(){
+  if(bossPhraseTimeout) clearTimeout(bossPhraseTimeout);
+  bossPhraseTimeout = setTimeout(function(){
+    if(!bossState.defeated) bossShowPhrase();
+    bossTauntLoop();
+  }, 8000 + Math.random()*12000);
+}
+
+function bossShowPhrase(){
+  var b = bossCur();
+  var el = document.getElementById('bossPhraseEl');
+  if(!el) return;
+  var b = bossCur();
+  // ragePhrases diambil langsung dari def boss (tiap boss_*.js wajib mendefinisikannya)
+  var ragePool = (b.ragePhrases && b.ragePhrases.length) ? b.ragePhrases
+    : ['KAMU TIDAK AKAN MENANG!!','RAAAAHHH!!','TIDAK BISA DIKALAHKAN!!','BANGKIT LEBIH KUAT!!','JANGAN HARAP MENANG!!'];
+  var pctNow = bossState.hp/bossState.maxHp;
+  var phrases = pctNow < 0.3 ? ragePool : b.phrase;
+  var txt = phrases[Math.floor(Math.random()*phrases.length)];
+  el.textContent = '"' + txt + '"';
+  el.style.opacity = '1';
+  el.style.transform = 'translateY(0) scale(1)';
+  setTimeout(function(){
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-6px) scale(0.95)';
+  }, 2800);
+}
+
+// ── Sprite drawing ──
+function bossStartLoop(){
+  if(bossSpriteRaf) cancelAnimationFrame(bossSpriteRaf);
+  var cvs = document.getElementById('bossSpriteCanvas');
+  if(!cvs) return;
+  function loop(){
+    var b=bossCur();
+    var pct=bossState.hp/bossState.maxHp;
+    bossDrawSprite(cvs, b.id, pct, bossHitFlash, bossState.defeated);
+    bossSpriteRaf=requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+function bossDrawSprite(canvas, id, pct, flash, defeated){
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.imageSmoothingEnabled = false;
+  var P = 4;
+  ctx.save();
+  // Canvas is 200x220. Center origin at (100,120):
+  // Up: 120px = 30u — covers setan-distraksi (top=-30) ✓
+  // Down: 100px = 25u — covers iblis-keraguan (bot=+23) ✓
+  // Canvas displayed 1:1 at 200x220px CSS — all bosses same apparent size as original 160x160 canvas
+  ctx.translate(W/2, H/2 + 10);
+
+  // Raja & Master were designed for a smaller 120x120 canvas — scale them up so they
+  // appear as large as the other bosses on the current 200x220 canvas.
+  var _bossUpscale = { 'perfectus': 1.4, 'wacana': 1.4 };
+  var _upscale = _bossUpscale[id] || 1.0;
+  if (_upscale !== 1.0) ctx.scale(_upscale, _upscale);
+  if(!defeated){
+    var t = Date.now();
+    var isLuckySprite = bossCur().id === 'lucky';
+    if(isLuckySprite && pct<0.3){
+      // Lucky hampir kenyang: happy bounce, bukan rage wobble
+      var happyBounce = Math.abs(Math.sin(t/300)) * 2.5;
+      var happySway   = Math.sin(t/600) * 0.8;
+      ctx.translate(happySway, -happyBounce);
+      // Sedikit scale up gembira (bukan mengancam)
+      var joyScale = 1.0 + 0.03 * Math.abs(Math.sin(t/300));
+      ctx.scale(joyScale, joyScale);
+    } else {
+      var wobble = Math.sin(t/480)*(pct<0.3?3.5:1.2);
+      var sway   = Math.sin(t/900)*(pct<0.3?1.5:0.5);
+      ctx.translate(sway, wobble);
+      if(pct<0.3 && !flash){ ctx.scale(1.06,1.06); }
+    }
+  }
+  if(flash){
+    ctx.filter='brightness(12) saturate(0)';
+  }
+  bossPixelSprite(ctx, id, pct, defeated, P);
+  ctx.restore();
+
+  // Glow under sprite when raging
+  if(!defeated && pct<0.3 && !flash){
+    var b = bossCur();
+    var glowCy = Math.max(8, H-8); // ensure positive y
+    var r0 = Math.max(0, 2);       // inner radius must be >= 0
+    var r1 = Math.max(r0+1, 28);   // outer radius must be > inner
+    var grd = ctx.createRadialGradient(W/2,glowCy,r0,W/2,glowCy,r1);
+    grd.addColorStop(0, b.col+'88');
+    grd.addColorStop(1, 'transparent');
+    ctx.globalAlpha=0.55+0.25*Math.sin(Date.now()/250);
+    ctx.fillStyle=grd;
+    ctx.fillRect(W/2-30,H-22,60,22);
+    ctx.globalAlpha=1;
+  }
+}
+
+// pixel block helper
+function px(ctx,x,y,w,h,c,P){ ctx.fillStyle=c; ctx.fillRect(x*P,y*P,w*P,h*P); }
+
+function bossPixelSprite(ctx, id, pct, defeated, P){
+  var t = Date.now();
+
+  // ── DEFEATED pose (shared) — tapi Lucky punya pose kenyang sendiri ──
+  if(defeated && id !== 'lucky'){
+    var dc='#374151', dg='#facc15', dw='#9ca3af', sk='#e5e7eb';
+    [[-13,4,26,8,dc],[-12,3,24,6,dw],[-10,2,20,4,sk],
+     [-8,-3,3,3,'#fff'],[-5,0,3,3,'#fff'],[-8,0,3,3,'#fff'],[-5,-3,3,3,'#fff'],
+     [2,-3,3,3,'#fff'],[5,0,3,3,'#fff'],[2,0,3,3,'#fff'],[5,-3,3,3,'#fff'],
+     [-4,4,2,2,dc],[-2,5,2,2,dc],[0,4,2,2,dc],[2,5,2,2,dc],[4,4,2,2,dc],
+    ].forEach(function(r){ px(ctx,r[0],r[1],r[2],r[3],r[4],P); });
+    var t=Date.now();
+    [[-14,-5],[-10,-8],[-3,-9],[5,-7],[12,-5]].forEach(function(pos,i){
+      var ang=t/600+i*1.26;
+      var ox=Math.cos(ang)*3, oy=Math.sin(ang)*2;
+      ctx.globalAlpha=0.6+0.4*Math.abs(Math.sin(t/400+i));
+      ctx.fillStyle=dg; ctx.shadowColor=dg; ctx.shadowBlur=8;
+      px(ctx,pos[0]+ox,pos[1]+oy,2,2,dg,P);
+      ctx.shadowBlur=0; ctx.globalAlpha=1;
+    });
+    return;
+  }
+
+  // ── Delegate sprite drawing to per-boss sprite function ──
+  var spriteFn = _bossSprites[id];
+  if (spriteFn) {
+    spriteFn(ctx, pct, defeated, P);
+  } else {
+    // Fallback: unknown boss — draw a simple question mark silhouette
+    var dc = '#374151';
+    ctx.globalAlpha = 0.7;
+    ctx.font = 'bold ' + (10*P) + 'px monospace';
+    ctx.fillStyle = '#9ca3af';
+    ctx.textAlign = 'center';
+    ctx.fillText('?', 0, 4*P);
+    ctx.globalAlpha = 1;
+    console.warn('[CT_Boss] No sprite registered for id:', id);
+  }
+}
+
+// ── Attack Animation ──
+var bossAttackRaf = null;
+function bossAttackAnim(dmg){
+  var panel = document.getElementById('bossBattlePanel');
+  if(!panel) return;
+
+  // 1. Sword slash canvas overlay
+  var slashCvs = document.createElement('canvas');
+  slashCvs.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:50;image-rendering:pixelated;border-radius:inherit;';
+  slashCvs.width = panel.offsetWidth;
+  slashCvs.height = panel.offsetHeight;
+  panel.appendChild(slashCvs);
+  var sctx = slashCvs.getContext('2d');
+  var start = Date.now(), dur = 520;
+  var W = slashCvs.width, H = slashCvs.height;
+
+  function drawSlash(){
+    var t = (Date.now()-start)/dur;
+    sctx.clearRect(0,0,W,H);
+    if(t >= 1){ slashCvs.remove(); return; }
+    var progress = Math.min(t*2.6, 1);
+    var alpha = t < 0.35 ? 1 : 1-(t-0.35)/0.65;
+    var sx = W * (1 - progress * 1.35);
+    var sy1 = H * 0.1, sy2 = H * 0.9;
+    var colors = ['#ffffff','#ffff88','#ffdd00','#ff8800','#ff2200'];
+    colors.forEach(function(col, ci){
+      var off = ci * 5;
+      sctx.globalAlpha = alpha * (1 - ci*0.18);
+      sctx.strokeStyle = col;
+      sctx.lineWidth = Math.max(1, (5-ci)*2.5);
+      sctx.lineCap = 'round';
+      sctx.beginPath();
+      sctx.moveTo(sx+off+70, sy1-off);
+      sctx.lineTo(sx-70+off, sy2+off);
+      sctx.stroke();
+    });
+    sctx.globalAlpha = 1;
+
+    // Impact sparks
+    if(t > 0.08 && t < 0.52){
+      var impX = sx + W*0.12;
+      var impY = H*0.5;
+      var sc = Math.floor((0.52-t)*24);
+      for(var i=0;i<sc;i++){
+        var ang = Math.random()*Math.PI*2;
+        var dist = Math.random()*38*(t*2.2);
+        var px2 = impX + Math.cos(ang)*dist;
+        var py2 = impY + Math.sin(ang)*dist;
+        var sz = (2+Math.random()*5)*2;
+        sctx.fillStyle = ['#fff','#ffff00','#ff8800','#ff4444','#ffffff'][Math.floor(Math.random()*5)];
+        sctx.globalAlpha = alpha*0.9;
+        sctx.fillRect(Math.round(px2/2)*2, Math.round(py2/2)*2, sz, sz);
+      }
+      sctx.globalAlpha = 1;
+    }
+    requestAnimationFrame(drawSlash);
+  }
+  requestAnimationFrame(drawSlash);
+
+  // 2. Hit flash
+  bossHitFlash = true;
+  var sprite = document.getElementById('bossSpriteCanvas');
+  if(sprite){ sprite.style.filter='brightness(10) saturate(0) invert(1)'; }
+  setTimeout(function(){ bossHitFlash=false; if(sprite) sprite.style.filter=''; }, 130);
+
+  // 3. Shake the sprite area
+  var sa = document.getElementById('bossSpriteArea');
+  if(sa){ sa.classList.add('boss-shake'); }
+  setTimeout(function(){ if(sa) sa.classList.remove('boss-shake'); }, 360);
+
+  // 4. Blood drops
+  bossBloodDrop(dmg);
+
+  // 5. Damage number float
+  bossDmgNum(dmg);
+}
+
+function bossBloodDrop(dmg){
+  var area = document.getElementById('bossSpriteArea');
+  if(!area) return;
+  var count = Math.min(8, 3 + Math.floor(dmg/35));
+  for(var i=0;i<count;i++){
+    (function(i){
+      setTimeout(function(){
+        var drop = document.createElement('div');
+        drop.className = 'boss-blood';
+        drop.style.left = (15+Math.random()*70)+'%';
+        drop.style.animationDuration = (0.55+Math.random()*0.55)+'s';
+        drop.style.animationDelay = (Math.random()*0.15)+'s';
+        var sz = (5+Math.random()*7)+'px';
+        drop.style.width = sz; drop.style.height = sz;
+        area.appendChild(drop);
+        setTimeout(function(){ if(drop.parentNode) drop.parentNode.removeChild(drop); },900);
+      }, i*35);
+    })(i);
+  }
+}
+
+function bossDmgNum(dmg){
+  var panel = document.getElementById('bossBattlePanel');
+  if(!panel) return;
+  var num = document.createElement('div');
+  num.className = 'boss-dmg-float';
+  num.textContent = '-'+dmg;
+  num.style.left = (15+Math.random()*35)+'%';
+  panel.appendChild(num);
+  setTimeout(function(){ if(num.parentNode) num.parentNode.removeChild(num); },1200);
+}
+
+// ── HP Bar update ──
+function bossRefresh(){
+  var b = bossCur();
+  var pct = Math.max(0, bossState.hp/bossState.maxHp);
+  var fill  = document.getElementById('bossHpFill');
+  var nums  = document.getElementById('bossHpNums');
+  var phase = document.getElementById('bossPhaseEl');
+  var nameEl= document.getElementById('bossNameEl');
+  var subEl = document.getElementById('bossSubEl');
+  var panel = document.getElementById('bossBattlePanel');
+  var aura  = document.getElementById('bossAuraEl');
+
+  var isLuckyBar = b.id === 'lucky';
+  var barCol;
+  if(isLuckyBar){
+    // Lucky: HP turun = makin kenyang = makin cerah & hijau
+    barCol = pct>0.6 ? '#f97316' : pct>0.35 ? '#facc15' : pct>0.15 ? '#4ade80' : '#86efac';
+  } else {
+    barCol = pct>0.6?'#4ade80':pct>0.35?'#facc15':pct>0.15?'#f97316':'#ef4444';
+  }
+  if(fill){
+    fill.style.width=(pct*100)+'%';
+    fill.style.background='linear-gradient(90deg,'+barCol+','+barCol+'cc)';
+    // Pulse on low HP (for Lucky: pulse when almost full/kenyang)
+    fill.style.animation = pct < 0.25 ? 'bossHpPulse 0.6s ease infinite alternate' : 'none';
+  }
+  if(nums) nums.textContent = bossState.hp+' / '+bossState.maxHp;
+  if(nameEl) nameEl.textContent = b.name;
+  if(subEl)  subEl.textContent  = b.sub;
+  if(phase){
+    var isLucky = b.id === 'lucky';
+    if(bossState.defeated){
+      phase.textContent = isLucky ? '🍀 KENYANG TOTAL!' : '☠ DEFEATED';
+      phase.style.color = '#4ade80';
+    } else if(pct<0.15){
+      phase.textContent = isLucky ? '😋 HAMPIR KENYANG!' : '💀 DYING...';
+      phase.style.color = isLucky ? '#4ade80' : '#ef4444';
+    } else if(pct<0.3){
+      phase.textContent = isLucky ? '🤤 SEMAKIN LAHAP!' : '🔥 RAGE MODE';
+      phase.style.color = isLucky ? '#86efac' : '#f97316';
+    } else if(pct<0.5){
+      phase.textContent = isLucky ? '😊 MULAI KENYANG' : '⚡ TERLUKA';
+      phase.style.color = isLucky ? '#fde68a' : '#facc15';
+    } else {
+      phase.textContent = isLucky ? '🍽️ LAPAR BANGET' : '👹 SIAP TEMPUR';
+      phase.style.color = isLucky ? '#facc15' : '#9ca3af';
+    }
+  }
+  if(panel && !bossState.defeated){
+    var isLuckyPanel = b.id === 'lucky';
+    var rageGlow;
+    if(isLuckyPanel && pct<0.3){
+      // Lucky makin happy & bersinar emas saat hampir kenyang
+      rageGlow = '0 0 32px rgba(250,204,21,0.8), 0 0 70px rgba(253,230,138,0.45), 0 0 120px rgba(250,204,21,0.25)';
+    } else {
+      rageGlow = pct<0.3 ? '0 0 32px rgba(239,68,68,0.6), 0 0 60px rgba(239,68,68,0.25)' : '0 0 24px '+b.aura+', 0 8px 40px rgba(0,0,0,0.8)';
+    }
+    panel.style.boxShadow = rageGlow;
+    panel.style.borderColor = (isLuckyPanel && pct<0.3) ? '#fde68a' : (pct<0.3 ? '#ef4444' : b.col);
+  }
+  if(aura && !bossState.defeated){
+    var isLuckyAura = b.id === 'lucky';
+    if(isLuckyAura && pct<0.3){
+      // Lucky: aura emas cerah makin kuat saat hampir kenyang
+      aura.style.background = 'radial-gradient(ellipse at 50% 100%, rgba(250,204,21,0.55) 0%, rgba(253,230,138,0.2) 40%, transparent 70%)';
+    } else {
+      aura.style.background = pct<0.3
+        ? 'radial-gradient(ellipse at 50% 100%, rgba(239,68,68,0.3) 0%, transparent 70%)'
+        : 'radial-gradient(ellipse at 50% 100%, '+b.aura+' 0%, transparent 70%)';
+    }
+  }
+  // Apply boss color theme to entire panel
+  bossApplyTheme();
+}
+
+// ── Deal Damage (digantikan oleh toggleDone/toggleStep hooks di bawah) ──
+
+
+// ══════════════════════════════════════════════
+// 🎁 BOSS REWARD SYSTEM
+// ══════════════════════════════════════════════
+var _tempThemeTimer = null;
+
+function bossRollReward(){
+  var rand = Math.random();
+  // 50% chance: tema yang BELUM dimiliki
+  if(rand < 0.50){
+    var allThemes = [
+      {id:'theme-sololeveling', name:'Solo Leveling ⚔️', icon:'⚔️', glowColor:'#7c6af7'},
+      {id:'theme-slytherin',    name:'Slytherin 🐍',     icon:'🐍', glowColor:'#2dbb5d'},
+      {id:'theme-fluffytown',   name:'Fluffy Town 🐹',   icon:'🐹', glowColor:'#f472b6'},
+      {id:'theme-midnight',     name:'Midnight 🌌',      icon:'🌌', glowColor:'#8b5cf6'},
+      {id:'theme-sunset',       name:'Sunset 🌅',        icon:'🌅', glowColor:'#ea580c'}
+    ];
+    // Hanya tema yang belum dibeli di shop
+    var avail = allThemes.filter(function(th){
+      return typeof isOwned === 'function' ? !isOwned(th.id) : true;
+    });
+    if(avail.length > 0){
+      var t = avail[Math.floor(Math.random()*avail.length)];
+      // Random durasi: 1 jam (40%), 3 jam (35%), 6 jam (25%)
+      var durationRoll = Math.random();
+      var durHours, durMs, durLabel;
+      if(durationRoll < 0.40){
+        durHours = 1; durMs = 1 * 60 * 60 * 1000; durLabel = '1 jam';
+      } else if(durationRoll < 0.75){
+        durHours = 3; durMs = 3 * 60 * 60 * 1000; durLabel = '3 jam';
+      } else {
+        durHours = 6; durMs = 6 * 60 * 60 * 1000; durLabel = '6 jam';
+      }
+      return {type:'theme', themeId:t.id, themeName:t.name, themeIcon:t.icon,
+              label:'Tema Sementara: '+t.name, desc:'Aktif selama '+durLabel+'!', icon:'🎨', glowColor:t.glowColor,
+              durMs:durMs, durLabel:durLabel};
+    }
+    // Semua tema sudah dimiliki — lanjut ke gold/xp
+  }
+  // 50% sisanya: XP atau Gold
+  var r2 = Math.random();
+  if(r2 < 0.30){
+    // 10-20 XP (prob 50% dalam pool ini → 30%*50%=15% overall sebelum normalize)
+    var xpAmt = 10 + Math.floor(Math.random()*11);
+    return {type:'xp', amount:xpAmt, label:'+'+xpAmt+' XP Bonus!', desc:'Hadiah dari boss', icon:'⚡', glowColor:'#60a5fa'};
+  } else if(r2 < 0.65){
+    // 5-10 XP
+    var xpAmt2 = 5 + Math.floor(Math.random()*6);
+    return {type:'xp', amount:xpAmt2, label:'+'+xpAmt2+' XP Bonus!', desc:'Hadiah dari boss', icon:'⚡', glowColor:'#60a5fa'};
+  } else if(r2 < 0.80){
+    // 10-20 Gold
+    var gAmt = 10 + Math.floor(Math.random()*11);
+    return {type:'gold', amount:gAmt, label:'+'+gAmt+' Gold!', desc:'Rampasan dari boss', icon:'🪙', glowColor:'#f59e0b'};
+  } else if(r2 < 0.95){
+    // 5-10 Gold
+    var gAmt2 = 5 + Math.floor(Math.random()*6);
+    return {type:'gold', amount:gAmt2, label:'+'+gAmt2+' Gold!', desc:'Rampasan dari boss', icon:'🪙', glowColor:'#f59e0b'};
+  } else {
+    // 1-5 Gold
+    var gAmt3 = 1 + Math.floor(Math.random()*5);
+    return {type:'gold', amount:gAmt3, label:'+'+gAmt3+' Gold!', desc:'Rampasan dari boss', icon:'🪙', glowColor:'#f59e0b'};
+  }
+}
+
+function bossApplyReward(reward){
+  if(reward.type==='xp'){
+    addXP(reward.amount, '+'+reward.amount+' BOSS REWARD');
+  } else if(reward.type==='gold'){
+    addGold(reward.amount);
+    showToast('🪙 +'+reward.amount+' gold dari boss!');
+  } else if(reward.type==='theme'){
+    // Bersihkan timer lama jika ada
+    if(_tempThemeTimer) clearTimeout(_tempThemeTimer);
+    // Simpan tema sebelumnya (hanya jika tidak sedang pakai tema sementara)
+    if(tempThemeExpiry === 0) tempThemePrev = activeTheme || '';
+    // Durasi random dari reward (default 1 jam jika tidak ada)
+    var durMs = reward.durMs || (60 * 60 * 1000);
+    var durLabel = reward.durLabel || '1 jam';
+    // Catat expiry persisten ke localStorage
+    tempThemeExpiry = Date.now() + durMs;
+    // Terapkan tema baru sementara — set activeTheme DULU sebelum applyTheme
+    activeTheme = reward.themeId;
+    applyTheme(reward.themeId);
+    // ✅ FIX: force re-render radar chart setelah activeTheme pasti sudah diset
+    setTimeout(function(){
+      if(typeof currentView !== 'undefined' && currentView === 'dashboard'){
+        var el = document.getElementById('mainContent');
+        if(el && typeof renderDashboard === 'function') renderDashboard(el);
+      }
+    }, 120);
+    showToast('🎨 Tema '+reward.themeName+' aktif '+durLabel+'!');
+    // Timer in-memory untuk sesi ini
+    _tempThemeTimer = setTimeout(function(){
+      _tempThemeTimer = null;
+      activeTheme = tempThemePrev;
+      tempThemeExpiry = 0;
+      tempThemePrev = '';
+      applyTheme(activeTheme);
+      // ✅ FIX: force re-render radar chart saat tema sementara habis
+      setTimeout(function(){
+        if(typeof currentView !== 'undefined' && currentView === 'dashboard'){
+          var el = document.getElementById('mainContent');
+          if(el && typeof renderDashboard === 'function') renderDashboard(el);
+        }
+      }, 120);
+      saveData();
+      showToast('⏰ Tema sementara habis, kembali ke tema sebelumnya');
+    }, durMs);
+  }
+  saveData();
+}
+
+function showBossChestAnimation(reward, onDone){
+  var glowCol = reward.glowColor || '#f59e0b';
+
+  var ov = document.createElement('div');
+  ov.id  = 'bossChestOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.40);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:9500;display:flex;align-items:center;justify-content:center;flex-direction:column;overflow:hidden;cursor:pointer;user-select:none;font-family:"Press Start 2P",monospace;';
+
+  ov.innerHTML = `
+    <style>
+      @keyframes _bob  {
+        0%,100%{ transform:translateY(0)   }
+        50%    { transform:translateY(-10px) }
+      }
+      @keyframes _shk1 {
+        0%,100%{ transform:translate(0,0) rotate(0deg) }
+        20%    { transform:translate(-9px, 2px) rotate(-5deg) }
+        50%    { transform:translate( 9px,-2px) rotate( 5deg) }
+        80%    { transform:translate(-4px, 1px) rotate(-2deg) }
+      }
+      @keyframes _shk2 {
+        0%,100%{ transform:translate(0,0) rotate(0deg) }
+        10%    { transform:translate(-20px, 5px) rotate(-11deg) }
+        25%    { transform:translate( 22px,-5px) rotate( 13deg) }
+        40%    { transform:translate(-22px, 6px) rotate(-13deg) }
+        55%    { transform:translate( 20px,-5px) rotate( 11deg) }
+        70%    { transform:translate(-12px, 3px) rotate( -6deg) }
+        85%    { transform:translate(  8px,-2px) rotate(  3deg) }
+      }
+      @keyframes _blink { 0%,100%{opacity:.28} 50%{opacity:.72} }
+      #_cw  { display:flex;flex-direction:column;align-items:center;z-index:2 }
+      #_svg { width:clamp(155px,30vw,255px);height:auto;display:block;
+              animation:_bob 2.1s ease-in-out infinite;
+              filter:drop-shadow(0 10px 28px rgba(0,0,0,.95)) drop-shadow(0 0 16px rgba(255,200,0,.28)) }
+      #_ht  { font-size:clamp(7px,1.3vw,10px);color:rgba(255,255,255,.32);margin-top:24px;
+              letter-spacing:2px;text-transform:uppercase;animation:_blink 1.6s ease infinite }
+      #_rw  { display:none;flex-direction:column;align-items:center;z-index:2;
+              padding:0 24px;opacity:0;transition:opacity .65s ease }
+      #_ri  { font-size:clamp(58px,12vw,92px);line-height:1 }
+      #_rl  { font-size:clamp(11px,3vw,22px);margin-top:16px;text-align:center;
+              line-height:1.9;letter-spacing:2px }
+      #_rd  { font-size:clamp(7px,1.3vw,10px);color:rgba(255,255,255,.5);margin-top:10px;
+              text-align:center;line-height:2.2;letter-spacing:1px }
+      @keyframes _rbpulse {
+        0%,100%{ box-shadow:0 0 14px 3px var(--_gc,#f59e0b), 0 0 40px 8px var(--_gc,#f59e0b)44, 0 6px 24px rgba(0,0,0,.7) }
+        50%    { box-shadow:0 0 36px 12px var(--_gc,#f59e0b), 0 0 70px 20px var(--_gc,#f59e0b)33, 0 6px 24px rgba(0,0,0,.7) }
+      }
+      @keyframes _rbshine {
+        0%   { background-position: -200% center }
+        100% { background-position:  300% center }
+      }
+      @keyframes _rbspark {
+        0%,100%{ opacity:0; transform:translateX(-60px) skewX(-20deg) }
+        10%,90%{ opacity:0 }
+        45%    { opacity:.7; transform:translateX(0px)   skewX(-20deg) }
+        55%    { opacity:.9; transform:translateX(20px)  skewX(-20deg) }
+        80%    { opacity:0;  transform:translateX(120px) skewX(-20deg) }
+      }
+      #_rbwrap { position:relative; display:inline-block; margin-top:32px }
+      #_rb  { display:block;padding:15px 52px;border:none;border-radius:50px;
+              background: linear-gradient(105deg,
+                var(--_gc,#f59e0b) 0%,
+                #fff8 30%,
+                var(--_gc,#f59e0b) 45%,
+                var(--_gc2,#b45309) 70%,
+                var(--_gc,#f59e0b) 100%);
+              background-size:250% auto;
+              font-family:"Press Start 2P",monospace;color:#1a0a00;
+              font-size:clamp(7px,1.3vw,10px);cursor:pointer;letter-spacing:2px;
+              text-transform:uppercase;font-weight:900;
+              box-shadow:0 0 18px 4px var(--_gc,#f59e0b), 0 6px 24px rgba(0,0,0,.7);
+              animation:_rbpulse 1.8s ease-in-out infinite, _rbshine 2.2s linear infinite;
+              transition:transform .15s,filter .15s;
+              outline:none; position:relative; overflow:hidden }
+      #_rb::before {
+              content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+              border-radius:50px;
+              background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.55) 50%,transparent 70%);
+              background-size:250% auto;
+              animation:_rbspark 2.2s ease-in-out infinite;
+              pointer-events:none }
+      #_rb::after {
+              content:'';position:absolute;inset:2px;border-radius:48px;
+              border:1.5px solid rgba(255,255,255,.35);pointer-events:none }
+      #_rb:hover  { transform:scale(1.08);filter:brightness(1.18) }
+      #_rb:active { transform:scale(.95) }
+    </style>
+
+    <div id="_cw">
+      <div id="_sw">
+        <svg id="_svg" viewBox="0 0 260 200" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="wB" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="#D4843A"/>
+              <stop offset="25%"  stop-color="#A0510F"/>
+              <stop offset="65%"  stop-color="#6B2E05"/>
+              <stop offset="100%" stop-color="#2E0F02"/>
+            </linearGradient>
+            <linearGradient id="wL" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="#E8964A"/>
+              <stop offset="45%"  stop-color="#B0601C"/>
+              <stop offset="100%" stop-color="#6B2E05"/>
+            </linearGradient>
+            <linearGradient id="gB" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="#FFE566"/>
+              <stop offset="35%"  stop-color="#F59E0B"/>
+              <stop offset="70%"  stop-color="#B45309"/>
+              <stop offset="100%" stop-color="#FFD700"/>
+            </linearGradient>
+            <linearGradient id="gH" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%"   stop-color="#B45309"/>
+              <stop offset="20%"  stop-color="#FFE566"/>
+              <stop offset="50%"  stop-color="#FCD34D"/>
+              <stop offset="80%"  stop-color="#FFE566"/>
+              <stop offset="100%" stop-color="#B45309"/>
+            </linearGradient>
+            <linearGradient id="lk" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="#FDE68A"/>
+              <stop offset="40%"  stop-color="#F59E0B"/>
+              <stop offset="100%" stop-color="#92400E"/>
+            </linearGradient>
+            <radialGradient id="iG" cx="50%" cy="100%" r="55%">
+              <stop offset="0%"   stop-color="#FFD700" stop-opacity="1"/>
+              <stop offset="40%"  stop-color="#FFA500" stop-opacity=".6"/>
+              <stop offset="100%" stop-color="#FF6600" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="sG" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"   stop-color="rgba(0,0,0,.7)"/>
+              <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+            </radialGradient>
+            <linearGradient id="rL" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stop-color="rgba(255,255,255,.3)"/>
+              <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+            </linearGradient>
+            <radialGradient id="jR" cx="35%" cy="30%" r="65%">
+              <stop offset="0%"   stop-color="#FF8A80"/>
+              <stop offset="50%"  stop-color="#C62828"/>
+              <stop offset="100%" stop-color="#4A0000"/>
+            </radialGradient>
+            <radialGradient id="jBl" cx="35%" cy="30%" r="65%">
+              <stop offset="0%"   stop-color="#80D8FF"/>
+              <stop offset="50%"  stop-color="#0277BD"/>
+              <stop offset="100%" stop-color="#002171"/>
+            </radialGradient>
+            <radialGradient id="jG" cx="35%" cy="30%" r="65%">
+              <stop offset="0%"   stop-color="#B9F6CA"/>
+              <stop offset="50%"  stop-color="#1B5E20"/>
+              <stop offset="100%" stop-color="#003300"/>
+            </radialGradient>
+          </defs>
+          <ellipse cx="130" cy="196" rx="108" ry="10" fill="rgba(0,0,0,.6)"/>
+          <ellipse cx="130" cy="194" rx="90"  ry="7"  fill="url(#sG)" opacity=".8"/>
+          <rect x="6"  y="94"  width="248" height="98" rx="16" fill="#0A0300"/>
+          <rect x="9"  y="97"  width="242" height="92" rx="14" fill="#1C0700"/>
+          <rect x="12" y="100" width="236" height="86" rx="12" fill="url(#wB)"/>
+          <rect x="12" y="128" width="236" height="6" fill="rgba(0,0,0,.2)" rx="2"/>
+          <rect x="12" y="128" width="236" height="2" fill="rgba(255,255,255,.07)" rx="1"/>
+          <rect x="12" y="152" width="236" height="6" fill="rgba(0,0,0,.18)" rx="2"/>
+          <rect x="12" y="152" width="236" height="2" fill="rgba(255,255,255,.06)" rx="1"/>
+          <line x1="52"  y1="100" x2="52"  y2="186" stroke="rgba(0,0,0,.12)" stroke-width="2.5"/>
+          <line x1="96"  y1="100" x2="96"  y2="186" stroke="rgba(0,0,0,.09)" stroke-width="2"/>
+          <line x1="164" y1="100" x2="164" y2="186" stroke="rgba(0,0,0,.09)" stroke-width="2"/>
+          <line x1="208" y1="100" x2="208" y2="186" stroke="rgba(0,0,0,.12)" stroke-width="2.5"/>
+          <rect x="12" y="100" width="30" height="86" rx="12" fill="rgba(0,0,0,.32)"/>
+          <rect x="218" y="100" width="30" height="86" rx="12" fill="rgba(0,0,0,.32)"/>
+          <rect x="40" y="102" width="180" height="18" rx="8" fill="rgba(255,255,255,.09)"/>
+          <rect x="12" y="168" width="236" height="18" rx="12" fill="rgba(0,0,0,.3)"/>
+          <rect x="5"  y="172" width="250" height="16" rx="8"  fill="#1A0600"/>
+          <rect x="8"  y="173" width="244" height="14" rx="7"  fill="#3D1F00"/>
+          <rect x="10" y="174" width="240" height="12" rx="6"  fill="url(#gH)"/>
+          <rect x="10" y="174" width="240" height="5"  rx="3"  fill="rgba(255,255,255,.28)"/>
+          <rect x="20" y="94"  width="18" height="94" rx="5" fill="#1A0600"/>
+          <rect x="22" y="95"  width="14" height="92" rx="4" fill="#3D1F00"/>
+          <rect x="24" y="96"  width="10" height="90" rx="3" fill="url(#gB)"/>
+          <rect x="25" y="96"  width="5"  height="90" rx="2" fill="rgba(255,255,255,.22)"/>
+          <rect x="222" y="94" width="18" height="94" rx="5" fill="#1A0600"/>
+          <rect x="224" y="95" width="14" height="92" rx="4" fill="#3D1F00"/>
+          <rect x="226" y="96" width="10" height="90" rx="3" fill="url(#gB)"/>
+          <rect x="227" y="96" width="5"  height="90" rx="2" fill="rgba(255,255,255,.22)"/>
+          <circle cx="29"  cy="102" r="10" fill="#0A0300"/>
+          <circle cx="29"  cy="102" r="8.5" fill="#3D1F00"/>
+          <circle cx="29"  cy="102" r="7"   fill="url(#gB)"/>
+          <circle cx="29"  cy="102" r="4"   fill="#FFE566"/>
+          <circle cx="29"  cy="102" r="2"   fill="#FFF9C4"/>
+          <circle cx="231" cy="102" r="10" fill="#0A0300"/>
+          <circle cx="231" cy="102" r="8.5" fill="#3D1F00"/>
+          <circle cx="231" cy="102" r="7"   fill="url(#gB)"/>
+          <circle cx="231" cy="102" r="4"   fill="#FFE566"/>
+          <circle cx="231" cy="102" r="2"   fill="#FFF9C4"/>
+          <circle cx="29"  cy="178" r="8" fill="#0A0300"/>
+          <circle cx="29"  cy="178" r="6.5" fill="#3D1F00"/>
+          <circle cx="29"  cy="178" r="5"   fill="url(#gB)"/>
+          <circle cx="29"  cy="178" r="2.5" fill="#FFE566"/>
+          <circle cx="231" cy="178" r="8" fill="#0A0300"/>
+          <circle cx="231" cy="178" r="6.5" fill="#3D1F00"/>
+          <circle cx="231" cy="178" r="5"   fill="url(#gB)"/>
+          <circle cx="231" cy="178" r="2.5" fill="#FFE566"/>
+          <rect x="4"  y="8"  width="252" height="100" rx="18" fill="#0A0300"/>
+          <rect x="7"  y="11" width="246" height="96"  rx="16" fill="#1C0700"/>
+          <rect x="10" y="14" width="240" height="90"  rx="14" fill="url(#wL)"/>
+          <rect x="10" y="14" width="240" height="30"  rx="14" fill="url(#rL)"/>
+          <rect x="10" y="14" width="30"  height="90"  rx="14" fill="rgba(0,0,0,.28)"/>
+          <rect x="220" y="14" width="30" height="90"  rx="14" fill="rgba(0,0,0,.28)"/>
+          <rect x="10" y="78" width="240" height="26"  rx="4" fill="rgba(0,0,0,.22)"/>
+          <rect x="18" y="22" width="224" height="6" fill="rgba(0,0,0,.18)" rx="2"/>
+          <rect x="18" y="52" width="224" height="6" fill="rgba(0,0,0,.15)" rx="2"/>
+          <rect x="18" y="72" width="224" height="5" fill="rgba(0,0,0,.12)" rx="2"/>
+          <line x1="50"  y1="14" x2="50"  y2="104" stroke="rgba(0,0,0,.1)" stroke-width="2"/>
+          <line x1="90"  y1="14" x2="90"  y2="104" stroke="rgba(0,0,0,.08)" stroke-width="1.5"/>
+          <line x1="170" y1="14" x2="170" y2="104" stroke="rgba(0,0,0,.08)" stroke-width="1.5"/>
+          <line x1="210" y1="14" x2="210" y2="104" stroke="rgba(0,0,0,.1)" stroke-width="2"/>
+          <rect x="4"  y="88"  width="252" height="20" rx="6" fill="#1A0600"/>
+          <rect x="6"  y="89"  width="248" height="18" rx="5" fill="#3D1F00"/>
+          <rect x="8"  y="90"  width="244" height="16" rx="4" fill="url(#gH)"/>
+          <rect x="8"  y="90"  width="244" height="7"  rx="3" fill="rgba(255,255,255,.3)"/>
+          <rect x="4"  y="8"   width="18"  height="100" rx="5" fill="#1A0600"/>
+          <rect x="6"  y="9"   width="14"  height="98"  rx="4" fill="#3D1F00"/>
+          <rect x="8"  y="10"  width="10"  height="96"  rx="3" fill="url(#gB)"/>
+          <rect x="9"  y="10"  width="5"   height="96"  rx="2" fill="rgba(255,255,255,.2)"/>
+          <rect x="238" y="8"  width="18"  height="100" rx="5" fill="#1A0600"/>
+          <rect x="240" y="9"  width="14"  height="98"  rx="4" fill="#3D1F00"/>
+          <rect x="242" y="10" width="10"  height="96"  rx="3" fill="url(#gB)"/>
+          <rect x="243" y="10" width="5"   height="96"  rx="2" fill="rgba(255,255,255,.2)"/>
+          <circle cx="17"  cy="16"  r="9"   fill="#0A0300"/>
+          <circle cx="17"  cy="16"  r="7.5" fill="#3D1F00"/>
+          <circle cx="17"  cy="16"  r="6"   fill="url(#gB)"/>
+          <circle cx="17"  cy="16"  r="3.5" fill="#FFE566"/>
+          <circle cx="17"  cy="16"  r="1.8" fill="#FFF9C4"/>
+          <circle cx="243" cy="16"  r="9"   fill="#0A0300"/>
+          <circle cx="243" cy="16"  r="7.5" fill="#3D1F00"/>
+          <circle cx="243" cy="16"  r="6"   fill="url(#gB)"/>
+          <circle cx="243" cy="16"  r="3.5" fill="#FFE566"/>
+          <circle cx="243" cy="16"  r="1.8" fill="#FFF9C4"/>
+          <circle cx="17"  cy="100" r="8"   fill="#0A0300"/>
+          <circle cx="17"  cy="100" r="6.5" fill="#3D1F00"/>
+          <circle cx="17"  cy="100" r="5"   fill="url(#gB)"/>
+          <circle cx="17"  cy="100" r="2.5" fill="#FFE566"/>
+          <circle cx="243" cy="100" r="8"   fill="#0A0300"/>
+          <circle cx="243" cy="100" r="6.5" fill="#3D1F00"/>
+          <circle cx="243" cy="100" r="5"   fill="url(#gB)"/>
+          <circle cx="243" cy="100" r="2.5" fill="#FFE566"/>
+          <rect x="100" y="80" width="60" height="36" rx="8" fill="#0A0300"/>
+          <rect x="102" y="82" width="56" height="32" rx="7" fill="#2A1200"/>
+          <rect x="104" y="84" width="52" height="28" rx="6" fill="url(#lk)"/>
+          <rect x="104" y="84" width="52" height="12" rx="6" fill="rgba(255,255,255,.15)"/>
+          <circle cx="130" cy="88" r="10" fill="#0A0300"/>
+          <circle cx="130" cy="88" r="8.5" fill="#2A1200"/>
+          <circle cx="130" cy="88" r="7"   fill="url(#lk)"/>
+          <circle cx="130" cy="88" r="4"   fill="#FFE566"/>
+          <circle cx="130" cy="88" r="2.2" fill="#FFF9C4"/>
+          <circle cx="128.5" cy="86.5" r="1" fill="rgba(255,255,255,.9)"/>
+          <rect x="126" y="93" width="8" height="16" rx="3" fill="#0A0300"/>
+          <rect x="127.5" y="94.5" width="5" height="13" rx="2" fill="#2A1200"/>
+          <path d="M12,100 Q12,13 130,13 Q248,13 248,100" fill="url(#iG)" opacity=".6"/>
+          <path d="M14,100 L246,100" stroke="#FFD700" stroke-width="3" opacity=".8" stroke-linecap="round"/>
+          <path d="M14,100 L246,100" stroke="#FFF7AA" stroke-width="1.2" opacity=".55" stroke-linecap="round"/>
+          <path d="M50,100 L210,100" stroke="white" stroke-width="2" opacity=".28" stroke-linecap="round"/>
+          <circle cx="60"  cy="50" r="8" fill="url(#jR)"/>
+          <circle cx="60"  cy="50" r="4" fill="#FF8A80" opacity=".7"/>
+          <circle cx="58.5" cy="48.5" r="2" fill="rgba(255,255,255,.6)"/>
+          <circle cx="200" cy="48" r="8" fill="url(#jBl)"/>
+          <circle cx="200" cy="48" r="4" fill="#80D8FF" opacity=".7"/>
+          <circle cx="198.5" cy="46.5" r="2" fill="rgba(255,255,255,.6)"/>
+          <circle cx="130" cy="44" r="10" fill="url(#jG)"/>
+          <circle cx="130" cy="44" r="5"  fill="#B9F6CA" opacity=".7"/>
+          <circle cx="128" cy="42" r="2.5" fill="rgba(255,255,255,.6)"/>
+          <text x="46"  y="30" font-size="14" opacity=".9"  fill="#FFE566">&#x2736;</text>
+          <text x="196" y="28" font-size="11" opacity=".85" fill="#FCD34D">&#x2736;</text>
+          <text x="212" y="68" font-size="9"  opacity=".6"  fill="#FFD700">&#x2736;</text>
+          <text x="22"  y="66" font-size="8"  opacity=".55" fill="#FFE566">&#x2736;</text>
+        </svg>
+      </div>
+      <div id="_ht">[ TAP UNTUK MEMBUKA ]</div>
+    </div>
+
+    <div id="_rw">
+      <span id="_ri"></span>
+      <div  id="_rl"></div>
+      <div  id="_rd"></div>
+      <div id="_rbwrap"><button id="_rb">✦ KLAIM HADIAH ✦</button></div>
+    </div>
+  `;
+
+  document.body.appendChild(ov);
+
+  var svgEl    = ov.querySelector('#_svg');
+  var hintEl   = ov.querySelector('#_ht');
+  var wrapEl   = ov.querySelector('#_cw');
+  var rwrapEl  = ov.querySelector('#_rw');
+  var rIconEl  = ov.querySelector('#_ri');
+  var rLblEl   = ov.querySelector('#_rl');
+  var rDescEl  = ov.querySelector('#_rd');
+  var claimBtn = ov.querySelector('#_rb');
+
+  rLblEl.style.color       = glowCol;
+  rLblEl.style.textShadow  = '0 0 18px ' + glowCol;
+  claimBtn.style.color      = glowCol;
+  claimBtn.style.borderColor = glowCol;
+
+  // phase: 0=idle  1=after shake1  2=light spreading  3=revealed
+  var phase = 0;
+  var rafId  = null;
+
+  function runShake(kf, ms, cb){
+    svgEl.style.animation = 'none';
+    void svgEl.offsetWidth;
+    svgEl.style.animation = kf + ' ' + ms + 'ms ease both';
+    if(cb) setTimeout(cb, ms);
+  }
+
+  // Cahaya dimulai dari titik kecil di tengah → menyebar penuh ke seluruh layar
+  function startLight(){
+    phase = 2;
+    hintEl.style.display   = 'none';
+    svgEl.style.animation  = 'none';
+
+    var t0  = performance.now();
+    var DUR = 5000; // ms — lambat di awal, akselerasi di akhir
+
+    function frame(now){
+      var raw  = Math.min((now - t0) / DUR, 1);
+      // Smoothstep lalu ease-in-out: sangat lambat di awal, cepat di akhir
+      var s    = raw * raw * (3 - 2 * raw);          // smoothstep
+      var ease = s < .5 ? 2*s*s : 1 - Math.pow(-2*s+2, 2)/2;
+
+      if(ease < .82){
+        // ── FASE SPREAD: cahaya kecil di tengah, perlahan melebar ──
+        var r      = Math.round(ease * 160);  // jari-jari cahaya 0→160%
+        var inner  = Math.max(0, r - 10);
+        var mid    = r + 12;
+        var outer  = Math.min(220, r + 60);
+        var dark   = (1 - ease).toFixed(3);
+        ov.style.background =
+          'radial-gradient(circle at center,' +
+          glowCol       + ' 0%,' +
+          glowCol       + ' ' + inner + '%,' +
+          glowCol + 'bb ' + mid   + '%,' +
+          glowCol + '33 ' + outer + '%,' +
+          'rgba(0,0,0,' + dark + ') 100%)';
+        svgEl.style.opacity = Math.max(0, 1 - ease * 2.2).toFixed(2);
+
+      } else {
+        // ── FASE PUNCAK: seluruh layar meledak penuh warna reward ──
+        var p2 = (ease - .82) / .18;
+        ov.style.background =
+          'radial-gradient(circle at center,' +
+          '#ffffff '      + Math.round(p2 * 40)         + '%,' +
+          glowCol         + ' ' + Math.round(8  + p2*55) + '%,' +
+          glowCol + 'cc ' + Math.round(50 + p2*32)       + '%,' +
+          glowCol + '88 88%,' +
+          glowCol + '44 100%)';
+        svgEl.style.opacity = '0';
+
+        if(p2 > .75 && phase === 2){
+          phase = 3;
+          if(rafId) cancelAnimationFrame(rafId);
+          doReveal();
+          return;
+        }
+      }
+
+      if(raw < 1){ rafId = requestAnimationFrame(frame); }
+      else if(phase === 2){ phase = 3; doReveal(); }
+    }
+
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function doReveal(){
+    wrapEl.style.display   = 'none';
+    rIconEl.textContent    = reward.icon;
+    rLblEl.textContent     = reward.label;
+    rDescEl.textContent    = reward.desc;
+    rwrapEl.style.display  = 'flex';
+    // Set CSS vars for button gradient colors
+    ov.style.setProperty('--_gc',  glowCol);
+    // Derive a darker shade for gradient end
+    ov.style.setProperty('--_gc2', glowCol + 'aa');
+    // Background: hitam semi-transparan blur, tanpa warna reward
+    ov.style.transition    = 'background 1s ease';
+    ov.style.background    = 'rgba(0,0,0,0.40)';
+    ov.style.backdropFilter = 'blur(12px)';
+    ov.style.webkitBackdropFilter = 'blur(12px)';
+    requestAnimationFrame(function(){ rwrapEl.style.opacity = '1'; });
+  }
+
+  ov.addEventListener('click', function(e){
+    if(e.target === claimBtn) return;
+    if(phase === 0){
+      phase = 2;
+      hintEl.style.display = 'none';
+      svgEl.style.filter = 'drop-shadow(0 0 28px ' + glowCol + ') drop-shadow(0 0 55px #fff) brightness(2.3)';
+      runShake('_shk2', 920, startLight);
+    }
+  });
+
+  claimBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    if(rafId) cancelAnimationFrame(rafId);
+    ov.remove();
+    if(typeof onDone === 'function') onDone();
+  });
+
+  setTimeout(function(){
+    if(phase === 3 && ov.parentNode){
+      if(rafId) cancelAnimationFrame(rafId);
+      ov.remove();
+      if(typeof onDone === 'function') onDone();
+    }
+  }, 30000);
+}
+
+
+function bossVictory(){
+  var b = bossCur();
+
+  // If boss panel is minimized, restore it so user sees the victory —
+  // regardless of whether they minimized it intentionally.
+  // Only skip auto-restore if user minimized AND boss was NOT just defeated
+  // (that case is impossible here since we only call bossVictory on defeat).
+  if(_bossMinimized){
+    _bossMinimized = false;
+    _bossUserMinimized = false;
+    var _vPanel = document.getElementById('bossBattlePanel');
+    var _vTab   = document.getElementById('bossTab');
+    if(_vPanel) _vPanel.classList.remove('boss-minimized');
+    if(_vTab)   _vTab.style.display   = 'none';
+    bossStartLoop();
+    bossApplyTheme();
+  }
+
+  var ov = document.getElementById('bossVictoryOv');
+  var msg = document.getElementById('bossVictoryMsg');
+  if(ov){
+    if(msg) msg.textContent = b.death;
+    ov.style.display='flex';
+    bossPixelBurst();
+    setTimeout(function(){ ov.style.display='none'; },5500);
+  }
+  showToast('⚔️ BOSS DEFEATED! '+b.name+' dikalahkan!');
+
+  // Roll & show reward chest setelah victory overlay selesai
+  var reward = bossRollReward();
+  setTimeout(function(){
+    showBossChestAnimation(reward, function(){
+      bossApplyReward(reward);
+    });
+  }, 5800);
+}
+
+function bossPixelBurst(){
+  var cvs = document.getElementById('bossExpCvs');
+  if(!cvs) return;
+  var W=cvs.width=window.innerWidth, H=cvs.height=window.innerHeight;
+  var ctx=cvs.getContext('2d');
+  var b=bossCur();
+  var cols=[b.col,b.glow,'#fff','#ffff00','#ff8800','#ff4444'];
+  var pts=[];
+  for(var i=0;i<130;i++) pts.push({x:W/2,y:H/2,vx:(Math.random()-0.5)*28,vy:(Math.random()-0.5)*28-5,sz:3+Math.floor(Math.random()*14),col:cols[Math.floor(Math.random()*cols.length)],life:1,dec:0.011+Math.random()*0.02,sq:Math.random()>0.4});
+  var t0=Date.now();
+  function frame(){
+    ctx.clearRect(0,0,W,H);
+    var alive=false;
+    pts.forEach(function(p){ if(p.life<=0)return; alive=true; p.x+=p.vx;p.y+=p.vy;p.vy+=0.4;p.life-=p.dec; ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.col; if(p.sq) ctx.fillRect(p.x,p.y,p.sz,p.sz); else ctx.fillRect(p.x,p.y,p.sz/2,p.sz); });
+    ctx.globalAlpha=1;
+    if(alive&&Date.now()-t0<5000) requestAnimationFrame(frame); else ctx.clearRect(0,0,W,H);
+  }
+  requestAnimationFrame(frame);
+}
+
+// ── Build the new RPG-style boss panel ──
+function bossBuildCard(){
+  var b = bossCur();
+
+  var style = document.createElement('style');
+  style.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+    /* ── boss-minimized: override body.gami-gamer !important di HTML ── */
+    #bossBattlePanel.boss-minimized,
+    body.gami-gamer #bossBattlePanel.boss-minimized { display: none !important; }
+    #bossTab.boss-tab-force-hide    { display: none !important; }
+
+    /* ══════════════════════════════════════════
+       BOSS PANEL — desktop right, mobile bottom
+    ══════════════════════════════════════════ */
+    #bossBattlePanel {
+      position: fixed;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 256px;
+      background: linear-gradient(170deg, #0e0e18 0%, #14101e 60%, #0e0e18 100%);
+      border: 2px solid #7c3aed;
+      border-radius: 12px;
+      z-index: 201;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: 'Press Start 2P', monospace;
+      transition: border-color 0.4s, box-shadow 0.4s, top 0.15s, right 0.15s, background 0.4s,
+                  opacity 0.35s cubic-bezier(0.4,0,0.2,1),
+                  transform 0.35s cubic-bezier(0.4,0,0.2,1),
+                  visibility 0s linear 0s;
+      user-select: none;
+      cursor: default;
+      opacity: 1;
+      visibility: visible;
+    }
+    /* Boss panel animating out (auto-minimize) — desktop: slide kiri, mobile override di bawah */
+    #bossBattlePanel.boss-hiding {
+      opacity: 0;
+      transform: translateY(-50%) translateX(-30px) scale(0.93);
+      visibility: hidden;
+      transition: border-color 0.4s, box-shadow 0.4s, top 0.15s, right 0.15s, background 0.4s,
+                  opacity 0.3s cubic-bezier(0.4,0,1,1),
+                  transform 0.3s cubic-bezier(0.4,0,1,1),
+                  visibility 0s linear 0.31s;
+      pointer-events: none;
+    }
+    /* Boss tab — semua via CSS transition, tanpa animation keyframe agar tidak conflict */
+    #bossTab {
+      transition: transform 0.45s cubic-bezier(0.4,0,0.2,1),
+                  opacity  0.3s  cubic-bezier(0.4,0,0.2,1),
+                  background 0.3s, border-color 0.3s, box-shadow 0.3s, color 0.3s;
+      /* state awal: tampak normal di bawah */
+      opacity: 1;
+      transform: translateY(0);
+    }
+    /* Tab tersembunyi — turun ke bawah + fade */
+    #bossTab.boss-tab-hidden {
+      opacity: 0;
+      transform: translateY(30px);
+      pointer-events: none;
+    }
+    /* Tab di posisi atas — translate ke atas */
+    #bossTab.boss-tab-top {
+      transform: translateY(var(--boss-tab-offset, 0px));
+    }
+    /* Tab di atas DAN tersembunyi (saat restore: turun dulu baru fade) */
+    #bossTab.boss-tab-top.boss-tab-hidden {
+      transform: translateY(calc(var(--boss-tab-offset, 0px) + 30px));
+      opacity: 0;
+    }
+    /* Boss panel animating in (restore) */
+    #bossBattlePanel.boss-showing {
+      animation: bossPanelReveal 0.38s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    }
+    @keyframes bossPanelReveal {
+      from { opacity: 0; transform: translateY(-50%) translateX(-30px) scale(0.93); }
+      to   { opacity: 1; transform: translateY(-50%) translateX(0)      scale(1);   }
+    }
+
+    /* drag handle cursor on header */
+    #bossHeaderBar { cursor: grab; }
+    #bossHeaderBar:active { cursor: grabbing; }
+
+    /* ─ header ─ */
+    #bossHeaderBar {
+      background: linear-gradient(90deg, #1a0030, #0e001a, #1a0030);
+      border-bottom: 1px solid rgba(124,58,237,0.35);
+      padding: 6px 8px 6px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    #bossHeaderTitle {
+      font-size: 7px;
+      color: #a855f7;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      flex: 1;
+      pointer-events: none;
+    }
+    /* ── minimize button — always visible ── */
+    #bossMinBtn {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #9ca3af;
+      cursor: pointer;
+      font-size: 8px;
+      line-height: 1;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      font-family: 'Press Start 2P', monospace;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    #bossMinBtn:hover {
+      background: rgba(255,255,255,0.14);
+      color: #fff;
+      border-color: rgba(255,255,255,0.4);
+    }
+
+    /* ─ sprite area ─ */
+    #bossSpriteArea {
+      position: relative;
+      width: 100%;
+      height: 220px;
+      background: radial-gradient(ellipse at 50% 85%, rgba(88,28,135,0.5) 0%, #060010 70%);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    #bossSpriteArea::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+      background-size: 12px 12px;
+      pointer-events: none;
+    }
+    #bossSpriteArea::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(0deg,rgba(0,0,0,0.1) 0px,rgba(0,0,0,0.1) 1px,transparent 1px,transparent 4px);
+      pointer-events: none;
+    }
+    #bossAuraEl {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 55%;
+      pointer-events: none; z-index: 1;
+      transition: background 0.6s;
+    }
+    #bossSpriteCanvas { image-rendering: pixelated; position: relative; z-index: 2; width:200px; height:220px; }
+    #bossPhraseEl {
+      position: absolute; bottom: 5px; left: 5px; right: 5px;
+      font-size: 8.5px; color: #ffffff; text-align: center;
+      z-index: 10; opacity: 0;
+      transform: translateY(4px) scale(0.95);
+      transition: opacity 0.4s, transform 0.4s;
+      line-height: 1.9; pointer-events: none; word-break: break-word;
+      text-shadow:
+        -1px -1px 0 #000,
+         1px -1px 0 #000,
+        -1px  1px 0 #000,
+         1px  1px 0 #000,
+         0 0 10px rgba(232,121,249,0.9),
+         0 0 20px rgba(232,121,249,0.5);
+      paint-order: stroke fill;
+    }
+
+    /* ─ info col ─ */
+    #bossInfoCol {
+      flex: 1; padding: 10px 12px 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .boss-name-row { display: flex; flex-direction: column; gap: 3px; }
+    #bossNameEl {
+      font-size: 8px; color: #fff; line-height: 1.6;
+      text-shadow: 0 0 10px rgba(168,85,247,0.7);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #bossSubEl { font-size: 7px; color: #c4b5fd; letter-spacing: 0.5px; }
+    #bossPhaseEl { font-size: 6px; color: #9ca3af; letter-spacing: 0.5px; }
+    .boss-hp-label-row { display: flex; justify-content: space-between; align-items: center; }
+    .boss-hp-lbl { font-size: 6.5px; color: #9ca3af; letter-spacing: 0.5px; }
+    #bossHpNums  { font-size: 6.5px; color: #d1d5db; }
+    .boss-hp-track {
+      height: 10px; background: #0a0a1a;
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 3px;
+      overflow: hidden; position: relative;
+    }
+    #bossHpFill {
+      height: 100%; width: 100%;
+      background: linear-gradient(90deg, #4ade80, #4ade80cc);
+      border-radius: 2px; position: relative;
+      transition: width 0.45s cubic-bezier(0.4,0,0.2,1), background 0.5s;
+    }
+    #bossHpFill::after {
+      content: ''; position: absolute;
+      top: 2px; left: 2px; right: 2px; height: 2px;
+      background: rgba(255,255,255,0.28); border-radius: 2px;
+    }
+    @keyframes bossHpPulse { from{opacity:1} to{opacity:0.5} }
+
+    /* damage float */
+    .boss-dmg-float {
+      position: absolute; font-family: 'Press Start 2P', monospace;
+      font-size: 16px; color: #ff4444;
+      text-shadow: 2px 2px #000, 0 0 12px #f00, 0 0 24px #f006;
+      pointer-events: none; z-index: 60; top: 22%;
+      animation: bossDmgRise 1.2s ease-out forwards;
+    }
+    @keyframes bossDmgRise {
+      0%   { opacity:1; transform:translateY(0) scale(1.2); }
+      30%  { opacity:1; transform:translateY(-24px) scale(1.35); }
+      100% { opacity:0; transform:translateY(-58px) scale(0.8); }
+    }
+    .boss-blood {
+      position: absolute; top: 8%;
+      border-radius: 50% 50% 60% 40%;
+      background: radial-gradient(circle at 40% 30%, #ff6666, #cc0000);
+      z-index: 5; animation: bossBloodFall linear forwards;
+      box-shadow: 0 0 5px rgba(200,0,0,0.7);
+    }
+    @keyframes bossBloodFall {
+      0%  { opacity:1; transform:translateY(0) scale(1); }
+      70% { opacity:1; transform:translateY(62px) scale(0.88); }
+      100%{ opacity:0; transform:translateY(75px) scale(0.65); }
+    }
+    .boss-shake { animation: bossShakeAnim 0.35s ease !important; }
+    @keyframes bossShakeAnim {
+      0%,100%{ transform:none; }
+      15% { transform:translateX(-7px) rotate(-3deg); }
+      35% { transform:translateX(7px) rotate(3deg); }
+      55% { transform:translateX(-5px) rotate(-2deg); }
+      75% { transform:translateX(5px) rotate(2deg); }
+      90% { transform:translateX(-2px); }
+    }
+    @keyframes bossPanelPulse {
+      0%,100%{ box-shadow:0 0 22px rgba(124,58,237,0.45),0 8px 40px rgba(0,0,0,0.85); }
+      50%    { box-shadow:0 0 42px rgba(168,85,247,0.7),0 8px 40px rgba(0,0,0,0.85); }
+    }
+    #bossBattlePanel { animation: bossPanelPulse 3.5s ease infinite; }
+
+    /* ── MINIMIZE TAB — bottom-right corner on desktop ── */
+    #bossTab {
+      position: fixed;
+      bottom: 20px; right: 14px;
+      background: linear-gradient(135deg, #14101e, #0e0e18);
+      border: 2px solid #7c3aed;
+      border-radius: 8px;
+      padding: 8px 14px;
+      display: flex; align-items: center; gap: 7px;
+      font-family: 'Press Start 2P', monospace;
+      font-size: 8px; color: #a855f7;
+      cursor: pointer; z-index: 202;
+      box-shadow: 0 0 14px rgba(124,58,237,0.5), 0 2px 8px rgba(0,0,0,0.6);
+      white-space: nowrap;
+      writing-mode: horizontal-tb !important;
+      text-orientation: mixed !important;
+      letter-spacing: 1px;
+      transition: border-color 0.3s, box-shadow 0.3s, color 0.3s, background 0.3s, transform 0.42s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s ease;
+    }
+    #bossTab:hover { background: linear-gradient(135deg,#1c1430,#14101e); }
+    #bossTab.boss-tab-top {
+      transform: translateY(var(--boss-tab-offset, 0px));
+    }
+    #bossTabIcon { font-size: 12px; line-height:1; }
+    @keyframes bossTabPulse {
+      0%,100%{ box-shadow:0 0 10px rgba(124,58,237,0.45); }
+      50%    { box-shadow:0 0 24px rgba(168,85,247,0.8); }
+    }
+
+    /* victory */
+    #bossVictoryOv {
+      position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9000;
+      display:none;align-items:center;justify-content:center;
+      flex-direction:column;gap:18px;
+    }
+    #bossVictoryOv h2 {
+      font-family:'Press Start 2P',monospace;
+      font-size:clamp(14px,3vw,26px);color:#facc15;text-align:center;
+      text-shadow:0 0 30px #f59e0b,0 0 60px #f59e0b66;
+      animation:bossVpulse 0.55s ease infinite alternate;
+      max-width:80vw;line-height:2;
+    }
+    #bossVictoryMsg {
+      font-family:'Press Start 2P',monospace;
+      font-size:clamp(6px,1.5vw,11px);color:#fff;text-align:center;
+      max-width:70vw;line-height:2.2;white-space:pre-line;
+    }
+    @keyframes bossVpulse{ from{transform:scale(1)} to{transform:scale(1.07)} }
+    #bossExpCvs { position:fixed;inset:0;pointer-events:none;z-index:8999; }
+
+    /* ── MOBILE ── */
+    @media(max-width:700px){
+      #bossBattlePanel {
+        right:auto; top:auto; transform:none;
+        bottom:70px; left:50%; transform:translateX(-50%);
+        width:min(96vw,390px);
+        flex-direction:row; border-radius:10px;
+      }
+      /* Mobile: fade ke kiri bawah (arah tab minimize di left:8px) */
+      #bossBattlePanel.boss-hiding {
+        transform: translateX(calc(-50% - 40px)) translateY(10px) scale(0.93);
+      }
+      @keyframes bossPanelReveal {
+        from { opacity: 0; transform: translateX(calc(-50% - 40px)) translateY(10px) scale(0.93); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+      }
+      #bossHeaderBar { display:none; }
+      #bossSpriteArea {
+        width:120px; min-width:120px; height:auto; min-height:132px;
+        border-right:1px solid rgba(124,58,237,0.25);
+        border-radius:0;
+      }
+      #bossSpriteCanvas { width:120px; height:132px; }
+      #bossInfoCol { padding:8px 10px; gap:5px; }
+      #bossNameEl  { font-size:9px; }
+      #bossSubEl   { font-size:7px; display:block; }
+      .boss-hp-track{ height:8px; }
+      #bossPhraseEl { font-size:7.5px; bottom:3px; }
+      /* mobile minimize button — top-right of panel */
+      #bossMobileMinBtn {
+        position:absolute; top:5px; right:7px;
+        background:rgba(255,255,255,0.07);
+        border:1px solid rgba(255,255,255,0.2);
+        color:#9ca3af; cursor:pointer;
+        font-size:7px; line-height:1;
+        width:18px; height:18px;
+        border-radius:3px;
+        font-family:'Press Start 2P',monospace;
+        display:flex; align-items:center; justify-content:center;
+        z-index:10;
+      }
+      /* mobile tab — floating draggable ball */
+      #bossTab {
+        bottom: 120px; right: 16px; left: auto;
+        width: 54px; height: 54px;
+        padding: 0;
+        border-radius: 50%;
+        font-size: 0; gap: 0;
+        flex-direction: column;
+        align-items: center; justify-content: center;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.55), 0 0 16px rgba(124,58,237,0.6);
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #bossTab span:not(#bossTabIcon) { display: none; }
+      #bossTabIcon { font-size: 22px !important; line-height: 1; display: block; }
+      .boss-tab-arrow { display: none !important; }
+    }
+
+    /* ── Side Drawer mode on mobile — ball handles position via JS drag ── */
+
+    /* ── THEME OVERRIDES handled dynamically by bossApplyTheme() ── */
+  `;
+  document.head.appendChild(style);
+
+  // ── Build panel HTML ──
+  var panel = document.createElement('div');
+  panel.id = 'bossBattlePanel';
+  panel.innerHTML =
+    '<div id="bossHeaderBar">' +
+      '<span id="bossHeaderTitle">⚔ BOSS BATTLE</span>' +
+      '<button id="bossMinBtn" onclick="bossMinimize()" title="Minimize">—</button>' +
+    '</div>' +
+    '<div id="bossSpriteArea">' +
+      '<div id="bossAuraEl"></div>' +
+      '<canvas id="bossSpriteCanvas" width="200" height="220"></canvas>' +
+      '<div id="bossPhraseEl"></div>' +
+    '</div>' +
+    '<div id="bossInfoCol">' +
+      '<div class="boss-name-row">' +
+        '<span id="bossNameEl">...</span>' +
+        '<span id="bossSubEl">...</span>' +
+      '</div>' +
+      '<span id="bossPhaseEl">👹 SIAP TEMPUR</span>' +
+      '<div class="boss-hp-label-row">' +
+        '<span class="boss-hp-lbl">❤ HP</span>' +
+        '<span id="bossHpNums">0 / 0</span>' +
+      '</div>' +
+      '<div class="boss-hp-track"><div id="bossHpFill"></div></div>' +
+    '</div>';
+  document.body.appendChild(panel);
+
+  // Mobile minimize button (outside header, absolute positioned)
+  if(window.innerWidth <= 700){
+    var mBtn = document.createElement('button');
+    mBtn.id = 'bossMobileMinBtn';
+    mBtn.textContent = '—';
+    mBtn.title = 'Minimize';
+    mBtn.onclick = bossMinimize;
+    panel.appendChild(mBtn);
+  }
+
+  // ── Drag to reposition (desktop only) ──
+  if(window.innerWidth > 700){
+    var drag = { active:false, startX:0, startY:0, origRight:0, origTop:0 };
+    var hdr  = document.getElementById('bossHeaderBar');
+    hdr.addEventListener('mousedown', function(e){
+      if(e.target.id==='bossMinBtn') return;
+      drag.active  = true;
+      drag.startX  = e.clientX;
+      drag.startY  = e.clientY;
+      var r  = panel.getBoundingClientRect();
+      drag.origRight = window.innerWidth - r.right;
+      drag.origTop   = r.top + r.height/2;
+      panel.style.transition = 'none';
+      panel.style.animation  = 'none';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e){
+      if(!drag.active) return;
+      var dx = e.clientX - drag.startX;
+      var dy = e.clientY - drag.startY;
+      var newRight = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, drag.origRight - dx));
+      var newTop   = Math.max(panel.offsetHeight/2, Math.min(window.innerHeight - panel.offsetHeight/2, drag.origTop + dy));
+      panel.style.right     = newRight + 'px';
+      panel.style.top       = newTop   + 'px';
+      panel.style.transform = 'translateY(-50%)';
+    });
+    document.addEventListener('mouseup', function(){
+      if(!drag.active) return;
+      drag.active = false;
+      panel.style.transition = '';
+      panel.style.animation  = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
+  // ── Victory overlay ──
+  var vov = document.createElement('div');
+  vov.id = 'bossVictoryOv';
+  vov.innerHTML =
+    '<canvas id="bossExpCvs"></canvas>' +
+    '<h2>⚔️ VICTORY! ⚔️</h2>' +
+    '<p id="bossVictoryMsg"></p>' +
+    '<p style="font-family:\'Press Start 2P\',monospace;font-size:6px;color:#6b7280;margin-top:6px">Boss baru muncul besok!</p>';
+  document.body.appendChild(vov);
+}
+
+var _bossMinimized = false;
+var _bossUserMinimized = false; // true only when user explicitly clicked minimize
+function bossMinimize(){
+  // Kalau ada auto-minimize aktif dan user klik tab, clear auto state dulu
+  if(window._bossClearAutoMinimize) window._bossClearAutoMinimize();
+  _bossMinimized = !_bossMinimized;
+  _bossUserMinimized = _bossMinimized; // track user's explicit intent
+  var panel = document.getElementById('bossBattlePanel');
+  var tabEl = document.getElementById('bossTab');
+  var btn   = document.getElementById('bossMinBtn');
+  var mBtn  = document.getElementById('bossMobileMinBtn');
+
+  if(_bossMinimized){
+    // Hide panel
+    if(panel) panel.classList.add('boss-minimized');
+    if(bossSpriteRaf){ cancelAnimationFrame(bossSpriteRaf); bossSpriteRaf=null; }
+
+    // Build tab if not yet exists
+    if(!tabEl){
+      tabEl = document.createElement('div');
+      tabEl.id = 'bossTab';
+      tabEl.onclick = bossMinimize;
+      tabEl.title = 'Buka Boss Battle';
+      document.body.appendChild(tabEl);
+    }
+    // Fill tab content with current boss info
+    var b = bossCur();
+    var pct = bossState.hp / bossState.maxHp;
+    var phase = bossState.defeated ? (b.id==='lucky' ? '🍀' : '☠') : (b.id==='lucky' ? (pct<0.3?'🤤':pct<0.5?'😊':'🍽️') : (pct<0.3?'🔥':pct<0.5?'⚡':'⚔'));
+    tabEl.innerHTML =
+      '<span id="bossTabIcon">'+phase+'</span>' +
+      '<span>' + b.name.split(' ').slice(0,2).join(' ') + '</span>';
+    tabEl.classList.remove('boss-tab-top', 'boss-tab-hidden');
+    tabEl.style.animation = '';
+    tabEl.style.transition = '';
+    tabEl.style.display = 'flex';
+    // Reset _swipeBound agar swipe listener + tombol arrow di-rebind ulang
+    // (innerHTML di-wipe di atas, jadi arrow span hilang dan harus dibuat ulang)
+    tabEl._swipeBound = false;
+    bossApplyTheme();
+    if(typeof _bossTabBindSwipe === 'function') _bossTabBindSwipe(tabEl);
+    if(typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
+
+  } else {
+    // Restore panel dengan animasi smooth
+    _bossUserMinimized = false;
+    if(typeof window._bossForceResetAnim === 'function') window._bossForceResetAnim();
+
+    function _doRestorePanel(){
+      // Sembunyikan tab dulu dengan fade
+      if(tabEl){
+        tabEl.style.transition = '';
+        tabEl.classList.add('boss-tab-hidden'); // fade out + slide turun
+      }
+      // Setelah tab fade out (~300ms), tampilkan panel dengan boss-showing
+      setTimeout(function(){
+        if(tabEl){
+          tabEl.style.display = 'none';
+          tabEl.classList.remove('boss-tab-top', 'boss-tab-hidden');
+          tabEl.style.animation = '';
+          tabEl.style.transition = '';
+        }
+        if(panel){
+          panel.classList.remove('boss-hiding', 'boss-showing');
+          panel.classList.remove('boss-minimized');
+          void panel.offsetWidth; // reflow agar animasi mulai dari awal
+          panel.classList.add('boss-showing');
+          setTimeout(function(){ panel.classList.remove('boss-showing'); }, 420);
+        }
+        if(typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
+        bossStartLoop();
+        bossApplyTheme();
+      }, 300);
+    }
+
+    // Kalau tab sedang di atas, slide turun dulu baru restore panel
+    if(tabEl && typeof window._bossResetTabTop === 'function' && tabEl.classList.contains('boss-tab-top')){
+      tabEl.classList.remove('boss-tab-top'); // slide turun smooth (~450ms)
+      setTimeout(_doRestorePanel, 200); // mulai fade tab sedikit sebelum slide selesai agar mulus
+    } else {
+      if(typeof window._bossResetTabTop === 'function') window._bossResetTabTop();
+      _doRestorePanel();
+    }
+  }
+}
+
+// ── Auto-minimize boss saat scroll mentok bawah, restore saat scroll naik ──
+(function(){
+  var _bossTabScrollBound = false;
+  window._bossTabAtTop = false; var _bossTabAtTop = window._bossTabAtTop = false
+  var _bossAutoMinimized  = false;
+  var _bossAnimating      = false; // guard: jangan trigger ulang saat animasi berjalan
+  var _bossBoundScrollEl  = null; // elemen scroll yang sedang di-listen
+
+  // Deteksi scroll container aktif berdasarkan currentView
+  function _bossGetScrollContainer(){
+    var cv = (typeof currentView !== 'undefined') ? currentView : 'myday';
+    // Fin views: pakai finScroll (inner) atau finWrap
+    if(typeof isFinView === 'function' && isFinView(cv)){
+      return document.getElementById('finScroll') || document.getElementById('finWrap');
+    }
+    // Maint views: finWrap dipakai sebagai container flex column, cari inner scroll
+    if(typeof isMaintView === 'function' && isMaintView(cv)){
+      var fw = document.getElementById('finWrap');
+      if(fw){
+        var inner = fw.querySelector('[style*="overflow-y:auto"],[style*="overflow-y: auto"]');
+        if(inner) return inner;
+      }
+      return fw;
+    }
+    // Semua view lain (task, journal, calendar, dashboard, dll) pakai taskScroll
+    return document.getElementById('taskScroll');
+  }
+
+  function _bossTabComputeOffset(tabEl){
+    var isMobile = window.innerWidth <= 700;
+    var isSidebarMode = isMobile && document.body.classList.contains('mobile-nav-sidebar');
+    var tabBottom = isMobile && !isSidebarMode ? 70 : 20;
+    var tabH = tabEl.offsetHeight || 36;
+    var tabTopEdge = window.innerHeight - tabBottom - tabH;
+    var targetTop;
+    if(isSidebarMode){
+      var sqaEl = document.getElementById('sidebarQuickAdd');
+      if(sqaEl && sqaEl.offsetParent !== null && sqaEl.style.display !== 'none'){
+        targetTop = sqaEl.getBoundingClientRect().bottom + 10;
+      } else {
+        var tb = document.querySelector('.topbar');
+        targetTop = tb ? tb.getBoundingClientRect().bottom + 10 : 80;
+      }
+    } else {
+      var tb2 = document.querySelector('.topbar');
+      targetTop = tb2 ? tb2.getBoundingClientRect().bottom + 10 : (isMobile ? 80 : 70);
+    }
+    return targetTop - tabTopEdge;
+  }
+  window._bossTabComputeOffset = _bossTabComputeOffset; // expose untuk swipe handler
+
+  function _bossDoAutoMinimize(){
+    if(_bossMinimized || _bossUserMinimized || _bossAnimating) return;
+    _bossAutoMinimized = true;
+    _bossMinimized = true;
+    _bossAnimating = true;
+
+    var panel = document.getElementById('bossBattlePanel');
+
+    // Siapkan tab — set ke state tersembunyi (tanpa transition) dulu
+    var tabEl = document.getElementById('bossTab');
+    if(!tabEl){
+      tabEl = document.createElement('div');
+      tabEl.id = 'bossTab';
+      tabEl.onclick = bossMinimize;
+      tabEl.title = 'Buka Boss Battle';
+      document.body.appendChild(tabEl);
+    }
+    var b = bossCur();
+    var pct = bossState.hp / bossState.maxHp;
+    var phase = bossState.defeated ? (b.id==='lucky' ? '🍀' : '☠') : (b.id==='lucky' ? (pct<0.3?'🤤':pct<0.5?'😊':'🍽️') : (pct<0.3?'🔥':pct<0.5?'⚡':'⚔'));
+    tabEl.innerHTML = '<span id="bossTabIcon">'+phase+'</span><span>'+b.name.split(' ').slice(0,2).join(' ')+'</span>';
+    tabEl.style.animation = '';
+    tabEl.style.transition = 'none'; // nonaktifkan transition sementara
+    tabEl.classList.remove('boss-tab-top');
+    tabEl.classList.add('boss-tab-hidden'); // posisi bawah + opacity 0, tanpa animasi
+    tabEl.style.display = 'flex';
+    bossApplyTheme();
+    if(typeof _bossTabBindSwipe === 'function') _bossTabBindSwipe(tabEl);
+
+    // Step 1: Panel fade+slide ke kiri
+    if(panel){
+      panel.classList.remove('boss-showing');
+      panel.classList.add('boss-hiding');
+      // Setelah animasi hiding selesai (~310ms), set display:none agar state konsisten
+      setTimeout(function(){ if(panel) panel.classList.add('boss-minimized'); }, 320);
+    }
+
+    // Step 2: Setelah panel hilang (~310ms) → tab muncul naik dari bawah
+    setTimeout(function(){
+      if(bossSpriteRaf){ cancelAnimationFrame(bossSpriteRaf); bossSpriteRaf = null; }
+      // Aktifkan transition, reflow, lalu hapus hidden → tab naik muncul dari bawah
+      tabEl.style.transition = '';
+      void tabEl.offsetWidth;
+      tabEl.classList.remove('boss-tab-hidden'); // translateY(30px)+opacity:0 → translateY(0)+opacity:1
+
+      // Step 3: Tunggu transition naik selesai dulu (450ms) → BARU slide ke atas
+      setTimeout(function(){
+        var sc = _bossGetScrollContainer();
+        var stillAtBottom = sc && (sc.scrollHeight - sc.scrollTop - sc.clientHeight) < 60;
+        if(stillAtBottom && !_bossTabAtTop){
+          _bossTabAtTop = window._bossTabAtTop = true
+          var offset = _bossTabComputeOffset(tabEl);
+          tabEl.style.setProperty('--boss-tab-offset', offset + 'px');
+          // Sedikit delay lagi agar browser commit dulu state translateY(0) sebelum naik
+          void tabEl.offsetWidth;
+          tabEl.classList.add('boss-tab-top'); // translateY(0) → translateY(offset) smooth
+          var _arr = tabEl.querySelector('.boss-tab-arrow');
+          if(_arr) _arr.textContent = '▼'; // tab sedang di atas → bisa turun
+        }
+        if(typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
+        setTimeout(function(){ _bossAnimating = false; }, 480);
+      }, 470); // harus lebih dari transition duration (450ms)
+    }, 310);
+  }
+
+  function _bossDoAutoRestore(){
+    if(!_bossAutoMinimized || _bossAnimating) return;
+    _bossAutoMinimized = false;
+    _bossMinimized = false;
+    _bossAnimating = true;
+
+    var panel = document.getElementById('bossBattlePanel');
+    var tabEl  = document.getElementById('bossTab');
+
+    function _showPanel(){
+      if(tabEl){
+        tabEl.style.transition = 'none';
+        tabEl.classList.add('boss-tab-hidden');
+        tabEl.classList.remove('boss-tab-top');
+        tabEl.style.display = 'none';
+        tabEl.style.transition = '';
+      }
+      if(panel){
+        panel.classList.remove('boss-hiding');
+        panel.classList.add('boss-showing');
+        panel.classList.remove('boss-minimized');
+        setTimeout(function(){
+          panel.classList.remove('boss-showing');
+          _bossAnimating = false;
+        }, 420);
+      } else {
+        _bossAnimating = false;
+      }
+      bossStartLoop();
+      bossApplyTheme();
+    }
+
+    if(tabEl && tabEl.style.display !== 'none'){
+      if(_bossTabAtTop){
+        // Tab di atas → slide turun ke posisi normal dulu via CSS transition
+        _bossTabAtTop = window._bossTabAtTop = false
+        tabEl.classList.remove('boss-tab-top'); // translateY(offset) → translateY(0) smooth
+        // Setelah transition turun selesai (~450ms) → fade out ke bawah
+        setTimeout(function(){
+          void tabEl.offsetWidth;
+          tabEl.classList.add('boss-tab-hidden'); // opacity:1 → 0, slide turun 30px
+          setTimeout(_showPanel, 320);
+        }, 460);
+      } else {
+        // Tab sudah di bawah → langsung fade out
+        tabEl.classList.add('boss-tab-hidden');
+        setTimeout(_showPanel, 320);
+      }
+    } else {
+      _showPanel();
+    }
+  }
+
+  var _bossScrollDebounce = null;
+  function _bossTabCheckScroll(){
+    clearTimeout(_bossScrollDebounce);
+    _bossScrollDebounce = setTimeout(function(){
+      if(_bossAnimating) return; // jangan interrupt animasi yang sedang berjalan
+      var sc = _bossGetScrollContainer();
+      if(!sc) return;
+      var atBottom = (sc.scrollHeight - sc.scrollTop - sc.clientHeight) < 60;
+
+      if(atBottom){
+        // Scroll mentok bawah
+        if(!_bossMinimized && !_bossUserMinimized){
+          // Boss masih tampil & user belum minimize → auto-minimize
+          _bossDoAutoMinimize();
+        }
+        // Kalau sudah minimize (manual atau auto), pindah tab ke atas
+        if(_bossMinimized && !_bossTabAtTop){
+          var tabEl = document.getElementById('bossTab');
+          if(tabEl && tabEl.style.display !== 'none'){
+            _bossTabAtTop = window._bossTabAtTop = true
+            var offset = _bossTabComputeOffset(tabEl);
+            tabEl.style.setProperty('--boss-tab-offset', offset + 'px');
+            tabEl.classList.add('boss-tab-top');
+            var _arrSc = tabEl.querySelector('.boss-tab-arrow');
+            if(_arrSc) _arrSc.textContent = '▼';
+          }
+        }
+      } else {
+        // Scroll tidak di bawah lagi
+        if(_bossAutoMinimized){
+          // Kita yang minimize → restore boss
+          _bossDoAutoRestore();
+          _bossTabAtTop = window._bossTabAtTop = false
+        } else if(_bossMinimized && _bossTabAtTop){
+          // User minimize manual → cukup turunkan tab kembali
+          var tabEl2 = document.getElementById('bossTab');
+          if(tabEl2) tabEl2.classList.remove('boss-tab-top');
+          var _arrD = tabEl2 && tabEl2.querySelector('.boss-tab-arrow');
+          if(_arrD) _arrD.textContent = '▲';
+          _bossTabAtTop = window._bossTabAtTop = false
+        }
+      }
+    }, 80);
+  }
+
+  function _bossBindScrollIfNeeded(){
+    var sc = _bossGetScrollContainer();
+    if(!sc) return;
+    // Jika sudah bind ke elemen yang sama, skip
+    if(_bossTabScrollBound && _bossBoundScrollEl === sc) return;
+    // Lepas listener dari elemen lama
+    if(_bossBoundScrollEl && _bossBoundScrollEl !== sc){
+      _bossBoundScrollEl.removeEventListener('scroll', _bossTabCheckScroll);
+    }
+    sc.addEventListener('scroll', _bossTabCheckScroll, {passive:true});
+    _bossBoundScrollEl = sc;
+    _bossTabScrollBound = true;
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', _bossBindScrollIfNeeded);
+  } else {
+    setTimeout(_bossBindScrollIfNeeded, 800);
+  }
+  window._bossTabRebindScroll = function(){
+    _bossTabScrollBound = false;
+    _bossTabAtTop = window._bossTabAtTop = false
+    setTimeout(_bossBindScrollIfNeeded, 200);
+  };
+  // Reset auto state saat view berganti
+  window._bossScrollResetAuto = function(){
+    if(_bossAutoMinimized) _bossDoAutoRestore();
+    // ✅ FIX: saat ganti view, turunkan tab boss ke bawah dengan smooth
+    // _bossTabRebindScroll TIDAK boleh melakukan ini (dipanggil juga di konteks lain)
+    // jadi reset DOM class dilakukan di sini, khusus untuk view-switch
+    var tabEl = document.getElementById('bossTab');
+    if(tabEl && _bossTabAtTop){
+      tabEl.classList.remove('boss-tab-top'); // CSS transition: slide down ~450ms
+      var _arrow = tabEl.querySelector('.boss-tab-arrow');
+      if(_arrow) _arrow.textContent = '▲'; // reset ke ▲
+      // Tunda rebind scroll hingga slide-down selesai, agar scroll-check
+      // tidak langsung memicu naik lagi di view baru
+      _bossTabAtTop = window._bossTabAtTop = false
+      setTimeout(function(){
+        if(typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
+      }, 500);
+    } else {
+      _bossTabAtTop = window._bossTabAtTop = false
+    }
+  };
+  // Clear auto flag saja (tanpa restore) — dipanggil saat user klik tab manual
+  window._bossClearAutoMinimize = function(){
+    _bossAutoMinimized = false;
+  };
+  // Reset posisi tab ke bawah — dipanggil dari bossMinimize saat user restore
+  window._bossResetTabTop = function(){
+    if(_bossTabAtTop){
+      var tabEl = document.getElementById('bossTab');
+      if(tabEl) tabEl.classList.remove('boss-tab-top');
+      _bossTabAtTop = window._bossTabAtTop = false
+    }
+  };
+  // Force reset animating flag — dipanggil saat user override animasi yang sedang berjalan
+  window._bossForceResetAnim = function(){
+    _bossAnimating = false;
+    _bossAutoMinimized = false;
+  };
+})();
+// ── Boss Tab Swipe Up/Down untuk toggle posisi atas/bawah ──
+function _bossTabToggleTop(tabEl, goTop){
+  if(!tabEl) return;
+  if(goTop){
+    if(window._bossTabAtTop) return;
+    window._bossTabAtTop = true;
+    var offset = (typeof window._bossTabComputeOffset === 'function')
+      ? window._bossTabComputeOffset(tabEl) : -200;
+    tabEl.style.setProperty('--boss-tab-offset', offset + 'px');
+    void tabEl.offsetWidth;
+    tabEl.classList.add('boss-tab-top');
+  } else {
+    if(!window._bossTabAtTop) return;
+    window._bossTabAtTop = false;
+    tabEl.classList.remove('boss-tab-top');
+  }
+  // Update arrow button label
+  var arrowBtn = tabEl.querySelector('.boss-tab-arrow');
+  if(arrowBtn) arrowBtn.textContent = window._bossTabAtTop ? '▼' : '▲';
+}
+
+function _bossTabBindSwipe(tabEl){\
+  if(!tabEl || tabEl._swipeBound) return;\
+  tabEl._swipeBound = true;\
+\
+  // ── Desktop: tambah tombol arrow toggle posisi ──\
+  var isMobile = window.innerWidth <= 700;\
+  if(!isMobile){\
+    if(!tabEl.querySelector('.boss-tab-arrow')){\
+      var arrowBtn = document.createElement('span');\
+      arrowBtn.className = 'boss-tab-arrow';\
+      arrowBtn.textContent = '▲';\
+      arrowBtn.style.cssText = 'font-size:8px;opacity:0.6;margin-left:4px;cursor:pointer;padding:2px 3px;line-height:1;-webkit-tap-highlight-color:transparent';\
+      arrowBtn.addEventListener('click', function(e){\
+        e.stopPropagation();\
+        _bossTabToggleTop(tabEl, !window._bossTabAtTop);\
+      });\
+      tabEl.appendChild(arrowBtn);\
+    }\
+\
+    var _sy = 0, _sx = 0, _moved = false, _isVertical = false;\
+    tabEl.addEventListener('touchstart', function(e){\
+      _sy = e.touches[0].clientY; _sx = e.touches[0].clientX;\
+      _moved = false; _isVertical = false;\
+    }, {passive: true});\
+    tabEl.addEventListener('touchmove', function(e){\
+      var dx = Math.abs(e.touches[0].clientX - _sx);\
+      var dy = Math.abs(e.touches[0].clientY - _sy);\
+      if(dx > 6 || dy > 6){ _moved = true; _isVertical = dy > dx * 0.8; }\
+      if(_isVertical) e.preventDefault();\
+    }, {passive: false});\
+    tabEl.addEventListener('touchend', function(e){\
+      if(!_moved) return;\
+      var dy = e.changedTouches[0].clientY - _sy;\
+      var adx = Math.abs(e.changedTouches[0].clientX - _sx);\
+      var ady = Math.abs(dy);\
+      if(ady < 20 || adx > ady * 0.8) return;\
+      e.preventDefault(); e.stopPropagation();\
+      _bossTabToggleTop(tabEl, dy < 0);\
+    }, {passive: false});\
+    return;\
+  }\
+\
+  // ── Mobile: floating draggable ball ──\
+  var BALL = 54; // diameter px\
+  var EDGE = 10; // margin from screen edge\
+  var vw = window.innerWidth;\
+  var vh = window.innerHeight;\
+  var _drag = { active: false, startX: 0, startY: 0, origLeft: 0, origTop: 0, moved: false };\
+\
+  // Set initial position (bottom-right)\
+  tabEl.style.left   = (vw - BALL - EDGE) + 'px';\
+  tabEl.style.top    = (vh - BALL - 120) + 'px';\
+  tabEl.style.right  = 'auto';\
+  tabEl.style.bottom = 'auto';\
+  tabEl.style.position = 'fixed';\
+\
+  function _clamp(val, min, max){ return Math.max(min, Math.min(max, val)); }\
+\
+  function _snapToEdge(){\
+    var vw2 = window.innerWidth, vh2 = window.innerHeight;\
+    var left = parseFloat(tabEl.style.left) || 0;\
+    var top  = parseFloat(tabEl.style.top)  || 0;\
+    // Snap to nearest vertical edge\
+    var snapLeft = left + BALL/2 < vw2/2 ? EDGE : vw2 - BALL - EDGE;\
+    tabEl.style.transition = 'left 0.28s cubic-bezier(0.34,1.4,0.64,1), top 0.18s ease';\
+    tabEl.style.left = snapLeft + 'px';\
+    tabEl.style.top  = _clamp(top, EDGE, vh2 - BALL - EDGE) + 'px';\
+    setTimeout(function(){ tabEl.style.transition = ''; }, 320);\
+  }\
+\
+  tabEl.addEventListener('touchstart', function(e){\
+    var t = e.touches[0];\
+    _drag.active  = true;\
+    _drag.moved   = false;\
+    _drag.startX  = t.clientX;\
+    _drag.startY  = t.clientY;\
+    _drag.origLeft = parseFloat(tabEl.style.left) || 0;\
+    _drag.origTop  = parseFloat(tabEl.style.top)  || 0;\
+    tabEl.style.transition = 'none';\
+    tabEl.style.transform = 'scale(1.12)';\
+    e.stopPropagation();\
+  }, {passive: true});\
+\
+  tabEl.addEventListener('touchmove', function(e){\
+    if(!_drag.active) return;\
+    var t = e.touches[0];\
+    var dx = t.clientX - _drag.startX;\
+    var dy = t.clientY - _drag.startY;\
+    if(Math.abs(dx) > 5 || Math.abs(dy) > 5) _drag.moved = true;\
+    if(_drag.moved){\
+      var vw2 = window.innerWidth, vh2 = window.innerHeight;\
+      tabEl.style.left = _clamp(_drag.origLeft + dx, EDGE, vw2 - BALL - EDGE) + 'px';\
+      tabEl.style.top  = _clamp(_drag.origTop  + dy, EDGE, vh2 - BALL - EDGE) + 'px';\
+      e.preventDefault();\
+    }\
+  }, {passive: false});\
+\
+  tabEl.addEventListener('touchend', function(e){\
+    if(!_drag.active) return;\
+    _drag.active = false;\
+    tabEl.style.transform = '';\
+    if(_drag.moved){\
+      _snapToEdge();\
+    }\
+    // Tap (no significant move) → buka panel\
+    // handled by onclick on tabEl\
+  }, {passive: true});\
+}
+
+
+
+// ── Flash damage on minimized boss, then re-minimize ──
+function _bossFlashDamageIfMinimized(dmg, onDone){
+  if(!_bossMinimized){
+    // Panel visible normally
+    bossAttackAnim(dmg);
+    if(onDone) setTimeout(onDone, 600);
+    return;
+  }
+  // Boss is minimized by user — temporarily show it, play attack, then re-minimize
+  var panel = document.getElementById('bossBattlePanel');
+  var tabEl  = document.getElementById('bossTab');
+
+  // First: briefly flash the tab to signal something happened
+  if(tabEl){
+    tabEl.style.transition = 'transform 0.08s, box-shadow 0.08s, background 0.12s';
+    tabEl.style.transform = 'scale(1.15)';
+    tabEl.style.boxShadow = '0 0 28px #ff4444, 0 0 50px #ff000055';
+    tabEl.style.background = 'linear-gradient(135deg,#3b0000,#1a0000)';
+    setTimeout(function(){
+      if(tabEl){
+        tabEl.style.transform = '';
+        tabEl.style.boxShadow = '';
+        tabEl.style.background = '';
+        tabEl.style.transition = '';
+      }
+    }, 350);
+  }
+
+  // Show panel
+  if(panel) panel.classList.remove('boss-minimized');
+  if(tabEl) tabEl.style.display = 'none';
+  bossStartLoop();
+  bossApplyTheme();
+  // Play attack animation
+  setTimeout(function(){
+    bossAttackAnim(dmg);
+    // Update tab content after damage
+    if(tabEl){
+      var b2 = bossCur();
+      var pct2 = bossState.hp / bossState.maxHp;
+      var ph2 = bossState.defeated ? (b2.id==='lucky' ? '🍀' : '☠') : (b2.id==='lucky' ? (pct2<0.3?'🤤':pct2<0.5?'😊':'🍽️') : (pct2<0.3?'🔥':pct2<0.5?'⚡':'⚔'));
+      tabEl.innerHTML = '<span id="bossTabIcon">'+ph2+'</span><span>'+b2.name.split(' ').slice(0,2).join(' ')+'</span>';
+    }
+    // After animation finishes, re-minimize (user preference preserved)
+    setTimeout(function(){
+      if(_bossMinimized){
+        if(panel) panel.classList.add('boss-minimized');
+        if(bossSpriteRaf){ cancelAnimationFrame(bossSpriteRaf); bossSpriteRaf = null; }
+        if(tabEl) tabEl.style.display = 'flex';
+        bossApplyTheme();
+      }
+      if(onDone) onDone();
+    }, 900);
+  }, 80);
+}
+
+// ── Hook toggleDone — task tanpa langkah: damage 70-120 langsung ──
+var _origToggleDone = toggleDone;
+toggleDone = function(id){
+  var tBefore = tasks.filter(function(x){ return x.id===id; })[0];
+  var wasDone = tBefore ? tBefore.done : false;
+  // Task due masa depan: toggleDone akan bail out tanpa mengubah state
+  if(tBefore && !wasDone && tBefore.due && tBefore.due > todayStr) return _origToggleDone(id);
+  _origToggleDone(id);
+  var tAfter = tasks.filter(function(x){ return x.id===id; })[0];
+  if(!tAfter || bossState.defeated) return;
+  // Lucky Amstow punya mekanisme sendiri (makan), skip slash
+  if(bossCur().id === 'lucky') return;
+  var wasJustCompleted = !wasDone && (tAfter.done || tAfter._nextDue !== undefined);
+  if(wasJustCompleted && !(tAfter.steps && tAfter.steps >= 2)){
+    setTimeout(function(){
+      if(bossState.defeated) return;
+      if(bossCur().id === 'lucky') return;
+      var dmg = 70 + Math.floor(Math.random()*51);
+      bossState.hp = Math.max(0, bossState.hp - dmg);
+      if(bossState.hp === 0 && !bossState.defeated){
+        bossState.defeated = true;
+        bossSave(); bossRefresh();
+        _bossFlashDamageIfMinimized(dmg, function(){ bossVictory(); });
+        return;
+      }
+      bossSave(); bossRefresh();
+      _bossFlashDamageIfMinimized(dmg);
+    }, 150);
+  }
+};
+
+// ── Hook toggleDone — Sholat Jumat selesai → sync streak Dzuhur ──
+var _origToggleDone2 = toggleDone;
+toggleDone = function(id) {
+  _origToggleDone2(id);
+  // Cek apakah task yang baru diselesaikan adalah Sholat Jumat
+  var t = tasks.filter(function(x){ return x.id === id; })[0];
+  if (!t) return;
+  if (t.name !== '🕌 Sholat Jumat') return;
+  // Cari task Dzuhur
+  var dzuhurName2 = '';
+  if (typeof SHOLAT_NAMES !== 'undefined' && typeof SHOLAT_ICONS !== 'undefined') {
+    var idx2 = SHOLAT_NAMES.indexOf('Dzuhur');
+    if (idx2 >= 0) dzuhurName2 = SHOLAT_ICONS[idx2] + ' Sholat Dzuhur';
+  }
+  if (!dzuhurName2) return;
+  var dzuhur2 = tasks.filter(function(x){ return x.name === dzuhurName2; })[0];
+  if (!dzuhur2 || !dzuhur2.history) return;
+  if (!t.done) {
+    // Uncheck Jumat → hapus hari ini dari history Dzuhur
+    var rmIdx = dzuhur2.history.indexOf(todayStr);
+    if (rmIdx >= 0) {
+      dzuhur2.history.splice(rmIdx, 1);
+      if (typeof saveData === 'function') saveData(true);
+    }
+    return;
+  }
+  // Tambahkan hari ini ke history Sholat Dzuhur agar streaknya jalan
+  var dzuhurName = ''; 
+  // Cari nama dzuhur dari SHOLAT_NAMES
+  if (typeof SHOLAT_NAMES !== 'undefined' && typeof SHOLAT_ICONS !== 'undefined') {
+    var idx = SHOLAT_NAMES.indexOf('Dzuhur');
+    if (idx >= 0) dzuhurName = SHOLAT_ICONS[idx] + ' Sholat Dzuhur';
+  }
+  if (!dzuhurName) return;
+  var dzuhur = tasks.filter(function(x){ return x.name === dzuhurName; })[0];
+  if (!dzuhur) return;
+  if (!dzuhur.history) dzuhur.history = [];
+  if (dzuhur.history.indexOf(todayStr) < 0) {
+    dzuhur.history.push(todayStr);
+    if (typeof saveData === 'function') saveData(true);
+  }
+};
+
+// ── Akumulator damage per langkah (kunci: task id) ──
+var _bossStepAccum = {};
+
+// ── Hook toggleStep — damage dikumpulkan, animasi slash hanya saat task selesai ──
+var _origToggleStep = toggleStep;
+toggleStep = function(id, idx){
+  var tBefore = tasks.filter(function(x){ return x.id===id; })[0];
+  var stepsBefore = tBefore ? (tBefore.stepsDone||0) : 0;
+  var wasDone = tBefore ? tBefore.done : false;
+  // Task due masa depan tidak boleh memberikan damage boss
+  if(tBefore && tBefore.due && tBefore.due > todayStr) return _origToggleStep(id, idx);
+  _origToggleStep(id, idx);
+  var tAfter = tasks.filter(function(x){ return x.id===id; })[0];
+  if(!tAfter || bossState.defeated) return;
+  // Lucky Amstow punya mekanisme sendiri (makan), skip slash
+  if(bossCur().id === 'lucky') return;
+
+  var stepsAfter  = tAfter.stepsDone||0;
+  var totalSteps  = tAfter.steps||1;
+  var newlyChecked = stepsAfter > stepsBefore && !wasDone;
+  if(!newlyChecked) return;
+
+  var newCount = (idx==='all') ? (stepsAfter - stepsBefore) : 1;
+
+  if(!_bossStepAccum[id]) _bossStepAccum[id] = {dmgs:[], total:0};
+  for(var si=0; si<newCount; si++){
+    var d = 20 + Math.floor(Math.random()*21); // 20-40 per langkah
+    _bossStepAccum[id].dmgs.push(d);
+    _bossStepAccum[id].total += d;
+  }
+
+  // Hanya apply + animasi saat semua langkah selesai
+  if(tAfter.done || stepsAfter >= totalSteps){
+    var acc = _bossStepAccum[id];
+    delete _bossStepAccum[id];
+    bossMultiSlash(acc.dmgs, acc.total);
+  }
+};
+
+// Multi-slash: animasi slash berkali-kali melepaskan damage akumulasi
+function bossMultiSlash(dmgList, totalDmg){
+  if(bossState.defeated) return;
+
+  // If boss is minimized, do a single flash-damage sequence then re-minimize
+  if(_bossMinimized){
+    bossState.hp = Math.max(0, bossState.hp - totalDmg);
+    var defeated = bossState.hp === 0 && !bossState.defeated;
+    if(defeated) bossState.defeated = true;
+    bossSave(); bossRefresh();
+    _bossFlashDamageIfMinimized(totalDmg, defeated ? function(){ bossVictory(); } : null);
+    return;
+  }
+
+  var pct = bossState.hp/bossState.maxHp;
+  var slashCount = Math.min(dmgList.length, 6);
+  var dmgPerSlash = Math.floor(totalDmg / slashCount);
+
+  for(var s=0; s<slashCount; s++){
+    (function(si){
+      var slashDmg = (si===slashCount-1) ? (totalDmg - dmgPerSlash*(slashCount-1)) : dmgPerSlash;
+      setTimeout(function(){
+        if(bossState.defeated) return;
+        bossState.hp = Math.max(0, bossState.hp - slashDmg);
+        if(bossState.hp === 0 && !bossState.defeated){
+          bossState.defeated = true;
+          bossSave(); bossRefresh(); bossAttackAnim(slashDmg);
+          setTimeout(function(){ bossVictory(); }, 600);
+          return;
+        }
+        bossSave(); bossRefresh(); bossAttackAnim(slashDmg);
+        if(pct > 0.3 && bossState.hp/bossState.maxHp <= 0.3 && si===0){
+          setTimeout(function(){
+            var el = document.getElementById('bossPhraseEl');
+            var b2 = bossCur();
+            var rageTaunts = {
+              sloth:'"...Ugh... kamu beneran maksa aku serius?! FINE—"',
+              procras:'"BAIK BAIK!! Aku gak akan tunda perlawananku!!"',
+              distract:'"HEH FOKUS KE AKU SEKARANG — BUKAN KE TUGASMU!!"',
+              doubt:'"K-kamu... serius mau lanjut?! KAMU YANG AKAN MENYESAL!!"',
+              chaos:'"SEKARANG KAMU AKAN MERASAKAN KEKACAUAN SEJATI!!"'
+            };
+            var taunt = rageTaunts[b2.id] || '"SEKARANG KAMU AKAN MERASAKAN KEKUATANKU!!"';
+            if(el){
+              el.textContent = taunt;
+              el.style.color = '#ff6b6b';
+              el.style.textShadow = '-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 0 16px #ef4444,0 0 32px #ef444488';
+              el.style.opacity='1'; el.style.transform='translateY(0) scale(1)';
+              setTimeout(function(){ el.style.opacity='0'; el.style.transform='translateY(-6px) scale(0.95)'; el.style.color=''; el.style.textShadow=''; },4000);
+            }
+          },400);
+        }
+      }, si * 380);
+    })(s);
+  }
+}
+
+// ── Helper: hide / restore boss behind any overlay ──
+function _bossPushBehind(){
+  var panel = document.getElementById('bossBattlePanel');
+  var tab   = document.getElementById('bossTab');
+  if(panel) panel.style.zIndex = '50';
+  if(tab)   tab.style.zIndex   = '50';
+}
+function _bossRestoreFront(){
+  var panel = document.getElementById('bossBattlePanel');
+  var tab   = document.getElementById('bossTab');
+  if(panel) panel.style.zIndex = '201';
+  if(tab)   tab.style.zIndex   = '202';
+}
+
+// ── Hook openDetail / closeDetail — boss goes behind drawer ──
+var _origOpenDetail = openDetail;
+openDetail = function(id){
+  _origOpenDetail(id);
+  _bossPushBehind();
+};
+var _origCloseDetail = closeDetail;
+closeDetail = function(){
+  _origCloseDetail();
+  // Only restore if no sub-drawer is open
+  if(!activeSubDrawer) _bossRestoreFront();
+};
+
+// ── Hook toggleSubDrawer / closeSubDrawer ──
+var _origToggleSubDrawer = toggleSubDrawer;
+toggleSubDrawer = function(name){
+  _origToggleSubDrawer(name);
+  // After toggle: if a drawer is now open, push boss behind
+  if(activeSubDrawer) _bossPushBehind();
+  else _bossRestoreFront();
+};
+var _origCloseSubDrawer = closeSubDrawer;
+closeSubDrawer = function(silent){
+  _origCloseSubDrawer(silent);
+  _bossRestoreFront();
+};
+
+// ── Hook mobile add bars ──
+var _origOpenMobileAddBar = (typeof openMobileAddBar === 'function') ? openMobileAddBar : null;
+if(_origOpenMobileAddBar){
+  openMobileAddBar = function(){
+    _origOpenMobileAddBar();
+    _bossPushBehind();
+  };
+}
+var _origCloseMobileAddBar = (typeof closeMobileAddBar === 'function') ? closeMobileAddBar : null;
+if(_origCloseMobileAddBar){
+  closeMobileAddBar = function(){
+    _origCloseMobileAddBar();
+    if(!activeSubDrawer) _bossRestoreFront();
+  };
+}
+var _origOpenMobileFinAddBar = (typeof openMobileFinAddBar === 'function') ? openMobileFinAddBar : null;
+if(_origOpenMobileFinAddBar){
+  openMobileFinAddBar = function(){
+    _origOpenMobileFinAddBar();
+    _bossPushBehind();
+  };
+}
+var _origCloseMobileFinAddBar = (typeof closeMobileFinAddBar === 'function') ? closeMobileFinAddBar : null;
+if(_origCloseMobileFinAddBar){
+  closeMobileFinAddBar = function(){
+    _origCloseMobileFinAddBar();
+    if(!activeSubDrawer) _bossRestoreFront();
+  };
+}
+
+// ── Hook mobile sidebar toggle — boss hides behind sidebar drawer ──
+var _origToggleSidebar = (typeof toggleSidebar === 'function') ? toggleSidebar : null;
+if(_origToggleSidebar){
+  toggleSidebar = function(){
+    _origToggleSidebar();
+    // On mobile, check if sidebar is now open
+    if(window.innerWidth <= 700){
+      var sb = document.getElementById('sidebar');
+      if(sb && sb.classList.contains('mobile-open')) _bossPushBehind();
+      else if(!activeSubDrawer) _bossRestoreFront();
+    }
+  };
+}
+// ── Apply boss color theme to the panel ──
+function bossApplyTheme(){
+  var b    = bossCur(); /* nav-mode-anchor */
+  var pct  = bossState.hp / bossState.maxHp;
+
+  // Boss identity colors — rage override at <30% HP
+  // Lucky exception: saat hampir kenyang (hp rendah = mau kalah = hampir full) tetap emas happy
+  var isLucky = b.id === 'lucky';
+  var bossCol  = (pct<0.3 && !isLucky) ? '#ef4444' : b.col;
+  var bossGlow = (pct<0.3 && !isLucky) ? 'rgba(239,68,68,0.5)' : b.aura;
+
+  // Read active app theme accent from CSS vars
+  var root = document.documentElement;
+  var themeAccent  = getComputedStyle(root).getPropertyValue('--accent').trim()  || '#d97706';
+  var themeBg      = getComputedStyle(root).getPropertyValue('--bg').trim()      || '#f0ede8';
+  var themeCard    = getComputedStyle(root).getPropertyValue('--card').trim()     || '#ffffff';
+  var themeSidebar = getComputedStyle(root).getPropertyValue('--sidebar').trim()  || '#1c1917';
+
+  // Detect dark app themes — darkMode var is now always up to date
+  var isDark = document.body.classList.contains('sololeveling-theme') ||
+               document.body.classList.contains('slytherin-theme') ||
+               (typeof darkMode !== 'undefined' && darkMode);
+
+  var panel = document.getElementById('bossBattlePanel');
+  var tab   = document.getElementById('bossTab');
+
+  // ── PANEL BACKGROUND ──────────────────────────────────────────────────────
+  // Dark themes: use sidebar/dark tone blended with boss color
+  // Light themes: panel is ALWAYS dark (deep charcoal) — boss arena feels dungeon-like
+  //   but tinted with the app's accent so it "belongs" to the theme
+  var panelDark1, panelDark2;
+  if(isDark){
+    // Pull from theme's own sidebar dark tone
+    panelDark1 = themeSidebar;
+    panelDark2 = themeSidebar;
+  } else {
+    // For light themes: derive a dark version of the accent color as the panel base
+    // Use fixed near-black with accent tint so it's always readable
+    panelDark1 = '#0e0e18';
+    panelDark2 = '#14101e';
+  }
+  var panelBg = 'linear-gradient(170deg,'+panelDark1+'f5 0%,'+panelDark2+'ee 60%,'+panelDark1+'f5 100%)';
+
+  if(panel){
+    panel.style.background  = panelBg;
+    panel.style.borderColor = bossCol;
+    panel.style.boxShadow   = '0 0 22px '+bossGlow+', 0 8px 40px rgba(0,0,0,0.9)';
+  }
+
+  // ── HEADER BAR ────────────────────────────────────────────────────────────
+  var hdr = document.getElementById('bossHeaderBar');
+  if(hdr){
+    // Always dark header, tinted with boss color
+    hdr.style.background       = 'linear-gradient(90deg,'+bossCol+'28,'+bossCol+'10,'+bossCol+'28)';
+    hdr.style.borderBottomColor = bossCol+'55';
+  }
+
+  // Header title — always use boss glow color (readable on dark)
+  var htitle = document.getElementById('bossHeaderTitle');
+  if(htitle) htitle.style.color = b.glow;
+
+  // Minimize button — always styled for dark panel
+  var minBtn = document.getElementById('bossMinBtn');
+  if(minBtn){
+    minBtn.style.background  = 'rgba(255,255,255,0.07)';
+    minBtn.style.borderColor = 'rgba(255,255,255,0.2)';
+    minBtn.style.color       = '#9ca3af';
+  }
+
+  // ── SPRITE AREA — ALWAYS DARK (arena/dungeon feel) ────────────────────────
+  var sa = document.getElementById('bossSpriteArea');
+  if(sa) sa.style.background =
+    'radial-gradient(ellipse at 50% 85%,'+bossCol+'55 0%,#060010 70%)';
+
+  // Aura always dark
+  var aura = document.getElementById('bossAuraEl');
+  if(aura) aura.style.background =
+    'radial-gradient(ellipse at 50% 100%,'+bossGlow+' 0%,transparent 70%)';
+
+  // ── BOSS NAME + TEXT — always white/bright on dark panel ──────────────────
+  var nameEl = document.getElementById('bossNameEl');
+  if(nameEl){
+    nameEl.style.color      = '#ffffff';
+    nameEl.style.textShadow = '0 0 14px '+bossCol+', 0 0 6px '+bossCol+'aa';
+  }
+  var subEl = document.getElementById('bossSubEl');
+  if(subEl) subEl.style.color = '#9ca3af';
+
+  // HP labels — always readable on dark
+  var hpLbls = document.querySelectorAll('.boss-hp-lbl');
+  hpLbls.forEach(function(el){ el.style.color = '#9ca3af'; });
+  var hpNums = document.getElementById('bossHpNums');
+  if(hpNums) hpNums.style.color = '#d1d5db';
+
+  // ── HP TRACK ──────────────────────────────────────────────────────────────
+  var track = document.querySelector('.boss-hp-track');
+  if(track){
+    track.style.background  = '#0a0a1a';
+    track.style.borderColor = bossCol+'55';
+  }
+
+  // ── BOSS PHRASE ───────────────────────────────────────────────────────────
+  var phrase = document.getElementById('bossPhraseEl');
+  if(phrase){
+    phrase.style.color      = '#ffffff';
+    phrase.style.textShadow =
+      '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000,' +
+      '0 0 12px '+bossCol+', 0 0 24px '+bossCol+'88';
+  }
+
+  // ── TAB (minimized pill) ──────────────────────────────────────────────────
+  // Light themes: dark pill that matches boss + a hint of accent
+  // Dark themes: same but slightly lighter
+  if(tab){
+    var tabBg = isDark
+      ? 'linear-gradient(135deg,'+themeSidebar+'f0,'+themeSidebar+'cc)'
+      : 'linear-gradient(135deg,#14101e,#0e0e18)';
+    tab.style.background  = tabBg;
+    tab.style.borderColor = bossCol;
+    tab.style.color       = b.glow;
+    tab.style.boxShadow   = '0 0 14px '+bossGlow+', 0 2px 8px rgba(0,0,0,0.6)';
+  }
+
+  // ── PANEL PULSE ANIMATION ─────────────────────────────────────────────────
+  var ps = document.getElementById('bossPanelPulseStyle');
+  if(!ps){ ps = document.createElement('style'); ps.id = 'bossPanelPulseStyle'; document.head.appendChild(ps); }
+  ps.textContent =
+    '#bossBattlePanel{animation:bossDynPulse 3.5s ease infinite!important;}' +
+    '@keyframes bossDynPulse{' +
+      '0%,100%{box-shadow:0 0 18px '+bossGlow+',0 8px 40px rgba(0,0,0,0.9)}' +
+      '50%{box-shadow:0 0 40px '+bossCol+'cc,0 8px 40px rgba(0,0,0,0.9)}' +
+    '}';
+
+  // ── LIGHT THEME: add accent stripe on panel border for visual tie-in ──────
+  // Inject a subtle accent-colored top bar on the panel when in light mode
+  var accentBar = document.getElementById('bossAccentStripe');
+  if(!isDark){
+    if(!accentBar){
+      accentBar = document.createElement('div');
+      accentBar.id = 'bossAccentStripe';
+      accentBar.style.cssText =
+        'position:absolute;top:0;left:0;right:0;height:3px;z-index:10;pointer-events:none;border-radius:12px 12px 0 0;transition:background 0.4s;';
+      if(panel) panel.insertBefore(accentBar, panel.firstChild);
+    }
+    accentBar.style.background =
+      'linear-gradient(90deg,transparent,'+themeAccent+','+bossCol+','+themeAccent+',transparent)';
+    accentBar.style.opacity = '0.9';
+  } else {
+    if(accentBar) accentBar.style.opacity = '0';
+  }
+}
+
+// Tunggu sampai app benar-benar ready (sudah login & gami dipilih)
+// sebelum menjalankan bossInit, agar welcome overlay Lucky Amstow
+// tidak muncul di halaman login.
+(function _waitAppReady(){
+  if (window._appReady) {
+    bossInit();
+  } else {
+    setTimeout(_waitAppReady, 300);
+  }
+})();
+

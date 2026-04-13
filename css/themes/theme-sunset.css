@@ -1,0 +1,49 @@
+/*
+╔══════════════════════════════════════════════════════════════════╗
+║  CHITASK THEME: Sunset 🌅
+║  Warm. Fiery. Golden Hour. Oranye hangat kemerahan.
+║
+║  CARA PAKAI:
+║    <body class="sunset-theme">
+║
+║  ACCENT COLOR : #ea580c
+║  BASE BG      : #1a0800
+║
+║  File ini adalah TEMPLATE LENGKAP satu tema.
+║  Untuk membuat tema baru, duplikat file ini dan:
+║    1. Ganti semua 'sunset-theme' → 'namatema-theme'
+║    2. Ganti warna accent, bg, dan efek sesuai tema baru
+║    3. Ganti nama @keyframes (prefix sl-/sly-/fluffy- dll)
+╚══════════════════════════════════════════════════════════════════╝
+*/
+
+/* ══════════════════════════════════════════════════════
+   🌅 SUNSET — Login Screen & Splash & Nav Overrides
+══════════════════════════════════════════════════════ */
+
+body.sunset-theme       #fbLoginScreen { background: #1a0800; }
+
+body.sunset-theme       .fb-login-name .tsk { color: #ea580c; }
+
+
+/* ══════════════════════════════════════════════════════
+   🌅 SUNSET — CSS Variables (set di body.sunset-theme)
+══════════════════════════════════════════════════════ */
+/*
+   Sunset adalah tema yang belum fully expanded di codebase asli.
+   Tambahkan ini ke body.sunset-theme untuk full styling:
+
+   body.sunset-theme {
+     --bg:       #1a0800;
+     --card:     #230b00;
+     --sidebar:  #120500;
+     --text:     #fff0e6;
+     --muted:    rgba(234,88,12,0.5);
+     --border:   rgba(234,88,12,0.15);
+     --hover:    rgba(234,88,12,0.07);
+     --accent:   #ea580c;
+     --accent2:  #c2410c;
+     --pill:     rgba(234,88,12,0.15);
+     --pill-text:#fed7aa;
+   }
+*/

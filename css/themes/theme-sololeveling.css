@@ -1,0 +1,1059 @@
+/*
+╔══════════════════════════════════════════════════════════════════╗
+║  CHITASK THEME: Solo Leveling ⚔️
+║  LEGENDARY — Bangkit dari bayang-bayang. Kekuatan hunter terkuat.
+║
+║  CARA PAKAI:
+║    <body class="sololeveling-theme">
+║
+║  ACCENT COLOR : #7c6af7
+║  BASE BG      : #07071c
+║
+║  File ini adalah TEMPLATE LENGKAP satu tema.
+║  Untuk membuat tema baru, duplikat file ini dan:
+║    1. Ganti semua 'sololeveling-theme' → 'namatema-theme'
+║    2. Ganti warna accent, bg, dan efek sesuai tema baru
+║    3. Ganti nama @keyframes (prefix sl-/sly-/fluffy- dll)
+╚══════════════════════════════════════════════════════════════════╝
+*/
+
+/* ══════════════════════════════════════════════════════
+   ⚔️ SOLO LEVELING — Login Screen & Splash & Nav Overrides
+══════════════════════════════════════════════════════ */
+
+body.sololeveling-theme #fbLoginScreen { background: #06060e; }
+
+body.sololeveling-theme .fb-login-name .tsk { color: #7c6af7; }
+
+body.sololeveling-theme #chitask-splash{background:#0d0b1a}
+
+/* ══════════════════════════════════════════════════════
+   ⚔️ SOLO LEVELING THEME — Arise. The Shadow Monarch.
+══════════════════════════════════════════════════════ */
+
+/* ── Keyframes ── */
+@keyframes sl-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+@keyframes sl-pulse-glow {
+  0%,100% { box-shadow: 0 0 10px rgba(124,106,247,0.55), 0 0 28px rgba(124,106,247,0.22), 0 0 0 1px rgba(124,106,247,0.18); }
+  50%      { box-shadow: 0 0 28px rgba(124,106,247,0.95), 0 0 60px rgba(124,106,247,0.42), 0 0 90px rgba(124,106,247,0.16), 0 0 0 1px rgba(168,156,255,0.4); }
+}
+@keyframes sl-shadow-rise {
+  0%   { top: 110%; opacity: 0; }
+  5%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { top: -30%; opacity: 0; }
+}
+@keyframes sl-btn-sweep {
+  0%   { left: -55%; opacity: 0; }
+  6%   { opacity: 1; }
+  94%  { opacity: 1; }
+  100% { left: 155%; opacity: 0; }
+}
+@keyframes sl-btn-sweep2 {
+  0%   { left: -55%; opacity: 0; }
+  6%   { opacity: 0.5; }
+  94%  { opacity: 0.5; }
+  100% { left: 155%; opacity: 0; }
+}
+
+@keyframes sl-rune-drift {
+  0%   { left: -60%; opacity: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { left: 160%; opacity: 0; }
+}
+@keyframes sl-portal-spin {
+  0%   { transform: translate(-50%,-50%) scale(0) rotate(0deg); opacity: 0.9; }
+  60%  { opacity: 0.6; }
+  100% { transform: translate(-50%,-50%) scale(4) rotate(180deg); opacity: 0; }
+}
+@keyframes sl-orb {
+  0%,100% { opacity: 0.07; transform: scale(1) translateY(0); }
+  33%      { opacity: 0.18; transform: scale(1.2) translateY(-12px); }
+  66%      { opacity: 0.12; transform: scale(1.1) translateY(6px); }
+}
+@keyframes sl-eye-glow {
+  0%,100% { opacity: 0.6; filter: blur(0px); }
+  50%      { opacity: 1; filter: blur(1px) drop-shadow(0 0 8px rgba(124,106,247,1)); }
+}
+@keyframes sl-activate-flash {
+  0%   { opacity: 0; }
+  5%   { opacity: 0.85; }
+  15%  { opacity: 0.08; }
+  28%  { opacity: 0.6; }
+  45%  { opacity: 0.03; }
+  62%  { opacity: 0.38; }
+  80%  { opacity: 0.01; }
+  100% { opacity: 0; }
+}
+@keyframes sl-activate-sweep {
+  0%   { transform: translateX(-100%) skewX(-12deg); opacity: 0; }
+  8%   { opacity: 1; }
+  85%  { opacity: 0.8; }
+  100% { transform: translateX(240%) skewX(-12deg); opacity: 0; }
+}
+@keyframes sl-shadow-soldier {
+  0%   { transform: translateY(30px) scale(0.8); opacity: 0; }
+  20%  { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { transform: translateY(-20px) scale(1.05); opacity: 0; }
+}
+@keyframes sl-crack {
+  0%   { opacity: 0; transform: scaleY(0); transform-origin: bottom; }
+  15%  { opacity: 1; transform: scaleY(1); }
+  85%  { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+/* ── FIX: previously missing keyframes that caused animation stuck ── */
+@keyframes sl-crack-appear {
+  0%   { opacity: 0; transform: scaleY(0); transform-origin: bottom; }
+  12%  { opacity: 1; transform: scaleY(1); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes sl-soldier-rise {
+  0%   { transform: translateY(40px) scale(0.7); opacity: 0; filter: blur(4px); }
+  18%  { opacity: 1; filter: blur(0); }
+  65%  { opacity: 1; transform: translateY(-5px) scale(1.05); }
+  100% { transform: translateY(-30px) scale(1.08); opacity: 0; filter: blur(2px); }
+}
+@keyframes sl-card-awaken {
+  0%   { box-shadow: 0 2px 12px rgba(0,0,0,0.6); border-color: rgba(124,106,247,0.16); }
+  50%  { box-shadow: 0 0 0 2px rgba(124,106,247,0.6), 0 0 30px rgba(124,106,247,0.35); border-color: rgba(124,106,247,0.8); }
+  100% { box-shadow: 0 2px 12px rgba(0,0,0,0.6); border-color: rgba(124,106,247,0.16); }
+}
+@keyframes sl-rune-float {
+  0%,100% { transform: translateY(0) rotate(0deg); opacity: 0.4; }
+  33%      { transform: translateY(-8px) rotate(3deg); opacity: 0.7; }
+  66%      { transform: translateY(-4px) rotate(-2deg); opacity: 0.55; }
+}
+@keyframes sl-nav-active-pulse {
+  0%,100% { box-shadow: inset 0 0 20px rgba(124,106,247,0.09), -2px 0 8px rgba(124,106,247,0.2); }
+  50%      { box-shadow: inset 0 0 30px rgba(124,106,247,0.18), -2px 0 18px rgba(124,106,247,0.45); }
+}
+@keyframes sl-border-glow {
+  0%,100% { border-color: rgba(124,106,247,0.5); box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(124,106,247,0.08); }
+  50%      { border-color: rgba(168,156,255,0.85); box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 18px rgba(124,106,247,0.3), 0 0 0 1px rgba(124,106,247,0.18); }
+}
+@keyframes sl-btn-flash {
+  0%   { transform: translateX(-150%) skewX(-18deg); opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 0.85; }
+  100% { transform: translateX(350%) skewX(-18deg); opacity: 0; }
+}
+@keyframes sl-btn-flash2 {
+  0%   { transform: translateX(-150%) skewX(-18deg); opacity: 0; }
+  8%   { opacity: 0.55; }
+  92%  { opacity: 0.4; }
+  100% { transform: translateX(350%) skewX(-18deg); opacity: 0; }
+}
+
+@keyframes sl-sidebar-scan {
+  0%   { top: -5%; opacity: 0; height: 0%; }
+  3%   { opacity: 0.9; height: 35%; }
+  95%  { opacity: 0.7; }
+  100% { top: 105%; opacity: 0; height: 35%; }
+}
+
+/* ── Body & background ── */
+/* ══════════════════════════════════════════
+   HABIT ANALISA BUTTON — base + theme overrides
+   ══════════════════════════════════════════ */
+.btn-habit-analisa {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.btn-habit-analisa:active { transform: scale(0.985); }
+.bha-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px;
+  background: rgba(124,58,237,0.1);
+  border: 1.5px solid rgba(124,58,237,0.2);
+  transition: background 0.2s;
+}
+.bha-content { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.bha-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.bha-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bha-arrow {
+  font-size: 18px;
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: transform 0.2s, color 0.2s;
+}
+.btn-habit-analisa:hover .bha-arrow { transform: translateX(4px); color: var(--accent); }
+.btn-habit-analisa:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+.btn-habit-analisa:hover .bha-icon { background: rgba(124,58,237,0.15); }
+
+/* ── Solo Leveling ── */
+body.sololeveling-theme .btn-habit-analisa {
+  background: linear-gradient(135deg, #07071c 0%, #0d0b2a 60%, #150e35 100%);
+  border-color: rgba(124,106,247,0.35);
+  box-shadow: 0 4px 20px rgba(124,106,247,0.15), inset 0 1px 0 rgba(168,156,255,0.06);
+  overflow: hidden;
+}
+body.sololeveling-theme .btn-habit-analisa::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(124,106,247,0.06) 50%, transparent 70%);
+  animation: sl-shimmer 3s linear infinite;
+  background-size: 250% 100%;
+  pointer-events: none;
+}
+body.sololeveling-theme .btn-habit-analisa:hover {
+  border-color: rgba(124,106,247,0.7);
+  box-shadow: 0 6px 28px rgba(124,106,247,0.3), 0 0 0 1px rgba(124,106,247,0.15), inset 0 1px 0 rgba(168,156,255,0.1);
+}
+body.sololeveling-theme .bha-title { color: #d4d0f5; }
+body.sololeveling-theme .bha-sub { color: rgba(168,156,255,0.55); }
+body.sololeveling-theme .bha-icon {
+  background: rgba(124,106,247,0.15);
+  border-color: rgba(124,106,247,0.4);
+  box-shadow: 0 0 12px rgba(124,106,247,0.2);
+}
+body.sololeveling-theme .bha-arrow { color: rgba(124,106,247,0.6); }
+body.sololeveling-theme .btn-habit-analisa:hover .bha-arrow { color: #a89cff; }
+
+/* ── Slytherin ── */
+body.slytherin-theme .btn-habit-analisa {
+  background: linear-gradient(135deg, #050e07 0%, #081a0c 60%, #0c2412 100%);
+  border-color: rgba(45,187,93,0.3);
+  box-shadow: 0 4px 18px rgba(45,187,93,0.12), inset 0 1px 0 rgba(93,219,160,0.05);
+  overflow: hidden;
+}
+body.slytherin-theme .btn-habit-analisa::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -60%; width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(93,219,160,0.07), transparent);
+  animation: sly-silver-sweep 4s ease-in-out infinite;
+  pointer-events: none;
+}
+body.slytherin-theme .btn-habit-analisa:hover {
+  border-color: rgba(45,187,93,0.6);
+  box-shadow: 0 6px 24px rgba(45,187,93,0.22), 0 0 0 1px rgba(45,187,93,0.12);
+}
+body.slytherin-theme .bha-title { color: #a3e6bf; }
+body.slytherin-theme .bha-sub { color: rgba(93,219,160,0.45); }
+body.slytherin-theme .bha-icon {
+  background: rgba(45,187,93,0.12);
+  border-color: rgba(45,187,93,0.3);
+}
+body.slytherin-theme .bha-arrow { color: rgba(45,187,93,0.5); }
+body.slytherin-theme .btn-habit-analisa:hover .bha-arrow { color: #5ddba0; }
+
+/* ── Fluffytown ── */
+body.fluffytown-theme .btn-habit-analisa {
+  background: linear-gradient(135deg, #fff0f6 0%, #fce7f3 50%, #fdf2f8 100%);
+  border-color: rgba(244,114,182,0.35);
+  box-shadow: 0 4px 18px rgba(244,114,182,0.15), inset 0 1px 0 rgba(255,255,255,0.9);
+  overflow: hidden;
+}
+body.fluffytown-theme .btn-habit-analisa::after {
+  content: '♥';
+  position: absolute;
+  right: 56px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: rgba(244,114,182,0.25);
+  pointer-events: none;
+}
+body.fluffytown-theme .btn-habit-analisa:hover {
+  border-color: rgba(244,114,182,0.65);
+  box-shadow: 0 6px 24px rgba(244,114,182,0.25), 0 0 0 1px rgba(244,114,182,0.12);
+}
+body.fluffytown-theme .bha-title { color: #9d174d; }
+body.fluffytown-theme .bha-sub { color: rgba(190,24,93,0.5); }
+body.fluffytown-theme .bha-icon {
+  background: rgba(244,114,182,0.12);
+  border-color: rgba(244,114,182,0.3);
+}
+body.fluffytown-theme .bha-arrow { color: rgba(244,114,182,0.5); }
+body.fluffytown-theme .btn-habit-analisa:hover .bha-arrow { color: #ec4899; }
+
+/* ── Dark / Midnight ── */
+body.dark .btn-habit-analisa,
+body.midnight-theme .btn-habit-analisa {
+  background: linear-gradient(135deg, #1c1c2e 0%, #16213e 100%);
+  border-color: rgba(139,92,246,0.25);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+body.dark .btn-habit-analisa:hover,
+body.midnight-theme .btn-habit-analisa:hover {
+  border-color: rgba(139,92,246,0.55);
+  box-shadow: 0 6px 24px rgba(139,92,246,0.2);
+}
+body.dark .bha-icon,
+body.midnight-theme .bha-icon {
+  background: rgba(139,92,246,0.15);
+  border-color: rgba(139,92,246,0.3);
+}
+body.dark .bha-arrow,
+body.midnight-theme .bha-arrow { color: rgba(139,92,246,0.6); }
+body.dark .btn-habit-analisa:hover .bha-arrow,
+body.midnight-theme .btn-habit-analisa:hover .bha-arrow { color: #a78bfa; }
+
+body.sololeveling-theme,
+html:has(body.sololeveling-theme) {
+  background-color: #04040c;
+}
+body.sololeveling-theme {
+  --bg: #04040c;
+  --card: #08081a;
+  --accent: #7c6af7;
+  --accent2: #5b4de0;
+  --sidebar: #02020a;
+  --text: #d4d0f5;
+  --muted: #5a5890;
+  --border: rgba(124,106,247,0.2);
+  --hover: rgba(124,106,247,0.1);
+  background-color: #04040c;
+  background-image:
+    radial-gradient(ellipse 900px 700px at 10% 5%, rgba(124,106,247,0.1) 0%, transparent 55%),
+    radial-gradient(ellipse 700px 900px at 92% 92%, rgba(60,40,180,0.09) 0%, transparent 55%),
+    radial-gradient(ellipse 400px 300px at 50% 50%, rgba(124,106,247,0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 300px 200px at 80% 20%, rgba(100,80,220,0.06) 0%, transparent 50%);
+}
+
+/* ── Floating shadow orbs — cinematic ── */
+body.sololeveling-theme::before {
+  content: '';
+  position: fixed;
+  top: 5%; right: 4%;
+  width: 420px; height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124,106,247,0.12) 0%, rgba(80,60,200,0.06) 40%, transparent 70%);
+  animation: sl-orb 10s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+body.sololeveling-theme::after {
+  content: '';
+  position: fixed;
+  bottom: 8%; left: 2%;
+  width: 340px; height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(60,40,180,0.13) 0%, rgba(100,80,220,0.05) 40%, transparent 70%);
+  animation: sl-orb 13s ease-in-out 4s infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Mobile: full fix (same pattern as slytherin/fluffytown) ── */
+@media(max-width:700px){
+  body.sololeveling-theme .topbar {
+    background-color: rgba(6,6,14,0.98);
+    border-bottom: 1px solid rgba(124,106,247,0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  body.sololeveling-theme .sidebar-scroll::before,
+  body.sololeveling-theme .sidebar-scroll::after {
+    display: none !important;
+  }
+  body.sololeveling-theme .sidebar:not(.mobile-open) {
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+    clip-path: inset(0 0 0 0) !important;
+  }
+  body.sololeveling-theme .sidebar.mobile-open {
+    box-shadow: 4px 0 48px rgba(124,106,247,0.3), inset -1px 0 0 rgba(124,106,247,0.2) !important;
+    border-right: 1px solid rgba(124,106,247,0.3) !important;
+    overflow: hidden !important;
+    clip-path: none !important;
+  }
+  body.sololeveling-theme .main {
+    width: 100% !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    flex: 1 !important;
+  }
+  body.sololeveling-theme::before,
+  body.sololeveling-theme::after { display: none !important; }
+  body.sololeveling-theme .bottom-nav {
+    background: linear-gradient(180deg, #070714 0%, #040410 60%, #020208 100%) !important;
+    border-top: 1px solid rgba(124,106,247,0.25) !important;
+    box-shadow: 0 -6px 32px rgba(124,106,247,0.3), 0 -1px 0 rgba(124,106,247,0.15) !important;
+  }
+}
+
+/* ── Sidebar — Abyss Dungeon ── */
+body.sololeveling-theme .sidebar {
+  background: linear-gradient(180deg,
+    #010107 0%,
+    #03030f 15%,
+    #05051a 35%,
+    #07071e 55%,
+    #04041a 75%,
+    #020208 90%,
+    #010107 100%
+  );
+  border-right: 1px solid rgba(124,106,247,0.32);
+  box-shadow: 4px 0 60px rgba(124,106,247,0.22), 8px 0 100px rgba(80,60,200,0.1), inset -1px 0 0 rgba(124,106,247,0.18), inset -3px 0 20px rgba(124,106,247,0.04);
+  overflow: hidden;
+}
+@media(min-width:701px){
+  body.sololeveling-theme .sidebar { position: relative; }
+}
+
+/* Dual scanning rune lines on sidebar ── */
+body.sololeveling-theme .sidebar-scroll::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 2px;
+  height: 45%;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(100,80,220,0.3) 15%,
+    rgba(124,106,247,0.65) 30%,
+    rgba(180,170,255,1) 50%,
+    rgba(124,106,247,0.65) 70%,
+    rgba(100,80,220,0.3) 85%,
+    transparent 100%
+  );
+  animation: sl-sidebar-scan 6s linear infinite;
+  pointer-events: none;
+  border-radius: 2px;
+  filter: blur(0.5px);
+  box-shadow: 0 0 6px rgba(124,106,247,0.8), 0 0 12px rgba(124,106,247,0.3);
+}
+body.sololeveling-theme .sidebar-scroll::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 1px;
+  height: 25%;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(80,60,200,0.4) 25%,
+    rgba(148,136,255,0.8) 55%,
+    transparent 100%
+  );
+  animation: sl-sidebar-scan 6s linear 3s infinite;
+  pointer-events: none;
+  border-radius: 2px;
+  filter: blur(0.3px);
+}
+
+/* ── Brand / Logo — Shadow Monarch Crest ── */
+body.sololeveling-theme .brand-icon {
+  background: linear-gradient(135deg, #0d0626 0%, #1a0a3d 30%, #3d1f9e 65%, #7c6af7 100%);
+  box-shadow:
+    0 0 0 1px rgba(124,106,247,0.55),
+    0 0 20px rgba(124,106,247,0.75),
+    0 0 50px rgba(124,106,247,0.25),
+    inset 0 1px 0 rgba(200,190,255,0.2);
+  animation: sl-pulse-glow 3.5s ease-in-out infinite;
+}
+body.sololeveling-theme .brand-name .chi { color: #d4d0f5; }
+body.sololeveling-theme .brand-name .tsk {
+  color: #9d8fff;
+  text-shadow: 0 0 12px rgba(124,106,247,0.9), 0 0 28px rgba(124,106,247,0.45), 0 0 50px rgba(124,106,247,0.2);
+}
+body.sololeveling-theme .brand-sub { color: rgba(168,156,255,0.4); letter-spacing: 1.5px; }
+
+/* ── Nav items ── */
+body.sololeveling-theme .nav-item { color: rgba(148,136,255,0.38); transition: all 0.2s; }
+body.sololeveling-theme .nav-item:hover {
+  background: linear-gradient(90deg, rgba(124,106,247,0.14), rgba(124,106,247,0.03));
+  color: #b8aeff;
+  border-left: 1px solid rgba(124,106,247,0.3);
+}
+body.sololeveling-theme .nav-item.active {
+  background: linear-gradient(90deg, rgba(124,106,247,0.3), rgba(124,106,247,0.08), rgba(124,106,247,0.01));
+  color: #d4cfff;
+  border-left: 2px solid #9d8fff;
+  animation: sl-nav-active-pulse 3s ease-in-out infinite;
+}
+body.sololeveling-theme .nav-item .cnt {
+  background: rgba(124,106,247,0.22);
+  color: #a89cff;
+  border: 1px solid rgba(124,106,247,0.25);
+}
+body.sololeveling-theme .nav-section { color: rgba(148,136,255,0.3); letter-spacing: 1.2px; }
+body.sololeveling-theme .nav-divider { border-color: rgba(124,106,247,0.1); }
+
+/* ── XP Bar — Shadow Energy ── */
+body.sololeveling-theme .xp-bar {
+  background: rgba(124,106,247,0.08);
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.8), inset 0 1px 0 rgba(124,106,247,0.08);
+  border-radius: 4px;
+}
+body.sololeveling-theme .xp-fill {
+  background: linear-gradient(90deg,
+    #0a0520 0%, #1a0a3d 10%, #3d1f9e 25%,
+    #7c6af7 40%, #a89cff 50%, #d4cfff 55%,
+    #a89cff 60%, #7c6af7 75%, #3d1f9e 90%, #0a0520 100%
+  );
+  background-size: 300% 100%;
+  animation: sl-shimmer 2.8s linear infinite;
+  box-shadow: 0 0 14px rgba(124,106,247,0.8), 0 0 32px rgba(124,106,247,0.35), 0 0 50px rgba(124,106,247,0.15);
+  border-radius: 4px;
+}
+body.sololeveling-theme .xp-level { color: rgba(168,156,255,0.7); font-size: 10px; }
+
+/* ── Gold display → Mana Crystal ── */
+body.sololeveling-theme .gold-display {
+  background: linear-gradient(135deg, rgba(124,106,247,0.15), rgba(80,60,200,0.08));
+  border: 1px solid rgba(124,106,247,0.3);
+  color: #b8aeff;
+  box-shadow: 0 0 12px rgba(124,106,247,0.15), inset 0 1px 0 rgba(200,190,255,0.1);
+}
+
+/* ── Topbar ── */
+body.sololeveling-theme .topbar {
+  border-bottom: 1px solid rgba(124,106,247,0.14);
+  background: linear-gradient(180deg, rgba(4,4,12,0.98), rgba(4,4,12,0.92));
+  backdrop-filter: blur(12px);
+}
+
+/* ── Task cards — Shadow Stone Tablets ── */
+body.sololeveling-theme .task-card {
+  background: linear-gradient(145deg, #080818, #0a0a1e, #07071a);
+  border: 1px solid rgba(124,106,247,0.18);
+  border-radius: 8px;
+  box-shadow:
+    0 2px 16px rgba(0,0,0,0.7),
+    inset 0 1px 0 rgba(124,106,247,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.4);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
+}
+/* Rune sweep shimmer on hover */
+body.sololeveling-theme .task-card::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -60%; width: 40%;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(124,106,247,0.06),
+    rgba(180,170,255,0.15),
+    rgba(124,106,247,0.06),
+    transparent
+  );
+  pointer-events: none;
+  opacity: 0;
+  transition: none;
+}
+body.sololeveling-theme .task-card:hover::before {
+  animation: sl-rune-drift 0.55s ease forwards;
+  opacity: 1;
+}
+body.sololeveling-theme .task-card:hover {
+  border-color: rgba(124,106,247,0.52);
+  box-shadow:
+    0 8px 34px rgba(0,0,0,0.75),
+    0 0 0 1px rgba(124,106,247,0.18),
+    0 0 28px rgba(124,106,247,0.1);
+  transform: translateY(-2px);
+}
+body.sololeveling-theme .task-card.done { opacity: 0.25; filter: grayscale(0.3); }
+body.sololeveling-theme .task-card.overdue {
+  border-left: 3px solid rgba(248,113,113,0.8);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.7), -2px 0 12px rgba(248,113,113,0.15);
+}
+
+/* ── Check button — Shadow Rune ── */
+body.sololeveling-theme .check {
+  border-color: rgba(124,106,247,0.4);
+  border-radius: 4px;
+  background: rgba(124,106,247,0.04);
+  transition: all 0.2s;
+}
+body.sololeveling-theme .check:hover {
+  border-color: #9d8fff;
+  background: rgba(124,106,247,0.14);
+  box-shadow: 0 0 16px rgba(124,106,247,0.5), 0 0 0 2px rgba(124,106,247,0.1);
+}
+body.sololeveling-theme .check.checked {
+  background: linear-gradient(135deg, #0d0626, #1a0a3d, #3d1f9e, #7c6af7);
+  border-color: #9d8fff;
+  border-radius: 4px;
+  box-shadow: 0 0 18px rgba(124,106,247,0.75), 0 0 8px rgba(124,106,247,0.4);
+}
+
+/* ── Star ── */
+body.sololeveling-theme .star-btn.on {
+  color: #b8aeff;
+  text-shadow: 0 0 12px rgba(124,106,247,0.85), 0 0 24px rgba(124,106,247,0.4);
+}
+
+/* ── Tags ── */
+body.sololeveling-theme .tag.habit    { background: rgba(124,106,247,0.2); color: #a89cff; border: 1px solid rgba(124,106,247,0.25); }
+body.sololeveling-theme .tag.task     { background: rgba(124,106,247,0.11); color: #c8bfff; border: 1px solid rgba(124,106,247,0.15); }
+body.sololeveling-theme .tag.repeat   { background: rgba(96,165,250,0.1);  color: #93c5fd; border: 1px solid rgba(96,165,250,0.18); }
+body.sololeveling-theme .tag.shopping { background: rgba(74,222,128,0.1);  color: #86efac; border: 1px solid rgba(74,222,128,0.18); }
+
+/* ── Add bar — Dungeon Gate ── */
+body.sololeveling-theme .add-bar {
+  background: linear-gradient(145deg, #07071a, #0a0a1e, #080818);
+  border: 1.5px solid rgba(124,106,247,0.55);
+  box-shadow:
+    0 6px 32px rgba(0,0,0,0.6),
+    0 0 0 1px rgba(124,106,247,0.08),
+    inset 0 1px 0 rgba(124,106,247,0.12),
+    0 0 20px rgba(124,106,247,0.08);
+  animation: sl-border-glow 4s ease-in-out infinite;
+}
+body.sololeveling-theme .add-bar input { color: #d4d0f5; }
+body.sololeveling-theme .add-bar input::placeholder { color: rgba(148,136,255,0.28); }
+
+/* ── Add button — Shadow Power ── */
+body.sololeveling-theme .btn-add {
+  background: linear-gradient(135deg, #0d0626 0%, #1a0a3d 25%, #3d1f9e 50%, #7c6af7 75%, #a89cff 100%);
+  background-size: 250% 100%;
+  animation: sl-shimmer 3s linear infinite;
+  box-shadow: 0 4px 20px rgba(124,106,247,0.6), 0 0 0 1px rgba(124,106,247,0.25), 0 0 40px rgba(124,106,247,0.15);
+  border: none;
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+body.sololeveling-theme .btn-add::before {
+  content: '';
+  position: absolute;
+  top: -10%; width: 18%; height: 120%;
+  background: linear-gradient(105deg, transparent, rgba(200,190,255,0.25), rgba(255,255,255,0.45), rgba(200,190,255,0.25), transparent);
+  animation: sl-btn-sweep 2.8s linear infinite;
+  pointer-events: none;
+}
+body.sololeveling-theme .btn-add::after {
+  content: '';
+  position: absolute;
+  top: -10%; width: 8%; height: 120%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,0.65), transparent);
+  animation: sl-btn-sweep2 2.8s linear infinite;
+  animation-delay: 0.22s;
+  pointer-events: none;
+}
+
+/* ── Btn-icon ── */
+body.sololeveling-theme .btn-icon {
+  background: linear-gradient(145deg, #07071a, #04040e);
+  border-color: rgba(124,106,247,0.24);
+  color: #5a5890;
+  transition: all 0.2s;
+}
+body.sololeveling-theme .btn-icon:hover {
+  background: linear-gradient(145deg, rgba(124,106,247,0.14), rgba(124,106,247,0.06));
+  border-color: rgba(124,106,247,0.48);
+  color: #b8aeff;
+  box-shadow: 0 0 12px rgba(124,106,247,0.2);
+}
+body.sololeveling-theme .btn-save {
+  background: linear-gradient(135deg, #0d0626, #1a0a3d, #3d1f9e, #7c6af7);
+  box-shadow: 0 4px 18px rgba(124,106,247,0.55), 0 0 0 1px rgba(124,106,247,0.2);
+}
+
+/* ── Section headers ── */
+body.sololeveling-theme .section-hdr {
+  color: #7c6af7;
+  border-bottom: 1px solid rgba(124,106,247,0.14);
+  text-shadow: 0 0 12px rgba(124,106,247,0.5);
+  letter-spacing: 0.5px;
+}
+
+/* ── Group accordion — Dungeon Floor ── */
+body.sololeveling-theme .group-accordion {
+  border-color: rgba(124,106,247,0.18);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(124,106,247,0.06);
+}
+body.sololeveling-theme .group-header {
+  background: linear-gradient(90deg, rgba(124,106,247,0.1), rgba(80,60,200,0.05), rgba(124,106,247,0.02));
+}
+body.sololeveling-theme .group-header:hover {
+  background: linear-gradient(90deg, rgba(124,106,247,0.18), rgba(80,60,200,0.08), rgba(124,106,247,0.03));
+}
+body.sololeveling-theme .group-badge {
+  background: linear-gradient(135deg, #0d0626, #1a0a3d, #5b4de0, #7c6af7);
+  box-shadow: 0 0 12px rgba(124,106,247,0.55), 0 0 0 1px rgba(124,106,247,0.2);
+}
+
+/* ── Fin / stat cards — Shadow Vault ── */
+body.sololeveling-theme .fin-card,
+body.sololeveling-theme .stat-card,
+body.sololeveling-theme .stat-card-sm {
+  background: linear-gradient(145deg, #080818, #0a0a1e, #060614);
+  border: 1px solid rgba(124,106,247,0.18);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.65), inset 0 1px 0 rgba(124,106,247,0.08), inset 0 -1px 0 rgba(0,0,0,0.5);
+}
+body.sololeveling-theme .fin-card-val,
+body.sololeveling-theme .stat-num,
+body.sololeveling-theme .stat-num-sm {
+  color: #9d8fff;
+  text-shadow: 0 0 16px rgba(124,106,247,0.5);
+}
+body.sololeveling-theme .fin-card-label,
+body.sololeveling-theme .stat-lbl,
+body.sololeveling-theme .stat-lbl-sm { color: #4e4c7a; }
+
+/* ── Habit dots — Shadow Rune Marks ── */
+body.sololeveling-theme .dot {
+  border-color: rgba(124,106,247,0.2);
+  border-radius: 3px;
+  color: rgba(124,106,247,0.3);
+  background: rgba(124,106,247,0.03);
+}
+body.sololeveling-theme .dot.done {
+  background: linear-gradient(135deg, #0d0626, #1a0a3d, #3d1f9e, #7c6af7);
+  box-shadow: 0 0 10px rgba(124,106,247,0.7), 0 0 20px rgba(124,106,247,0.25);
+  border-color: transparent;
+}
+body.sololeveling-theme .dot.today-dot {
+  border-color: #9d8fff;
+  box-shadow: 0 0 14px rgba(124,106,247,0.6), 0 0 4px rgba(124,106,247,0.4);
+}
+body.sololeveling-theme .streak-badge {
+  background: linear-gradient(135deg, rgba(124,106,247,0.18), rgba(80,60,200,0.08));
+  border: 1px solid rgba(124,106,247,0.3);
+  color: #a89cff;
+  box-shadow: 0 0 10px rgba(124,106,247,0.12);
+}
+
+/* ── Chips ── */
+body.sololeveling-theme .chip.active {
+  background: rgba(124,106,247,0.22);
+  color: #b8aeff;
+  border-color: rgba(124,106,247,0.55);
+  box-shadow: 0 0 10px rgba(124,106,247,0.2);
+}
+
+/* ── Chip select (Repeat, Grup di taskbar) ── */
+body.sololeveling-theme .chip-select {
+  background: rgba(124,106,247,0.08);
+  border-color: rgba(124,106,247,0.35);
+  color: #c8c0ff;
+}
+body.sololeveling-theme .chip-select option {
+  background: #0a0720;
+  color: #d4d0f5;
+}
+body.sololeveling-theme .mchip-select {
+  background: rgba(124,106,247,0.12);
+  border-color: rgba(124,106,247,0.4);
+  color: #c8c0ff;
+}
+body.sololeveling-theme .mchip-select option {
+  background: #0a0720;
+  color: #d4d0f5;
+}
+body.sololeveling-theme .mchip {
+  background: rgba(124,106,247,0.08);
+  border-color: rgba(124,106,247,0.35);
+  color: #c8c0ff;
+}
+body.sololeveling-theme .mchip:active,
+body.sololeveling-theme .mchip.active {
+  background: rgba(124,106,247,0.25);
+  border-color: rgba(124,106,247,0.7);
+  color: #d4d0ff;
+}
+body.sololeveling-theme #mchip-due-btn,
+body.sololeveling-theme #mchip-reminder-btn {
+  background: rgba(124,106,247,0.08);
+  border-color: rgba(124,106,247,0.35);
+}
+body.sololeveling-theme #mchip-due-btn span,
+body.sololeveling-theme #mchip-reminder-btn span {
+  color: #c8c0ff;
+}
+
+/* ── Toasts — Dungeon Notification ── */
+body.sololeveling-theme .toast {
+  background: linear-gradient(135deg, #04040c, #080818);
+  border: 1px solid rgba(124,106,247,0.38);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.8), 0 0 24px rgba(124,106,247,0.22), 0 0 0 1px rgba(124,106,247,0.1);
+  color: #d4d0f5;
+  text-shadow: 0 0 8px rgba(124,106,247,0.2);
+}
+
+/* ── Scrollbar ── */
+body.sololeveling-theme ::-webkit-scrollbar-thumb { background: rgba(124,106,247,0.2); border-radius: 4px; }
+body.sololeveling-theme ::-webkit-scrollbar-thumb:hover { background: rgba(124,106,247,0.4); }
+
+/* ── Detail panel — Chamber of Shadows ── */
+body.sololeveling-theme .detail-panel {
+  background: linear-gradient(160deg, #050512, #03030d, #06061a);
+  border-left: 1px solid rgba(124,106,247,0.25);
+  box-shadow: -8px 0 60px rgba(0,0,0,0.9), -4px 0 0 rgba(124,106,247,0.06), 0 0 50px rgba(124,106,247,0.05);
+}
+body.sololeveling-theme .det-input {
+  background: rgba(124,106,247,0.06);
+  border-color: rgba(124,106,247,0.2);
+  color: #d4d0f5;
+}
+body.sololeveling-theme .det-input:focus {
+  border-color: #9d8fff;
+  box-shadow: 0 0 0 3px rgba(124,106,247,0.14), 0 0 12px rgba(124,106,247,0.15);
+  background: rgba(124,106,247,0.1);
+}
+
+/* ── Achievements ── */
+body.sololeveling-theme .achievement.unlocked {
+  background: linear-gradient(145deg, #0a0720, #120d35, #1a1245);
+  border-color: rgba(124,106,247,0.5);
+  box-shadow: 0 0 24px rgba(124,106,247,0.22), 0 0 0 1px rgba(124,106,247,0.1);
+}
+
+/* ── Bottom nav (mobile) — Abyss Gate ── */
+body.sololeveling-theme .bottom-nav {
+  background: linear-gradient(180deg,
+    rgba(5,5,18,0.96) 0%,
+    rgba(3,3,12,0.98) 60%,
+    rgba(2,2,8,1) 100%
+  );
+  border-top: 1px solid rgba(124,106,247,0.25);
+  box-shadow: 0 -6px 40px rgba(124,106,247,0.28), 0 -1px 0 rgba(124,106,247,0.15), 0 -20px 60px rgba(0,0,0,0.6);
+  backdrop-filter: blur(16px);
+}
+body.sololeveling-theme .bn-item.active {
+  color: #b8aeff;
+  text-shadow: 0 0 10px rgba(124,106,247,0.7);
+}
+
+/* ── Subdrawer (mobile) — Shadow Chamber ── */
+body.sololeveling-theme .subdrawer {
+  background: linear-gradient(160deg, #04040e, #07071c, #04040e);
+  border-top: 1px solid rgba(124,106,247,0.28);
+  box-shadow: 0 -12px 60px rgba(0,0,0,0.95), 0 -1px 0 rgba(124,106,247,0.22), 0 -6px 40px rgba(124,106,247,0.08);
+}
+body.sololeveling-theme .subdrawer-item.active {
+  background: linear-gradient(135deg, rgba(124,106,247,0.26), rgba(80,60,200,0.1));
+  border-color: rgba(124,106,247,0.35);
+  color: #b8aeff;
+  box-shadow: 0 0 16px rgba(124,106,247,0.15), inset 0 1px 0 rgba(180,170,255,0.1);
+}
+body.sololeveling-theme .subdrawer-handle {
+  background-color: rgba(124,106,247,0.45);
+  background-clip: content-box;
+  box-shadow: 0 0 6px rgba(124,106,247,0.5);
+}
+
+/* ── FAB — Shadow Monarch Seal ── */
+body.sololeveling-theme .fab-add {
+  background: linear-gradient(135deg, #0d0626, #1a0a3d, #3d1f9e, #7c6af7, #a89cff);
+  background-size: 250% 100%;
+  animation: sl-shimmer 3s linear infinite, sl-pulse-glow 3.5s ease-in-out infinite;
+  box-shadow: 0 6px 30px rgba(124,106,247,0.65), 0 0 0 2px rgba(124,106,247,0.25), 0 0 60px rgba(124,106,247,0.2);
+}
+
+/* ── Shop items ── */
+body.sololeveling-theme .shop-item {
+  background: linear-gradient(145deg, #080818, #06061a, #04040e);
+  border: 1px solid rgba(124,106,247,0.16);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+body.sololeveling-theme .shop-item:hover {
+  border-color: rgba(124,106,247,0.48);
+  box-shadow: 0 6px 28px rgba(124,106,247,0.22), 0 0 0 1px rgba(124,106,247,0.1);
+  transform: translateY(-3px);
+}
+body.sololeveling-theme .shop-item.active-item {
+  border-color: #9d8fff;
+  box-shadow: 0 0 28px rgba(124,106,247,0.45), 0 0 0 1px rgba(124,106,247,0.25), inset 0 1px 0 rgba(180,170,255,0.1);
+}
+
+/* ── Mobile add bar ── */
+body.sololeveling-theme .mobile-add-bar {
+  background: linear-gradient(160deg, #04040e, #07071c);
+  border-top: 1px solid rgba(124,106,247,0.32);
+  box-shadow: 0 -4px 30px rgba(124,106,247,0.12);
+}
+body.sololeveling-theme .mobile-add-submit {
+  background: linear-gradient(135deg, #0d0626 0%, #1a0a3d 25%, #3d1f9e 50%, #7c6af7 75%, #a89cff 100%);
+  background-size: 250% 100%;
+  animation: sl-shimmer 3s linear infinite;
+  box-shadow: 0 4px 18px rgba(124,106,247,0.6), 0 0 0 1px rgba(124,106,247,0.2);
+  position: relative;
+  overflow: hidden;
+}
+body.sololeveling-theme .mobile-add-submit::before {
+  content: '';
+  position: absolute;
+  top: -10%; width: 18%; height: 120%;
+  background: linear-gradient(105deg, transparent, rgba(200,190,255,0.25), rgba(255,255,255,0.45), rgba(200,190,255,0.25), transparent);
+  animation: sl-btn-sweep 2.8s linear infinite;
+  pointer-events: none;
+}
+body.sololeveling-theme .mobile-add-submit::after {
+  content: '';
+  position: absolute;
+  top: -10%; width: 8%; height: 120%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,0.65), transparent);
+  animation: sl-btn-sweep2 2.8s linear infinite;
+  animation-delay: 0.22s;
+  pointer-events: none;
+}
+
+/* ── Fin add bar ── */
+body.sololeveling-theme .fin-add-bar {
+  background: linear-gradient(145deg, #080818, #0a0a1e);
+  border-color: rgba(124,106,247,0.45);
+}
+body.sololeveling-theme .fin-input,
+body.sololeveling-theme .maint-input {
+  background: rgba(124,106,247,0.06);
+  border-color: rgba(124,106,247,0.2);
+  color: #d4d0f5;
+}
+body.sololeveling-theme .fin-input:focus,
+body.sololeveling-theme .maint-input:focus {
+  border-color: #9d8fff;
+  box-shadow: 0 0 0 3px rgba(124,106,247,0.14), 0 0 12px rgba(124,106,247,0.12);
+}
+
+/* ── Mobile logo / topbar ── */
+body.sololeveling-theme .mobile-logo-icon {
+  background: linear-gradient(135deg, #0d0626, #1a0a3d, #3d1f9e, #7c6af7);
+  box-shadow: 0 0 0 1px rgba(124,106,247,0.5), 0 0 16px rgba(124,106,247,0.65), 0 0 32px rgba(124,106,247,0.22);
+  animation: sl-pulse-glow 3.5s ease-in-out infinite;
+}
+body.sololeveling-theme .mobile-logo-text .chi { color: #d4d0f5; }
+body.sololeveling-theme .mobile-logo-text .tsk {
+  color: #9d8fff;
+  text-shadow: 0 0 10px rgba(124,106,247,0.85), 0 0 22px rgba(124,106,247,0.38);
+}
+body.sololeveling-theme .home-title-hero { color: #d4d0f5; text-shadow: 0 0 20px rgba(124,106,247,0.2); }
+body.sololeveling-theme .home-date-hero { color: #4e4c7a; }
+body.sololeveling-theme .mobile-back-btn { color: #a89cff; }
+body.sololeveling-theme .mobile-back-btn:active { color: #7c6af7; }
+
+/* ── Dash cards ── */
+body.sololeveling-theme .dash-card {
+  background: linear-gradient(145deg, #080818, #0a0a1e, #060614);
+  border-color: rgba(124,106,247,0.18);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.65), inset 0 1px 0 rgba(124,106,247,0.07);
+}
+
+/* ── More panel (mobile) ── */
+body.sololeveling-theme .more-panel {
+  background: linear-gradient(160deg, #050516, #030310);
+  border-top: 1px solid rgba(124,106,247,0.22);
+  box-shadow: 0 -8px 40px rgba(124,106,247,0.1);
+}
+
+/* ═══ CUSTOM SCROLLBAR (desktop) ═══ */
+@media(min-width:701px){
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:10px;transition:background 0.2s}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.28)}
+  ::-webkit-scrollbar-corner{background:transparent}
+  /* Sidebar scrollbar — lighter on dark bg */
+  .sidebar ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12)}
+  .sidebar ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.25)}
+  /* Shop/modal scrollbar */
+  .shop-body::-webkit-scrollbar,.wr-body::-webkit-scrollbar,.detail-panel::-webkit-scrollbar{width:4px}
+  .shop-body::-webkit-scrollbar-thumb,.wr-body::-webkit-scrollbar-thumb,.detail-panel::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.1);border-radius:10px}
+  /* Firefox */
+  * {scrollbar-width:thin;scrollbar-color:rgba(0,0,0,0.15) transparent}
+  .sidebar *{scrollbar-color:rgba(255,255,255,0.12) transparent}
+}
+
+/* ═══ EMOJI PICKER ═══ */
+.emoji-picker-wrap{position:relative;display:inline-flex}
+.emoji-picker-btn{border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:16px;cursor:pointer;background:var(--card);line-height:1;transition:border-color 0.15s;flex-shrink:0}
+.emoji-picker-btn:hover{border-color:var(--accent)}
+.emoji-grid{position:absolute;top:calc(100% + 4px);left:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;display:grid;grid-template-columns:repeat(7,1fr);gap:2px;z-index:400;box-shadow:0 8px 24px rgba(0,0,0,0.12);width:220px}
+.emoji-grid button{border:none;background:none;font-size:18px;cursor:pointer;border-radius:6px;padding:4px;transition:background 0.1s;line-height:1}
+.emoji-grid button:hover{background:var(--hover)}
+
+
+
+/* ══════════════════════════════════════════════════════
+   ⚔️ SOLO LEVELING ACTIVATION OVERLAY
+══════════════════════════════════════════════════════ */
+#slActivateOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  overflow: hidden;
+}
+#slActivateOverlay.active { display: block; }
+#slActivateOverlay .sl-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(124,106,247,0.65) 0%, rgba(80,60,200,0.2) 50%, transparent 100%);
+  animation: sl-activate-flash 1.8s ease-out forwards;
+}
+#slActivateOverlay .sl-sweep {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 0; width: 50%;
+  background: linear-gradient(90deg, transparent 0%, rgba(124,106,247,0.22) 30%, rgba(180,170,255,0.32) 50%, rgba(124,106,247,0.22) 70%, transparent 100%);
+  animation: sl-activate-sweep 1.2s cubic-bezier(0.4,0,0.2,1) 0.1s forwards;
+}
+#slActivateOverlay .sl-portal {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 160px; height: 160px;
+  border-radius: 50%;
+  border: 2px solid rgba(124,106,247,0.85);
+  box-shadow: 0 0 30px rgba(124,106,247,0.6), inset 0 0 30px rgba(124,106,247,0.25), 0 0 60px rgba(80,60,200,0.3);
+  animation: sl-portal-spin 1.4s ease-out forwards;
+}
+#slActivateOverlay .sl-portal2 {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 90px; height: 90px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(168,156,255,0.6);
+  box-shadow: 0 0 18px rgba(168,156,255,0.4);
+  animation: sl-portal-spin 1.4s ease-out 0.2s forwards;
+}
+#slActivateOverlay .sl-crack {
+  position: absolute;
+  width: 3px;
+  background: linear-gradient(180deg, rgba(124,106,247,0.9), rgba(168,156,255,0.5), transparent);
+  border-radius: 2px;
+  animation: sl-crack-appear 1.6s ease-out forwards;
+}
+#slActivateOverlay .sl-soldier {
+  position: absolute;
+  font-size: 28px;
+  animation: sl-soldier-rise 1.5s ease-out forwards;
+  filter: drop-shadow(0 0 8px rgba(124,106,247,0.9));
+}
+</style>
+
+
+
+/* ══ Additional Rules (pre-section scattered) ══ */
+body.sololeveling-theme .sqa-select{
+  background:rgba(124,106,247,0.10);
+  border-color:rgba(124,106,247,0.35);
+  color:#c8c0ff;
+}
+
+body.sololeveling-theme .sqa-select option{
+  background:#0a0720;
+  color:#d4d0f5;
+}

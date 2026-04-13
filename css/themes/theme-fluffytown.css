@@ -1,0 +1,1271 @@
+/*
+╔══════════════════════════════════════════════════════════════════╗
+║  CHITASK THEME: Fluffy Town 🐹
+║  Cute. Soft. Dreamy. Pink lembut penuh kelembutan.
+║
+║  CARA PAKAI:
+║    <body class="fluffytown-theme">
+║
+║  ACCENT COLOR : #f472b6
+║  BASE BG      : #2d1a2e
+║
+║  File ini adalah TEMPLATE LENGKAP satu tema.
+║  Untuk membuat tema baru, duplikat file ini dan:
+║    1. Ganti semua 'fluffytown-theme' → 'namatema-theme'
+║    2. Ganti warna accent, bg, dan efek sesuai tema baru
+║    3. Ganti nama @keyframes (prefix sl-/sly-/fluffy- dll)
+╚══════════════════════════════════════════════════════════════════╝
+*/
+
+/* ══════════════════════════════════════════════════════
+   🐹 FLUFFY TOWN — Login Screen & Splash & Nav Overrides
+══════════════════════════════════════════════════════ */
+
+body.fluffytown-theme   #fbLoginScreen { background: #2d1a2e; }
+
+body.fluffytown-theme   .fb-login-name .tsk { color: #f472b6; }
+
+body.fluffytown-theme #chitask-splash{background:#2d1a2e}
+
+body.mobile-nav-sidebar.fluffytown-theme .sidebar .nav-item{
+  color:rgba(253,164,175,0.75)!important;
+}
+
+body.mobile-nav-sidebar.fluffytown-theme .sidebar .nav-item.active,
+
+body.mobile-nav-sidebar.fluffytown-theme .sidebar .nav-item.active,
+body.mobile-nav-sidebar.fluffytown-theme .sidebar .nav-item:hover{
+  color:#fecdd3!important;
+}
+
+/* ══════════════════════════════════════════════════════
+   🐹 FLUFFY TOWN PREMIUM THEME — Cute. Soft. Dreamy.
+══════════════════════════════════════════════════════ */
+
+/* ── Keyframes ── */
+@keyframes fluffy-float {
+  0%,100% { transform: translateY(0px) rotate(-1deg); }
+  50%      { transform: translateY(-6px) rotate(1deg); }
+}
+@keyframes fluffy-bounce {
+  0%,100% { transform: scale(1); }
+  30%     { transform: scale(1.12) rotate(-3deg); }
+  60%     { transform: scale(0.96) rotate(2deg); }
+}
+@keyframes fluffy-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+@keyframes fluffy-blush {
+  0%,100% { opacity: 0.5; transform: scale(1); }
+  50%      { opacity: 0.85; transform: scale(1.15); }
+}
+@keyframes fluffy-petal-fall {
+  0%   { transform: translateY(-20px) rotate(0deg) translateX(0); opacity: 0; }
+  5%   { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(105vh) rotate(540deg) translateX(15px); opacity: 0; }
+}
+@keyframes fluffy-petal-fall2 {
+  0%   { transform: translateY(-30px) rotate(20deg); opacity: 0; }
+  8%   { opacity: 0.8; }
+  92%  { opacity: 0.6; }
+  100% { transform: translateY(105vh) rotate(-400deg) translateX(-10px); opacity: 0; }
+}
+@keyframes fluffy-heart-pop {
+  0%   { transform: scale(0) translateY(0); opacity: 1; }
+  50%  { transform: scale(1.6) translateY(-20px); opacity: 1; }
+  100% { transform: scale(0.8) translateY(-50px); opacity: 0; }
+}
+@keyframes fluffy-pulse-glow {
+  0%,100% { box-shadow: 0 0 8px rgba(244,114,182,0.4), 0 0 20px rgba(244,114,182,0.15); }
+  50%      { box-shadow: 0 0 22px rgba(244,114,182,0.75), 0 0 50px rgba(244,114,182,0.3), 0 0 80px rgba(244,114,182,0.12); }
+}
+@keyframes fluffy-card-glow {
+  0%,100% { box-shadow: 0 0 4px rgba(244,114,182,0.12), 0 2px 12px rgba(244,114,182,0.1), inset 0 1px 0 rgba(255,255,255,0.9); }
+  50%      { box-shadow: 0 0 12px rgba(244,114,182,0.22), 0 4px 20px rgba(244,114,182,0.15), inset 0 1px 0 rgba(255,255,255,0.9); }
+}
+@keyframes fluffy-sparkle-spin {
+  0%   { transform: rotate(0deg) scale(1); opacity: 0.8; }
+  50%  { transform: rotate(180deg) scale(1.3); opacity: 1; }
+  100% { transform: rotate(360deg) scale(1); opacity: 0.8; }
+}
+@keyframes fluffy-activate-flash {
+  0%   { opacity: 0; }
+  10%  { opacity: 0.65; }
+  25%  { opacity: 0.2; }
+  40%  { opacity: 0.55; }
+  60%  { opacity: 0.1; }
+  80%  { opacity: 0.35; }
+  100% { opacity: 0; }
+}
+@keyframes fluffy-activate-sweep {
+  0%   { transform: translateX(-100%) skewX(-6deg); opacity: 0; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { transform: translateX(220%) skewX(-6deg); opacity: 0; }
+}
+@keyframes fluffy-activate-ring {
+  0%   { transform: translate(-50%,-50%) scale(0.2); opacity: 1; }
+  100% { transform: translate(-50%,-50%) scale(4); opacity: 0; }
+}
+@keyframes fluffy-hamster-nibble {
+  0%,100% { transform: rotate(0deg); }
+  20%     { transform: rotate(-8deg) translateY(-2px); }
+  40%     { transform: rotate(5deg); }
+  60%     { transform: rotate(-5deg) translateY(-1px); }
+  80%     { transform: rotate(3deg); }
+}
+@keyframes fluffy-seed-bounce {
+  0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+  40%  { transform: translateY(-8px) rotate(20deg); opacity: 1; }
+  100% { transform: translateY(4px) rotate(-10deg); opacity: 0.6; }
+}
+@keyframes fluffy-cheek-puff {
+  0%,100% { transform: scale(1); }
+  50%      { transform: scale(1.2); }
+}
+@keyframes fluffy-orb {
+  0%,100% { opacity: 0.18; transform: scale(1) translate(0,0); }
+  33%      { opacity: 0.30; transform: scale(1.15) translate(2%,-1%); }
+  66%      { opacity: 0.12; transform: scale(0.9) translate(-1%,2%); }
+}
+@keyframes fluffy-ribbon-drift {
+  0%   { left: -60%; }
+  100% { left: 160%; }
+}
+
+/* ── Body & background ── */
+body.fluffytown-theme,
+html:has(body.fluffytown-theme) {
+  background-color: #fce4f1;
+}
+body.fluffytown-theme {
+  --bg: #fce4f1;
+  --card: #fff6fb;
+  --accent: #f472b6;
+  --accent2: #ec4899;
+  --pill: rgba(253,164,175,0.28);
+  --pill-text: #be185d;
+  --hover: rgba(244,114,182,0.09);
+  --border: rgba(244,114,182,0.22);
+  --text: #4a1535;
+  --muted: #b56b8a;
+  --shadow: 0 4px 20px rgba(244,114,182,0.2), 0 1px 4px rgba(244,114,182,0.1);
+  --radius: 14px;
+  background-color: #fce4f1;
+  background-image:
+    radial-gradient(ellipse 1100px 800px at 8% 2%, rgba(255,200,230,0.65) 0%, transparent 55%),
+    radial-gradient(ellipse 800px 1000px at 95% 95%, rgba(249,168,212,0.48) 0%, transparent 55%),
+    radial-gradient(ellipse 700px 600px at 52% -5%, rgba(252,220,243,0.55) 0%, transparent 50%),
+    radial-gradient(ellipse 500px 400px at 88% 8%, rgba(255,220,242,0.42) 0%, transparent 45%),
+    radial-gradient(ellipse 420px 420px at 3% 95%, rgba(253,164,175,0.28) 0%, transparent 50%),
+    radial-gradient(ellipse 300px 300px at 50% 50%, rgba(255,228,245,0.3) 0%, transparent 60%);
+}
+
+/* ── Floating background orbs ── */
+body.fluffytown-theme::before {
+  content: '';
+  position: fixed;
+  top: 10%; right: 5%;
+  width: 340px; height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(244,114,182,0.12) 0%, transparent 70%);
+  animation: fluffy-orb 7s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+body.fluffytown-theme::after {
+  content: '';
+  position: fixed;
+  bottom: 15%; left: 3%;
+  width: 280px; height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(253,164,175,0.14) 0%, transparent 70%);
+  animation: fluffy-orb 9s ease-in-out 2s infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Mobile: fix cutoff / overflow issues ── */
+@media(max-width:700px){
+  body.fluffytown-theme,
+  html:has(body.fluffytown-theme) {
+    overflow: hidden !important;
+    max-width: 100vw !important;
+    position: relative !important;
+  }
+  body.fluffytown-theme .topbar {
+    background: linear-gradient(180deg, rgba(253,228,242,0.99) 0%, rgba(253,238,248,0.97) 100%) !important;
+    border-bottom: 1.5px solid rgba(244,114,182,0.22) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    box-shadow: 0 2px 20px rgba(244,114,182,0.12) !important;
+  }
+  body.fluffytown-theme .app {
+    overflow: hidden !important;
+    max-width: 100vw !important;
+    position: relative !important;
+  }
+  body.fluffytown-theme .sidebar:not(.mobile-open) {
+    box-shadow: none !important;
+    border-right: none !important;
+    overflow: hidden !important;
+    transform: translateX(-100%) !important;
+  }
+  body.fluffytown-theme .main {
+    width: 100% !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
+    flex: 1 !important;
+  }
+  body.fluffytown-theme .task-scroll,
+  body.fluffytown-theme .fin-scroll-inner,
+  body.fluffytown-theme .journal-scroll,
+  body.fluffytown-theme .maint-scroll {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+    width: 100% !important;
+  }
+  body.fluffytown-theme .group-accordion {
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+  body.fluffytown-theme .task-card {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+  body.fluffytown-theme::before,
+  body.fluffytown-theme::after { display: none !important; }
+  /* Enhanced bottom nav for mobile */
+  body.fluffytown-theme .bottom-nav {
+    background: linear-gradient(180deg, #6e1a45 0%, #4d1230 60%, #3d0e24 100%) !important;
+    border-top: 1.5px solid rgba(244,114,182,0.32) !important;
+    box-shadow: 0 -6px 32px rgba(244,114,182,0.35), 0 -1px 0 rgba(244,114,182,0.18) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+  }
+}
+
+/* ── Sidebar — Rosewood Palace ── */
+body.fluffytown-theme .sidebar {
+  background: linear-gradient(180deg, #4d1230 0%, #6e1a45 30%, #7d2055 55%, #6e1a45 80%, #4d1230 100%);
+  border-right: 1px solid rgba(244,114,182,0.35);
+  box-shadow: 4px 0 48px rgba(244,114,182,0.25), inset -1px 0 0 rgba(244,114,182,0.18);
+  overflow: hidden;
+}
+@media(min-width:701px){
+  body.fluffytown-theme .sidebar { position: relative; }
+}
+/* Falling petals on sidebar */
+body.fluffytown-theme .sidebar-scroll::before {
+  content: '🌸';
+  position: absolute;
+  right: 12px;
+  top: -10px;
+  font-size: 12px;
+  opacity: 0.8;
+  animation: fluffy-petal-fall 6s linear infinite;
+  pointer-events: none;
+}
+body.fluffytown-theme .sidebar-scroll::after {
+  content: '✿';
+  position: absolute;
+  right: 32px;
+  top: -30px;
+  font-size: 9px;
+  color: rgba(253,164,175,0.7);
+  animation: fluffy-petal-fall2 7s linear 3s infinite;
+  pointer-events: none;
+}
+
+/* ── Brand / Logo ── */
+body.fluffytown-theme .brand-icon {
+  background: linear-gradient(135deg, #ec4899, #f472b6, #fda4af, #f472b6);
+  background-size: 250% 100%;
+  animation: fluffy-shimmer 4s linear infinite, fluffy-pulse-glow 3s ease-in-out infinite;
+  box-shadow: 0 0 0 2px rgba(253,164,175,0.4), 0 0 20px rgba(244,114,182,0.65), 0 0 42px rgba(244,114,182,0.22);
+}
+body.fluffytown-theme .brand-name .chi { color: #ffe4ef; }
+body.fluffytown-theme .brand-name .tsk { color: #fda4af; text-shadow: 0 0 10px rgba(253,164,175,0.9); }
+body.fluffytown-theme .brand-sub { color: rgba(253,164,175,0.55); }
+
+/* ── Nav items ── */
+body.fluffytown-theme .nav-item { color: rgba(253,164,175,0.55); }
+body.fluffytown-theme .nav-item:hover {
+  background: rgba(244,114,182,0.14);
+  color: #fda4af;
+}
+body.fluffytown-theme .nav-item.active {
+  background: linear-gradient(90deg, rgba(244,114,182,0.32), rgba(244,114,182,0.08));
+  color: #fecdd3;
+  border-left: 2px solid #f472b6;
+  box-shadow: inset 0 0 20px rgba(244,114,182,0.1);
+}
+body.fluffytown-theme .nav-item .cnt {
+  background: rgba(244,114,182,0.22);
+  color: #fda4af;
+}
+body.fluffytown-theme .nav-section { color: rgba(253,164,175,0.45); }
+body.fluffytown-theme .nav-divider { border-color: rgba(244,114,182,0.15); }
+
+/* ── XP Bar — cotton candy shimmer ── */
+body.fluffytown-theme .xp-bar {
+  background: rgba(244,114,182,0.15);
+  box-shadow: inset 0 0 6px rgba(0,0,0,0.12);
+}
+body.fluffytown-theme .xp-fill {
+  background: linear-gradient(90deg,
+    #be185d 0%, #ec4899 18%, #f472b6 32%,
+    #fda4af 45%, #fecdd3 52%,
+    #fda4af 59%, #f472b6 73%, #ec4899 88%, #be185d 100%
+  );
+  background-size: 300% 100%;
+  animation: fluffy-shimmer 2.8s linear infinite;
+  box-shadow: 0 0 10px rgba(244,114,182,0.65), 0 0 22px rgba(244,114,182,0.3);
+}
+body.fluffytown-theme .xp-level { color: rgba(253,164,175,0.85); }
+
+/* ── Gold display ── */
+body.fluffytown-theme .gold-display {
+  background: rgba(253,164,175,0.18);
+  border: 1px solid rgba(253,164,175,0.35);
+  color: #fda4af;
+}
+
+/* ── Topbar ── */
+body.fluffytown-theme .topbar {
+  border-bottom: 1px solid rgba(244,114,182,0.14);
+}
+
+/* ── Task cards — soft cloud cards ── */
+body.fluffytown-theme .task-card {
+  background: linear-gradient(145deg, #fff8fb, #fff3f9, #fffbfd);
+  border: 1px solid rgba(244,114,182,0.18);
+  border-radius: 20px;
+  box-shadow: 0 4px 22px rgba(244,114,182,0.14), 0 1px 4px rgba(244,114,182,0.08), inset 0 1px 0 rgba(255,255,255,1);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.22s, box-shadow 0.22s, transform 0.22s;
+  animation: fluffy-card-glow 5s ease-in-out infinite;
+}
+/* Ribbon shimmer on hover */
+body.fluffytown-theme .task-card::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(253,164,175,0.12), rgba(255,255,255,0.22), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: none;
+}
+body.fluffytown-theme .task-card:hover::before {
+  animation: fluffy-ribbon-drift 0.6s ease forwards;
+  opacity: 1;
+}
+body.fluffytown-theme .task-card::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -80%; width: 55%;
+  background: linear-gradient(90deg, transparent, rgba(253,164,175,0.06), rgba(255,255,255,0.1), transparent);
+  pointer-events: none;
+}
+body.fluffytown-theme .task-card:hover {
+  border-color: rgba(244,114,182,0.45);
+  box-shadow: 0 8px 28px rgba(244,114,182,0.2), 0 0 0 1px rgba(244,114,182,0.14), 0 0 24px rgba(244,114,182,0.1);
+  transform: translateY(-2px);
+  animation: none;
+}
+body.fluffytown-theme .task-card.done { opacity: 0.45; animation: none; }
+body.fluffytown-theme .task-card.overdue { border-left: 3px solid #f43f5e; }
+
+/* ── Check button ── */
+body.fluffytown-theme .check { border-color: rgba(244,114,182,0.38); border-radius: 50%; }
+body.fluffytown-theme .check:hover {
+  border-color: #f472b6;
+  background: rgba(244,114,182,0.1);
+  box-shadow: 0 0 12px rgba(244,114,182,0.38);
+}
+body.fluffytown-theme .check.checked {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6, #fda4af);
+  border-color: #f472b6;
+  box-shadow: 0 0 16px rgba(244,114,182,0.65);
+}
+
+/* ── Star ── */
+body.fluffytown-theme .star-btn.on { color: #f472b6; text-shadow: 0 0 10px rgba(244,114,182,0.65); }
+
+/* ── Tags ── */
+body.fluffytown-theme .tag.habit    { background: rgba(244,114,182,0.18); color: #be185d; border-radius: 10px; }
+body.fluffytown-theme .tag.task     { background: rgba(253,164,175,0.2);  color: #9d174d; border-radius: 10px; }
+body.fluffytown-theme .tag.repeat   { background: rgba(167,139,250,0.17); color: #6d28d9; border-radius: 10px; }
+body.fluffytown-theme .tag.shopping { background: rgba(16,185,129,0.14);  color: #065f46; border-radius: 10px; }
+
+/* ── Add bar ── */
+body.fluffytown-theme .add-bar {
+  background: linear-gradient(145deg, #fff8fb, #fff2f8);
+  border: 1.5px solid rgba(244,114,182,0.52);
+  border-radius: 20px;
+  box-shadow: 0 4px 28px rgba(244,114,182,0.18), 0 0 0 1px rgba(244,114,182,0.08), inset 0 1px 0 rgba(255,255,255,0.95);
+}
+body.fluffytown-theme .add-bar input { color: #4a1535; }
+body.fluffytown-theme .add-bar input::placeholder { color: rgba(181,107,138,0.5); }
+
+/* ── Add button ── */
+body.fluffytown-theme .btn-add {
+  background: linear-gradient(135deg, #be185d 0%, #ec4899 30%, #f472b6 60%, #fda4af 100%);
+  background-size: 250% 100%;
+  animation: fluffy-shimmer 3.5s linear infinite;
+  box-shadow: 0 3px 16px rgba(244,114,182,0.55), 0 0 0 1px rgba(244,114,182,0.22);
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+body.fluffytown-theme .btn-add::after {
+  content: '';
+  position: absolute;
+  top: 0; width: 45%; height: 100%;
+  left: -60%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: fluffy-activate-sweep 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ── Buttons ── */
+body.fluffytown-theme .btn-save {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6);
+  border-radius: 12px;
+  box-shadow: 0 3px 14px rgba(244,114,182,0.45);
+}
+body.fluffytown-theme .btn-icon { border-radius: 12px; border-color: rgba(244,114,182,0.22); color: #b56b8a; }
+body.fluffytown-theme .btn-icon:hover { background: rgba(244,114,182,0.1); border-color: rgba(244,114,182,0.4); color: #ec4899; }
+
+/* ── Section headers ── */
+body.fluffytown-theme .section-hdr { color: #be185d; border-bottom: 1px solid rgba(244,114,182,0.18); }
+
+/* ── Group accordion ── */
+body.fluffytown-theme .group-accordion {
+  border-color: rgba(244,114,182,0.18);
+  border-radius: 20px;
+  box-shadow: 0 2px 12px rgba(244,114,182,0.1);
+  overflow: hidden;
+}
+body.fluffytown-theme .group-header { background: linear-gradient(90deg, rgba(244,114,182,0.08), rgba(253,164,175,0.04)); }
+body.fluffytown-theme .group-header:hover { background: linear-gradient(90deg, rgba(244,114,182,0.15), rgba(253,164,175,0.08)); }
+body.fluffytown-theme .group-badge {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6);
+  box-shadow: 0 0 8px rgba(244,114,182,0.45);
+  border-radius: 12px;
+}
+
+/* ── Fin / stat cards ── */
+body.fluffytown-theme .fin-card,
+body.fluffytown-theme .stat-card,
+body.fluffytown-theme .stat-card-sm {
+  background: linear-gradient(145deg, #fff8fb, #fff2f8);
+  border: 1px solid rgba(244,114,182,0.18);
+  border-radius: 20px;
+  box-shadow: 0 2px 14px rgba(244,114,182,0.12), inset 0 1px 0 rgba(255,255,255,0.85);
+}
+body.fluffytown-theme .fin-card-val,
+body.fluffytown-theme .stat-num,
+body.fluffytown-theme .stat-num-sm { color: #ec4899; }
+body.fluffytown-theme .fin-card-label,
+body.fluffytown-theme .stat-lbl,
+body.fluffytown-theme .stat-lbl-sm { color: #b56b8a; }
+
+/* ── Habit panel & rows ── */
+body.fluffytown-theme .habit-panel {
+  background: linear-gradient(160deg, #fff8fb, #fff2f8);
+  border-left: 1px solid rgba(244,114,182,0.18);
+}
+body.fluffytown-theme .habit-row {
+  background: linear-gradient(145deg, #fff8fb, #fff5fa);
+  border-color: rgba(244,114,182,0.18);
+  border-radius: 12px;
+}
+body.fluffytown-theme .habit-row:hover { box-shadow: 0 4px 16px rgba(244,114,182,0.16); }
+
+/* ── Habit dots ── */
+body.fluffytown-theme .dot {
+  border-color: rgba(244,114,182,0.25);
+  border-radius: 6px;
+  color: rgba(244,114,182,0.4);
+}
+body.fluffytown-theme .dot.done {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6, #fda4af);
+  box-shadow: 0 0 8px rgba(244,114,182,0.55);
+  border-color: transparent;
+}
+body.fluffytown-theme .dot.today-dot { border-color: #f472b6; box-shadow: 0 0 10px rgba(244,114,182,0.45); }
+body.fluffytown-theme .streak-badge {
+  background: rgba(244,114,182,0.14);
+  border: 1px solid rgba(244,114,182,0.28);
+  color: #be185d;
+}
+
+/* ── Chips ── */
+body.fluffytown-theme .chip {
+  border-radius: 20px;
+  color: #9d174d;
+  background: rgba(255,255,255,0.75);
+  border-color: rgba(244,114,182,0.35);
+}
+body.fluffytown-theme .chip:hover {
+  background: rgba(244,114,182,0.12);
+  color: #be185d;
+}
+body.fluffytown-theme .chip.active {
+  background: rgba(244,114,182,0.2);
+  color: #be185d;
+  border-color: rgba(244,114,182,0.5);
+}
+/* chip-select (Repeat, Grup dropdowns) di add-bar */
+body.fluffytown-theme .chip-select {
+  color: #9d174d;
+  background: rgba(255,255,255,0.75);
+  border-color: rgba(244,114,182,0.35);
+}
+/* sqa-chip override khusus fluffy town (sidebar quick-add) */
+body.fluffytown-theme .sqa-chip {
+  color: rgba(253,164,175,0.9) !important;
+  background: rgba(255,255,255,0.1) !important;
+  border-color: rgba(244,114,182,0.3) !important;
+}
+body.fluffytown-theme .sqa-chip.active {
+  background: rgba(244,114,182,0.25) !important;
+  border-color: #f472b6 !important;
+  color: #fecdd3 !important;
+}
+body.fluffytown-theme .sqa-select {
+  color: rgba(253,164,175,0.9) !important;
+  background: rgba(255,255,255,0.1) !important;
+  border-color: rgba(244,114,182,0.3) !important;
+}
+
+/* ── Toasts ── */
+body.fluffytown-theme .toast {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6);
+  box-shadow: 0 4px 24px rgba(244,114,182,0.55);
+  border-radius: 22px;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+body.fluffytown-theme .xp-toast {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6, #fda4af);
+  box-shadow: 0 4px 22px rgba(244,114,182,0.55);
+}
+body.fluffytown-theme .gold-toast {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24, #fde68a, #fbbf24);
+  color: #7c2d12;
+  box-shadow: 0 4px 18px rgba(251,191,36,0.5);
+}
+
+/* ── Scrollbar ── */
+body.fluffytown-theme ::-webkit-scrollbar-thumb { background: rgba(244,114,182,0.3); border-radius: 10px; }
+body.fluffytown-theme ::-webkit-scrollbar-thumb:hover { background: rgba(244,114,182,0.5); }
+body.fluffytown-theme * { scrollbar-color: rgba(244,114,182,0.3) transparent; }
+
+/* ── Detail panel ── */
+body.fluffytown-theme .detail-panel {
+  background: linear-gradient(160deg, #fff2f8, #fff8fb, #fffbfe);
+  border-left: 1px solid rgba(244,114,182,0.22);
+  box-shadow: -4px 0 48px rgba(244,114,182,0.16), 0 0 40px rgba(244,114,182,0.05);
+  border-radius: 20px 0 0 20px;
+}
+body.fluffytown-theme .det-input {
+  background: rgba(244,114,182,0.06);
+  border-color: rgba(244,114,182,0.22);
+  color: #4a1535;
+  border-radius: 12px;
+}
+body.fluffytown-theme .det-input:focus {
+  border-color: #f472b6;
+  box-shadow: 0 0 0 3px rgba(244,114,182,0.14);
+  background: rgba(244,114,182,0.09);
+}
+body.fluffytown-theme .det-label { color: #b56b8a; }
+body.fluffytown-theme .close-btn:hover { color: #ec4899; }
+
+/* ── Achievements ── */
+body.fluffytown-theme .achievement.unlocked {
+  background: linear-gradient(145deg, #fff0f8, #fce7f3, #fff8fb);
+  border-color: rgba(244,114,182,0.42);
+  box-shadow: 0 0 20px rgba(244,114,182,0.18), inset 0 1px 0 rgba(255,255,255,0.8);
+}
+
+/* ── Bottom nav (mobile) ── */
+body.fluffytown-theme .bottom-nav {
+  background: linear-gradient(180deg, #5c1a3a, #4d1230);
+  border-top: 1px solid rgba(244,114,182,0.25);
+  box-shadow: 0 -4px 28px rgba(244,114,182,0.25), 0 -1px 0 rgba(244,114,182,0.12);
+}
+body.fluffytown-theme .bn-item { color: rgba(253,164,175,0.42); }
+body.fluffytown-theme .bn-item:active { color: #fda4af; }
+body.fluffytown-theme .bn-item.active { color: #fda4af; text-shadow: 0 0 10px rgba(244,114,182,0.55); }
+body.fluffytown-theme .bn-item.fin-active { color: #c4b5fd; }
+body.fluffytown-theme .bn-item.maint-active { color: #a5f3fc; }
+body.fluffytown-theme .bn-badge { background: #ec4899; box-shadow: 0 0 6px rgba(244,114,182,0.5); }
+
+/* ── Subdrawer (mobile) ── */
+body.fluffytown-theme .subdrawer {
+  background: linear-gradient(160deg, #4d1230 0%, #6e1a45 40%, #7d2055 60%, #4d1230 100%);
+  border-top: 1px solid rgba(244,114,182,0.3);
+  box-shadow: 0 -8px 56px rgba(244,114,182,0.25), 0 -1px 0 rgba(244,114,182,0.2);
+}
+body.fluffytown-theme .subdrawer-handle { background-color: rgba(244,114,182,0.45); background-clip: content-box; }
+body.fluffytown-theme .subdrawer-title { color: #ffe4ef; }
+body.fluffytown-theme .subdrawer-close { color: rgba(253,164,175,0.5); }
+body.fluffytown-theme .subdrawer-header { border-bottom: 1px solid rgba(244,114,182,0.18); }
+body.fluffytown-theme .subdrawer-item {
+  background: rgba(244,114,182,0.07);
+  border: 1px solid rgba(244,114,182,0.14);
+  color: rgba(253,164,175,0.7);
+  border-radius: 14px;
+}
+body.fluffytown-theme .subdrawer-item:active { background: rgba(244,114,182,0.16); }
+body.fluffytown-theme .subdrawer-item.active {
+  background: linear-gradient(135deg, rgba(244,114,182,0.28), rgba(244,114,182,0.1));
+  border-color: rgba(244,114,182,0.42);
+  color: #fecdd3;
+  box-shadow: inset 0 0 20px rgba(244,114,182,0.08), 0 0 12px rgba(244,114,182,0.12);
+}
+body.fluffytown-theme .subdrawer-item.fin.active {
+  background: linear-gradient(135deg, rgba(167,139,250,0.25), rgba(167,139,250,0.08));
+  border-color: rgba(167,139,250,0.4);
+  color: #c4b5fd;
+}
+body.fluffytown-theme .subdrawer-item.maint.active {
+  background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.07));
+  border-color: rgba(6,182,212,0.35);
+  color: #a5f3fc;
+}
+body.fluffytown-theme .sdi-cnt { background: linear-gradient(135deg, #be185d, #ec4899); box-shadow: 0 0 6px rgba(244,114,182,0.45); }
+
+/* ── FAB ── */
+body.fluffytown-theme .fab-add {
+  background: linear-gradient(135deg, #be185d 0%, #ec4899 30%, #f472b6 60%, #fda4af 90%, #f472b6 100%);
+  background-size: 280% 100%;
+  animation: fluffy-shimmer 3.5s linear infinite, fluffy-pulse-glow 3s ease-in-out infinite;
+  box-shadow: 0 4px 22px rgba(244,114,182,0.6), 0 0 0 2px rgba(253,164,175,0.25);
+}
+body.fluffytown-theme .fab-add.open {
+  background: linear-gradient(135deg, #6b1c45, #7d2055);
+  animation: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+
+/* ── Shop item ── */
+body.fluffytown-theme .shop-item {
+  background: linear-gradient(145deg, #fff8fb, #fff2f8);
+  border: 1px solid rgba(244,114,182,0.17);
+  border-radius: 20px;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+body.fluffytown-theme .shop-item:hover {
+  border-color: rgba(244,114,182,0.48);
+  box-shadow: 0 6px 24px rgba(244,114,182,0.22);
+  transform: translateY(-3px);
+}
+body.fluffytown-theme .shop-item.active-item {
+  border-color: #f472b6;
+  box-shadow: 0 0 22px rgba(244,114,182,0.38), 0 0 0 1px rgba(244,114,182,0.28);
+}
+
+/* ── Mobile add bar ── */
+body.fluffytown-theme .mobile-add-bar {
+  background: linear-gradient(160deg, #4d1230 0%, #6e1a45 40%, #7d2055 65%, #4d1230 100%);
+  border-top: 1px solid rgba(244,114,182,0.32);
+  box-shadow: 0 -8px 56px rgba(244,114,182,0.3), 0 -1px 0 rgba(244,114,182,0.22);
+}
+body.fluffytown-theme .mobile-add-row1 input {
+  background: rgba(244,114,182,0.12);
+  border: 1.5px solid rgba(244,114,182,0.32);
+  color: #ffe4ef;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.1);
+}
+body.fluffytown-theme .mobile-add-row1 input::placeholder { color: rgba(253,164,175,0.45); }
+body.fluffytown-theme .mobile-add-row1 input:focus {
+  border-color: #f472b6;
+  background: rgba(244,114,182,0.18);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.08), 0 0 0 3px rgba(244,114,182,0.18);
+}
+body.fluffytown-theme .mchip {
+  background: rgba(244,114,182,0.12);
+  border-color: rgba(244,114,182,0.28);
+  color: rgba(253,164,175,0.82);
+}
+body.fluffytown-theme .mchip:active, body.fluffytown-theme .mchip.active {
+  background: rgba(244,114,182,0.28);
+  border-color: #f472b6;
+  color: #fecdd3;
+  box-shadow: 0 0 10px rgba(244,114,182,0.28);
+}
+body.fluffytown-theme .mchip-select {
+  background: rgba(244,114,182,0.1);
+  border-color: rgba(244,114,182,0.25);
+  color: rgba(253,164,175,0.75);
+}
+body.fluffytown-theme .mobile-add-cancel {
+  background: rgba(244,114,182,0.1);
+  border: 1px solid rgba(244,114,182,0.25);
+  color: rgba(253,164,175,0.7);
+}
+body.fluffytown-theme .mobile-add-submit {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6, #fda4af);
+  background-size: 250% 100%;
+  animation: fluffy-shimmer 3.2s linear infinite;
+  box-shadow: 0 3px 18px rgba(244,114,182,0.6);
+  border-radius: 14px;
+}
+
+/* ── Mobile logo ── */
+body.fluffytown-theme .mobile-logo-icon {
+  background: linear-gradient(135deg, #ec4899, #f472b6, #fda4af);
+  box-shadow: 0 0 0 1px rgba(244,114,182,0.5), 0 0 14px rgba(244,114,182,0.55);
+  animation: fluffy-pulse-glow 3s ease-in-out infinite;
+}
+body.fluffytown-theme .mobile-logo-text .chi { color: #4a1535; }
+body.fluffytown-theme .mobile-logo-text .tsk { color: #ec4899; text-shadow: 0 0 8px rgba(244,114,182,0.5); }
+body.fluffytown-theme .home-title-hero { color: #4a1535; }
+body.fluffytown-theme .home-date-hero { color: #b56b8a; }
+body.fluffytown-theme .mobile-back-btn { color: #e879a8; }
+body.fluffytown-theme .mobile-back-btn:active { color: #ec4899; }
+
+/* ── Modal bottom sheets ── */
+body.fluffytown-theme .modal-box,
+body.fluffytown-theme .wish-modal-box,
+body.fluffytown-theme .maint-detail-box {
+  background: linear-gradient(160deg, #fff2f8, #fff8fb, #fffbfe);
+  border-top: 1px solid rgba(244,114,182,0.28);
+  box-shadow: 0 -8px 56px rgba(244,114,182,0.22);
+}
+body.fluffytown-theme .modal-title,
+body.fluffytown-theme .wish-modal-title { color: #4a1535; }
+body.fluffytown-theme .modal-input {
+  background: rgba(244,114,182,0.06);
+  border-color: rgba(244,114,182,0.22);
+  color: #4a1535;
+  border-radius: 10px;
+}
+body.fluffytown-theme .modal-input:focus {
+  border-color: #f472b6;
+  box-shadow: 0 0 0 3px rgba(244,114,182,0.14);
+}
+body.fluffytown-theme .modal-btn.secondary {
+  background: rgba(244,114,182,0.07);
+  border-color: rgba(244,114,182,0.2);
+  color: #b56b8a;
+}
+
+/* ── Fin add bar ── */
+body.fluffytown-theme .fin-add-bar {
+  background: linear-gradient(145deg, #fff8fb, #fff2f8);
+  border-color: rgba(244,114,182,0.42);
+  border-radius: 20px;
+}
+body.fluffytown-theme .fin-input,
+body.fluffytown-theme .maint-input {
+  background: rgba(244,114,182,0.06);
+  border-color: rgba(244,114,182,0.22);
+  color: #4a1535;
+  border-radius: 12px;
+}
+body.fluffytown-theme .fin-input:focus,
+body.fluffytown-theme .maint-input:focus {
+  border-color: #f472b6;
+  box-shadow: 0 0 0 3px rgba(244,114,182,0.14);
+}
+
+/* ── Pomo mini ── */
+body.fluffytown-theme .pomo-mini {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6);
+  box-shadow: 0 4px 20px rgba(244,114,182,0.55), 0 0 0 1px rgba(244,114,182,0.25);
+}
+
+/* ── Calendar ── */
+body.fluffytown-theme .cal-cell.today { border-color: #f472b6; color: #ec4899; font-weight: 700; }
+body.fluffytown-theme .cal-cell.has-tasks { background: rgba(244,114,182,0.09); }
+body.fluffytown-theme .cal-cell.selected-date { background: rgba(244,114,182,0.18); border-color: #f472b6; }
+body.fluffytown-theme .cal-cell:hover { background: rgba(244,114,182,0.08); }
+
+/* ── Section hdr (mobile) ── */
+@media(max-width:700px){
+  body.fluffytown-theme .section-hdr {
+    color: #ec4899;
+    border-bottom-color: rgba(244,114,182,0.2);
+  }
+  body.fluffytown-theme .fin-card {
+    background: linear-gradient(145deg, #fff8fb, #fff2f8);
+    border-color: rgba(244,114,182,0.2);
+    border-radius: 20px;
+  }
+  body.fluffytown-theme .topbar {
+    background: linear-gradient(180deg, rgba(253,232,242,0.99) 0%, rgba(253,238,246,0.97) 100%);
+    border-bottom: 1px solid rgba(244,114,182,0.2);
+    box-shadow: 0 2px 16px rgba(244,114,182,0.1);
+  }
+  body.fluffytown-theme .detail-panel {
+    background: linear-gradient(160deg, #fff2f8, #fff8fb);
+    border-top: 1px solid rgba(244,114,182,0.28);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 48px rgba(244,114,182,0.2);
+  }
+}
+
+/* ── Sidebar overlay ── */
+body.fluffytown-theme .sidebar-overlay {
+  background: rgba(77,18,48,0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ── Bar chart ── */
+body.fluffytown-theme .bar { background: linear-gradient(180deg, #f472b6, #ec4899); border-radius: 6px 6px 0 0; }
+
+/* ── Budget ── */
+body.fluffytown-theme .budget-bar-fill.safe { background: linear-gradient(90deg, #10b981, #34d399); }
+body.fluffytown-theme .budget-bar-fill.warn { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+body.fluffytown-theme .budget-bar-fill.over  { background: linear-gradient(90deg, #f43f5e, #fb7185); }
+
+/* ── Weekly review ── */
+body.fluffytown-theme .wr-overlay { background: rgba(77,18,48,0.5); backdrop-filter: blur(4px); }
+body.fluffytown-theme .wr-box {
+  background: linear-gradient(145deg, #fff8fb, #fff2f8);
+  border: 1px solid rgba(244,114,182,0.22);
+  box-shadow: 0 24px 64px rgba(244,114,182,0.22);
+}
+
+/* ── Journal ── */
+body.fluffytown-theme .journal-cal-cell.today { border-color: #f472b6; color: #ec4899; }
+body.fluffytown-theme .journal-cal-cell.has-journal { background: rgba(167,139,250,0.08); }
+body.fluffytown-theme .journal-cal-cell.selected-date { background: rgba(167,139,250,0.16); border-color: #a78bfa; }
+
+
+/* ══ FLUFFY TOWN LUXURY UPGRADE ══
+   Extra premium touches for max cuteness & elegance
+═══════════════════════════════════════════════════ */
+
+/* ── Font upgrade for FluffyTown ── */
+body.fluffytown-theme {
+  font-family: 'DM Sans', 'Nunito', -apple-system, sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* ── Floating orbs (desktop only) ── */
+body.fluffytown-theme::before {
+  content: '';
+  position: fixed;
+  top: 8%; right: 4%;
+  width: 420px; height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(244,114,182,0.13) 0%, rgba(253,164,175,0.07) 40%, transparent 70%);
+  animation: fluffy-orb 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+body.fluffytown-theme::after {
+  content: '';
+  position: fixed;
+  bottom: 12%; left: 2%;
+  width: 320px; height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(253,164,175,0.16) 0%, rgba(244,114,182,0.07) 40%, transparent 70%);
+  animation: fluffy-orb 10s ease-in-out 3s infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Group accordion - luxury ── */
+body.fluffytown-theme .group-accordion {
+  border: 1.5px solid rgba(244,114,182,0.2) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 4px 20px rgba(244,114,182,0.12), inset 0 1px 0 rgba(255,255,255,0.8) !important;
+  margin-bottom: 10px !important;
+  overflow: hidden !important;
+  background: rgba(255,246,251,0.7) !important;
+  backdrop-filter: blur(4px) !important;
+}
+body.fluffytown-theme .group-header {
+  background: linear-gradient(135deg, rgba(255,228,245,0.85), rgba(253,220,242,0.6)) !important;
+  border-bottom: 1px solid rgba(244,114,182,0.12) !important;
+  padding: 12px 16px !important;
+}
+body.fluffytown-theme .group-header:hover {
+  background: linear-gradient(135deg, rgba(244,114,182,0.15), rgba(253,164,175,0.1)) !important;
+}
+body.fluffytown-theme .group-header-left {
+  font-weight: 700 !important;
+  color: #9d174d !important;
+  font-size: 13.5px !important;
+  letter-spacing: 0.01em !important;
+}
+body.fluffytown-theme .group-badge {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6) !important;
+  box-shadow: 0 2px 10px rgba(244,114,182,0.5), 0 0 0 1px rgba(244,114,182,0.25) !important;
+  border-radius: 20px !important;
+  font-size: 10px !important;
+  padding: 2px 9px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.3px !important;
+}
+body.fluffytown-theme .group-chevron {
+  color: #f472b6 !important;
+  font-size: 12px !important;
+}
+
+/* ── Task scroll area ── */
+body.fluffytown-theme .task-scroll {
+  padding-top: 4px !important;
+}
+
+/* ── Task cards - extra luxury ── */
+body.fluffytown-theme .task-card {
+  background: linear-gradient(145deg, #ffffff, #fff8fc, #fff4f9) !important;
+  border: 1.5px solid rgba(244,114,182,0.2) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 3px 18px rgba(244,114,182,0.13), 0 1px 3px rgba(244,114,182,0.07), inset 0 1.5px 0 rgba(255,255,255,1) !important;
+  margin-bottom: 8px !important;
+  transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1) !important;
+}
+body.fluffytown-theme .task-card:hover {
+  border-color: rgba(244,114,182,0.45) !important;
+  box-shadow: 0 8px 30px rgba(244,114,182,0.22), 0 0 0 1px rgba(244,114,182,0.15), inset 0 1.5px 0 rgba(255,255,255,1) !important;
+  transform: translateY(-3px) scale(1.005) !important;
+}
+body.fluffytown-theme .task-name {
+  color: #4a1535 !important;
+  font-weight: 600 !important;
+}
+
+/* ── Section header ── */
+body.fluffytown-theme .section-hdr {
+  color: #be185d !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.8px !important;
+  border-bottom: 1.5px solid rgba(244,114,182,0.2) !important;
+  padding-bottom: 8px !important;
+  font-size: 10.5px !important;
+}
+
+/* ── Journal prompt card ── */
+body.fluffytown-theme [id*="journalPrompt"],
+body.fluffytown-theme .journal-prompt-card {
+  background: linear-gradient(135deg, #fff0f8, #fce7f3) !important;
+  border: 1.5px solid rgba(244,114,182,0.28) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 4px 20px rgba(244,114,182,0.16) !important;
+}
+
+/* ── Topbar hero section ── */
+body.fluffytown-theme .page-title {
+  color: #4a1535 !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.5px !important;
+}
+body.fluffytown-theme .page-subtitle {
+  color: #b56b8a !important;
+}
+
+/* ── Check button - premium ── */
+body.fluffytown-theme .check {
+  width: 22px !important;
+  height: 22px !important;
+  border: 2px solid rgba(244,114,182,0.4) !important;
+  border-radius: 50% !important;
+  transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1) !important;
+}
+body.fluffytown-theme .check:hover {
+  border-color: #f472b6 !important;
+  background: rgba(244,114,182,0.1) !important;
+  box-shadow: 0 0 14px rgba(244,114,182,0.4) !important;
+  transform: scale(1.1) !important;
+}
+body.fluffytown-theme .check.checked {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6, #fda4af) !important;
+  border-color: #f472b6 !important;
+  box-shadow: 0 0 18px rgba(244,114,182,0.7) !important;
+}
+
+/* ── Star button ── */
+body.fluffytown-theme .star-btn {
+  font-size: 18px !important;
+  transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1) !important;
+}
+body.fluffytown-theme .star-btn:hover {
+  transform: scale(1.3) rotate(15deg) !important;
+}
+body.fluffytown-theme .star-btn.on {
+  color: #f472b6 !important;
+  text-shadow: 0 0 12px rgba(244,114,182,0.7) !important;
+}
+
+/* ── Tags - extra cute ── */
+body.fluffytown-theme .tag {
+  border-radius: 12px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 2px 8px !important;
+  letter-spacing: 0.2px !important;
+}
+body.fluffytown-theme .tag.habit {
+  background: linear-gradient(135deg, rgba(244,114,182,0.2), rgba(253,164,175,0.15)) !important;
+  color: #be185d !important;
+  border: 1px solid rgba(244,114,182,0.25) !important;
+}
+
+/* ── XP bar & sidebar footer ── */
+body.fluffytown-theme .sidebar-footer {
+  border-top: 1px solid rgba(244,114,182,0.18) !important;
+  color: rgba(253,164,175,0.55) !important;
+}
+
+/* ── Sidebar brand sub ── */
+body.fluffytown-theme .brand-sub {
+  color: rgba(253,164,175,0.6) !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* ── Nav divider ── */
+body.fluffytown-theme .nav-divider {
+  border-color: rgba(244,114,182,0.15) !important;
+}
+
+/* ── Dashboard cards ── */
+body.fluffytown-theme .dash-card {
+  background: linear-gradient(145deg, #fff8fb, #fff2f8) !important;
+  border: 1.5px solid rgba(244,114,182,0.18) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 4px 20px rgba(244,114,182,0.12), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+}
+body.fluffytown-theme .dash-big-num {
+  color: #ec4899 !important;
+}
+body.fluffytown-theme .dash-card-title {
+  color: #b56b8a !important;
+}
+
+/* ── Chart / bar ── */
+body.fluffytown-theme .chart-wrap {
+  background: linear-gradient(145deg, #fff8fb, #fff2f8) !important;
+  border: 1.5px solid rgba(244,114,182,0.18) !important;
+  border-radius: 18px !important;
+}
+
+/* ── Pomo box ── */
+body.fluffytown-theme .pomo-box {
+  background: linear-gradient(145deg, #fff8fb, #fff2f8) !important;
+  border: 1.5px solid rgba(244,114,182,0.22) !important;
+  border-radius: 24px !important;
+}
+body.fluffytown-theme .pomo-ring-fill { stroke: #f472b6 !important; }
+body.fluffytown-theme .pomo-btn.start {
+  background: linear-gradient(135deg, #be185d, #ec4899, #f472b6) !important;
+  box-shadow: 0 3px 14px rgba(244,114,182,0.45) !important;
+  border-radius: 14px !important;
+}
+
+/* ── Mobile add bar - luxury ── */
+body.fluffytown-theme .mobile-add-bar {
+  background: linear-gradient(160deg, #4d1230 0%, #6b1a42 30%, #7d2055 60%, #6b1a42 85%, #4d1230 100%) !important;
+  border-top: 2px solid rgba(244,114,182,0.38) !important;
+  box-shadow: 0 -12px 60px rgba(244,114,182,0.35), 0 -2px 0 rgba(244,114,182,0.28) !important;
+  border-radius: 28px 28px 0 0 !important;
+}
+
+/* ── FAB button - premium ── */
+body.fluffytown-theme .fab-add {
+  background: linear-gradient(135deg, #be185d 0%, #ec4899 30%, #f472b6 55%, #fda4af 80%, #f9c8db 100%) !important;
+  background-size: 300% 100% !important;
+  width: 58px !important;
+  height: 58px !important;
+  border-radius: 50% !important;
+  box-shadow: 0 6px 28px rgba(244,114,182,0.65), 0 0 0 3px rgba(253,164,175,0.35), 0 0 0 6px rgba(244,114,182,0.1) !important;
+  font-size: 28px !important;
+}
+
+/* ── Bottom nav - desktop sidebar on mobile ── */
+body.fluffytown-theme .bn-lbl {
+  font-size: 9.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.2px !important;
+}
+body.fluffytown-theme .bn-ic {
+  font-size: 21px !important;
+}
+
+/* ── Saving target bar ── */
+body.fluffytown-theme .saving-target-fill {
+  background: linear-gradient(90deg, #be185d, #ec4899, #f472b6, #fda4af) !important;
+}
+
+/* ── Streak badge ── */
+body.fluffytown-theme .streak-badge {
+  background: linear-gradient(135deg, rgba(244,114,182,0.2), rgba(253,164,175,0.15)) !important;
+  border: 1px solid rgba(244,114,182,0.32) !important;
+  color: #be185d !important;
+  font-weight: 800 !important;
+}
+
+/* ── Wallet items ── */
+body.fluffytown-theme .wallet-item {
+  background: linear-gradient(145deg, #fff8fb, #fff4f9) !important;
+  border: 1px solid rgba(244,114,182,0.18) !important;
+  border-radius: 14px !important;
+}
+
+/* ── Modal boxes ── */
+body.fluffytown-theme .modal-box,
+body.fluffytown-theme .wish-modal-box,
+body.fluffytown-theme .maint-detail-box {
+  border-radius: 28px 28px 0 0 !important;
+  border-top: 2px solid rgba(244,114,182,0.3) !important;
+  box-shadow: 0 -12px 60px rgba(244,114,182,0.28) !important;
+}
+
+/* ── Mobile: section headers ── */
+@media(max-width:700px){
+  body.fluffytown-theme .group-accordion {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  body.fluffytown-theme .task-card {
+    border-radius: 18px !important;
+  }
+  body.fluffytown-theme .fab-add {
+    bottom: calc(14px + env(safe-area-inset-bottom, 0)) !important;
+  }
+}
+
+/* ── FLUFFY TOWN ACTIVATION OVERLAY ── */
+#fluffyActivateOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  overflow: hidden;
+}
+#fluffyActivateOverlay.active { display: block; }
+#fluffyActivateOverlay .fluffy-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(244,114,182,0.6) 0%, rgba(253,164,175,0.2) 55%, transparent 100%);
+  animation: fluffy-activate-flash 1.8s ease-out forwards;
+}
+#fluffyActivateOverlay .fluffy-sweep {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 0; width: 50%;
+  background: linear-gradient(90deg, transparent 0%, rgba(244,114,182,0.2) 30%, rgba(255,209,220,0.35) 50%, rgba(244,114,182,0.2) 70%, transparent 100%);
+  animation: fluffy-activate-sweep 1.2s cubic-bezier(0.4,0,0.2,1) 0.1s forwards;
+}
+#fluffyActivateOverlay .fluffy-ring {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 180px; height: 180px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(244,114,182,0.8);
+  box-shadow: 0 0 30px rgba(244,114,182,0.5), inset 0 0 30px rgba(244,114,182,0.2);
+  animation: fluffy-activate-ring 1.3s ease-out forwards;
+}
+#fluffyActivateOverlay .fluffy-ring2 {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  border: 2px solid rgba(253,164,175,0.7);
+  box-shadow: 0 0 20px rgba(253,164,175,0.4);
+  animation: fluffy-activate-ring 1.3s ease-out 0.25s forwards;
+}
+#fluffyActivateOverlay .fluffy-heart {
+  position: absolute;
+  font-size: 22px;
+  animation: fluffy-heart-pop 1s ease-out forwards;
+  pointer-events: none;
+}
+
+/* ── HAMSTER EATING OVERLAY ── */
+#hamsterEatOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9997;
+  pointer-events: none;
+  align-items: center;
+  justify-content: center;
+}
+#hamsterEatOverlay.active { display: flex; }
+.hamster-popup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  animation: fluffy-bounce 0.5s ease-out;
+}
+.hamster-canvas-wrap {
+  position: relative;
+  width: 120px;
+  height: 120px;
+}
+.hamster-speech {
+  background: linear-gradient(135deg, #fff0f8, #fce7f3);
+  border: 2px solid rgba(244,114,182,0.35);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #be185d;
+  font-family: 'DM Sans', sans-serif;
+  box-shadow: 0 4px 14px rgba(244,114,182,0.2);
+  animation: fluffy-float 1.2s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+
+
+
+
+/* ══ Additional Rules (pre-section scattered) ══ */
+body.fluffytown-theme .btn-habit-analisa {
+  background: linear-gradient(135deg, #fff0f6 0%, #fce7f3 50%, #fdf2f8 100%);
+  border-color: rgba(244,114,182,0.35);
+  box-shadow: 0 4px 18px rgba(244,114,182,0.15), inset 0 1px 0 rgba(255,255,255,0.9);
+  overflow: hidden;
+}
+
+body.fluffytown-theme .btn-habit-analisa::after {
+  content: '♥';
+  position: absolute;
+  right: 56px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: rgba(244,114,182,0.25);
+  pointer-events: none;
+}
+
+body.fluffytown-theme .btn-habit-analisa:hover {
+  border-color: rgba(244,114,182,0.65);
+  box-shadow: 0 6px 24px rgba(244,114,182,0.25), 0 0 0 1px rgba(244,114,182,0.12);
+}
+
+body.fluffytown-theme .bha-title { color: #9d174d; }
+
+body.fluffytown-theme .bha-sub { color: rgba(190,24,93,0.5); }
+
+body.fluffytown-theme .bha-icon {
+  background: rgba(244,114,182,0.12);
+  border-color: rgba(244,114,182,0.3);
+}
+
+body.fluffytown-theme .bha-arrow { color: rgba(244,114,182,0.5); }
+
+body.fluffytown-theme .btn-habit-analisa:hover .bha-arrow { color: #ec4899; }

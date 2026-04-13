@@ -1,0 +1,72 @@
+/*
+╔══════════════════════════════════════════════════════════════════╗
+║  CHITASK THEME: Midnight 🌙
+║  Gelap. Tenang. Misterius. Ungu dalam keheningan malam.
+║
+║  CARA PAKAI:
+║    <body class="midnight-theme">
+║
+║  ACCENT COLOR : #8b5cf6
+║  BASE BG      : #0d0d1a
+║
+║  File ini adalah TEMPLATE LENGKAP satu tema.
+║  Untuk membuat tema baru, duplikat file ini dan:
+║    1. Ganti semua 'midnight-theme' → 'namatema-theme'
+║    2. Ganti warna accent, bg, dan efek sesuai tema baru
+║    3. Ganti nama @keyframes (prefix sl-/sly-/fluffy- dll)
+╚══════════════════════════════════════════════════════════════════╝
+*/
+
+/* ══════════════════════════════════════════════════════
+   🌙 MIDNIGHT — Login Screen & Splash & Nav Overrides
+══════════════════════════════════════════════════════ */
+
+body.midnight-theme     #fbLoginScreen { background: #12101e; }
+
+body.midnight-theme     .fb-login-name .tsk { color: #8b5cf6; }
+
+/* ══════════════════════════════════════════════════════
+   🌙 MIDNIGHT — All Theme Rules
+══════════════════════════════════════════════════════ */
+
+body.midnight-theme .btn-habit-analisa {
+  background: linear-gradient(135deg, #1c1c2e 0%, #16213e 100%);
+  border-color: rgba(139,92,246,0.25);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+body.midnight-theme .btn-habit-analisa:hover {
+  border-color: rgba(139,92,246,0.55);
+  box-shadow: 0 6px 24px rgba(139,92,246,0.2);
+}
+
+body.midnight-theme .bha-icon {
+  background: rgba(139,92,246,0.15);
+  border-color: rgba(139,92,246,0.3);
+}
+
+body.midnight-theme .bha-arrow { color: rgba(139,92,246,0.6); }
+
+body.midnight-theme .btn-habit-analisa:hover .bha-arrow { color: #a78bfa; }
+
+/* ══════════════════════════════════════════════════════
+   🌙 MIDNIGHT — CSS Variables (set di body.midnight-theme)
+══════════════════════════════════════════════════════ */
+/*
+   Midnight menggunakan Dark Mode base. Tambahkan ini ke :root atau
+   body.midnight-theme untuk full styling:
+
+   body.midnight-theme {
+     --bg:       #0d0d1a;
+     --card:     #12121f;
+     --sidebar:  #0a0a18;
+     --text:     #e2e0ff;
+     --muted:    rgba(180,170,255,0.45);
+     --border:   rgba(139,92,246,0.12);
+     --hover:    rgba(139,92,246,0.07);
+     --accent:   #8b5cf6;
+     --accent2:  #7c3aed;
+     --pill:     rgba(139,92,246,0.15);
+     --pill-text:#c4b5fd;
+   }
+*/

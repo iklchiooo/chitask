@@ -1,14 +1,20 @@
-// ╔══════════════════════════════════════════════════════╗
-// ║   ChiTask Service Worker v6                          ║
-// ║   Offline-first PWA — Cache & Network Strategy      ║
-// ║   + FCM Background Push Support                     ║
-// ╚══════════════════════════════════════════════════════╝
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  CHITASK SERVICE WORKER                                             ║
+// ║  Offline Cache & Asset Caching + FCM Background Push Support       ║
+// ║                                                                     ║
+// ║  Strategi Cache:                                                    ║
+// ║  • CRITICAL  → pre-cache saat install (shell app)                  ║
+// ║  • LAZY      → cache on-demand saat pertama diakses                ║
+// ║  • NETWORK   → selalu fresh dari network (Firebase, API)           ║
+// ║                                                                     ║
+// ║  Boss files & theme CSS hanya di-cache saat dibutuhkan             ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 
-// ── FCM: Import harus di baris paling atas SW ────────────────────
+// ── FCM: Import harus di baris paling atas SW ────────────────────────
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
-// ── Inisialisasi Firebase di SW ──────────────────────────────────
+// ── Inisialisasi Firebase di SW ──────────────────────────────────────
 firebase.initializeApp({
   apiKey:            "AIzaSyA_erlGbohRGlL0ei8l2RqJLR0sy-kVtvU",
   authDomain:        "chitask.firebaseapp.com",
@@ -20,7 +26,7 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// ── FCM: Tangani push saat app background / ditutup ─────────────
+// ── FCM: Tangani push saat app background / ditutup ─────────────────
 messaging.onBackgroundMessage(function(payload) {
   console.log('[sw.js] FCM background message:', payload);
   const data   = payload.data || payload.notification || {};
@@ -41,13 +47,20 @@ messaging.onBackgroundMessage(function(payload) {
   });
 });
 
-// ────────────────────────────────────────────────────────────────
-const CACHE_NAME   = 'chitask-v6';
-const CACHE_STATIC = 'chitask-static-v6';
-const CACHE_CDN    = 'chitask-cdn-v6';
+// ════════════════════════════════════════════════════════════════════════
+// VERSI & NAMA CACHE
+// Bump CACHE_VERSION setiap deploy untuk force update SW
+// ════════════════════════════════════════════════════════════════════════
+const CACHE_VERSION = 'chitask-v9';
+const STATIC_CACHE  = CACHE_VERSION + '-static';   // critical shell
+const LAZY_CACHE    = CACHE_VERSION + '-lazy';     // boss, themes, extras
+const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';  // CDN, fonts, runtime
 
-// Firebase & Google Auth — JANGAN di-cache
-// ⚠️ www.gstatic.com DIHAPUS dari sini karena dipakai importScripts FCM
+// ════════════════════════════════════════════════════════════════════════
+// HOST RULES
+// ════════════════════════════════════════════════════════════════════════
+
+// Firebase API → network only, jangan pernah cache
 const FIREBASE_HOSTS = [
   'firestore.googleapis.com',
   'identitytoolkit.googleapis.com',
@@ -58,163 +71,370 @@ const FIREBASE_HOSTS = [
   'oauth2.googleapis.com'
 ];
 
-// GCal Worker — network only
-const WORKER_HOSTS = [
-  'workers.dev'
-];
+// GCal Worker → network only
+const WORKER_HOSTS = ['workers.dev'];
 
-// CDN assets — cache aggressively
+// CDN → cache aggressively di DYNAMIC_CACHE
 // ✅ www.gstatic.com masuk CDN supaya Firebase SDK di-cache dengan benar
 const CDN_HOSTS = [
   'cdnjs.cloudflare.com',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
-  'www.gstatic.com'
+  'www.gstatic.com',
+  'unpkg.com'
 ];
 
-// App shell files to pre-cache on install
-const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/sw.js',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
+// ════════════════════════════════════════════════════════════════════════
+// CRITICAL ASSETS — pre-cache saat install
+// Hanya file yang WAJIB ada untuk app shell berjalan offline.
+// Boss files & theme CSS TIDAK masuk sini (lazy load).
+// ════════════════════════════════════════════════════════════════════════
+const CRITICAL_ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+
+  // Ikon minimal untuk install prompt & notifikasi
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png',
+
+  // CSS utama — wajib ada sebelum render
+  './css/main.css',
+
+  // JS core — urutan sesuai dependensi
+  './js/lang.js',
+  './js/constants-helpers.js',
+  './js/chipstate.js',
+  './js/app.js',
+  './js/nlp.js',
+  './js/mobile-nav.js',
+  './js/onboarding.js',
+  './js/announcement.js',
+  './js/sholat.js',
+];
+
+// ════════════════════════════════════════════════════════════════════════
+// LAZY PATH PREFIXES — di-cache on-demand saat pertama diakses
+// Boss files: hanya dipakai jika gamer mode aktif
+// Theme CSS: hanya tema aktif yang dipakai user
+// ════════════════════════════════════════════════════════════════════════
+const LAZY_PATHS = [
+  '/boss/',
+  '/css/themes/',
+  '/icons/icon-96x96.png',
   '/icons/icon-144x144.png',
-  '/icons/icon-96x96.png'
+  '/icons/icon-128x128.png',
+  '/icons/icon-152x152.png',
+  '/icons/icon-384x384.png',
 ];
 
-// ── INSTALL: Pre-cache app shell ──────────────────────────────────
-self.addEventListener('install', e => {
+// ════════════════════════════════════════════════════════════════════════
+// INSTALL — pre-cache CRITICAL_ASSETS saja
+// ════════════════════════════════════════════════════════════════════════
+self.addEventListener('install', function(event) {
+  console.log('[SW] Installing — pre-caching critical assets...');
   self.skipWaiting();
-  e.waitUntil(
-    caches.open(CACHE_STATIC).then(cache => {
-      return cache.addAll(APP_SHELL).catch(err => {
-        console.warn('[SW] Pre-cache sebagian gagal (OK):', err);
-      });
+
+  event.waitUntil(
+    caches.open(STATIC_CACHE).then(function(cache) {
+      return Promise.allSettled(
+        CRITICAL_ASSETS.map(function(url) {
+          return cache.add(url).catch(function(err) {
+            console.warn('[SW] Gagal pre-cache:', url, err.message);
+          });
+        })
+      );
+    }).then(function() {
+      console.log('[SW] Install selesai. Boss & theme files akan di-cache saat diakses.');
     })
   );
 });
 
-// ── ACTIVATE: Bersihkan cache lama ───────────────────────────────
-self.addEventListener('activate', e => {
-  const validCaches = [CACHE_NAME, CACHE_STATIC, CACHE_CDN];
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
+// ════════════════════════════════════════════════════════════════════════
+// ACTIVATE — hapus cache lama, ambil alih semua client
+// ════════════════════════════════════════════════════════════════════════
+self.addEventListener('activate', function(event) {
+  console.log('[SW] Activating — membersihkan cache lama...');
+  const validCaches = [STATIC_CACHE, LAZY_CACHE, DYNAMIC_CACHE];
+
+  event.waitUntil(
+    caches.keys().then(function(keys) {
+      return Promise.all(
         keys
-          .filter(k => !validCaches.includes(k))
-          .map(k => {
-            console.log('[SW] Hapus cache lama:', k);
-            return caches.delete(k);
+          .filter(function(key) {
+            return key.startsWith('chitask-') && !validCaches.includes(key);
           })
-      )
-    ).then(() => self.clients.claim())
+          .map(function(key) {
+            console.log('[SW] Hapus cache lama:', key);
+            return caches.delete(key);
+          })
+      );
+    }).then(function() {
+      return self.clients.claim();
+    })
   );
 });
 
-// ── FETCH: Strategi per jenis request ────────────────────────────
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
+// ════════════════════════════════════════════════════════════════════════
+// FETCH — routing utama
+// ════════════════════════════════════════════════════════════════════════
+self.addEventListener('fetch', function(event) {
+  var req = event.request;
+  var url;
+  try { url = new URL(req.url); } catch { return; }
 
-  let url;
-  try { url = new URL(e.request.url); } catch { return; }
+  if (req.method !== 'GET') return;
 
-  // 1. Firebase API → network only, tidak di-cache sama sekali
-  if (FIREBASE_HOSTS.some(h => url.hostname.includes(h))) return;
+  // Network-only: Firebase API
+  if (FIREBASE_HOSTS.some(function(h) { return url.hostname.includes(h); })) return;
 
-  // 2. GCal Worker → network only
-  if (WORKER_HOSTS.some(h => url.hostname.includes(h))) return;
+  // Network-only: GCal Worker
+  if (WORKER_HOSTS.some(function(h) { return url.hostname.includes(h); })) return;
 
-  // 3. CDN (fonts, libraries, gstatic) → cache first, fallback network
-  if (CDN_HOSTS.some(h => url.hostname.includes(h))) {
-    e.respondWith(
-      caches.open(CACHE_CDN).then(cache =>
-        cache.match(e.request).then(cached => {
-          if (cached) return cached;
-          return fetch(e.request).then(res => {
-            if (res && res.status === 200) {
-              cache.put(e.request, res.clone());
-            }
-            return res;
-          }).catch(() => cached || new Response('', { status: 503 }));
-        })
-      )
-    );
-    return;
-  }
+  // Network-only: Firebase Storage
+  if (url.hostname.includes('storage.googleapis.com')) return;
 
-  // 4. App shell (same origin) → network first, fallback cache → fallback /
-  if (url.origin === self.location.origin) {
-    e.respondWith(
-      fetch(e.request)
-        .then(res => {
-          if (res && res.status === 200) {
-            const clone = res.clone();
-            caches.open(CACHE_STATIC).then(c => c.put(e.request, clone));
-          }
-          return res;
-        })
-        .catch(() =>
-          caches.match(e.request).then(cached =>
-            cached || caches.match('/index.html') || caches.match('/')
-          )
-        )
-    );
-    return;
-  }
+  event.respondWith(route(req, url));
 });
 
-// ── MESSAGE: Force update & notifikasi dari UI ───────────────────
-self.addEventListener('message', e => {
-  if (!e.data) return;
-  if (e.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+// ════════════════════════════════════════════════════════════════════════
+// ROUTING LOGIC
+// ════════════════════════════════════════════════════════════════════════
+function route(req, url) {
+  var isSameOrigin = url.origin === self.location.origin;
+  var path = url.pathname;
+
+  // 1. CDN → cache first di DYNAMIC_CACHE
+  if (CDN_HOSTS.some(function(h) { return url.hostname.includes(h); })) {
+    return cacheFirst(req, DYNAMIC_CACHE);
   }
-  if (e.data.type === 'CLEAR_CACHE') {
-    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+
+  if (isSameOrigin) {
+    // 2. Critical JS/CSS/icons → cache first di STATIC_CACHE
+    if (isCritical(path)) {
+      return cacheFirst(req, STATIC_CACHE);
+    }
+
+    // 3. Lazy paths (boss, themes, extra icons) → lazy cache first
+    if (isLazyPath(path)) {
+      return lazyCacheFirst(req, LAZY_CACHE);
+    }
+
+    // 4. HTML navigation → network first, fallback ke index.html
+    if (path.endsWith('.html') || path === '/' || !path.includes('.')) {
+      return networkFirst(req, STATIC_CACHE);
+    }
+
+    // 5. Aset statis lain same-origin → lazy cache
+    if (isStaticAsset(path)) {
+      return lazyCacheFirst(req, LAZY_CACHE);
+    }
   }
-  if (e.data.type === 'SHOW_NOTIFICATION') {
-    const d = e.data;
-    self.registration.showNotification(d.title, {
-      body:    d.body,
-      icon:    d.icon  || '/icons/icon-192x192.png',
-      badge:   '/icons/icon-96x96.png',
-      tag:     d.tag   || 'chitask-reminder',
-      renotify: true,
-      vibrate: [200, 100, 200],
-      requireInteraction: false,
-      data:    { taskId: d.taskId, url: '/' }
+
+  // 6. Semua lainnya → network first
+  return networkFirst(req, DYNAMIC_CACHE);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// PATH HELPERS
+// ════════════════════════════════════════════════════════════════════════
+
+function isCritical(path) {
+  return CRITICAL_ASSETS.some(function(asset) {
+    if (asset.startsWith('http')) return false;
+    var normalized = asset.replace('./', '/');
+    return path === normalized || path === normalized + 'index.html';
+  });
+}
+
+function isLazyPath(path) {
+  return LAZY_PATHS.some(function(prefix) {
+    return path.startsWith(prefix) || path === prefix;
+  });
+}
+
+function isStaticAsset(path) {
+  return (
+    path.endsWith('.js')     || path.endsWith('.css')   ||
+    path.endsWith('.svg')    || path.endsWith('.png')   ||
+    path.endsWith('.jpg')    || path.endsWith('.jpeg')  ||
+    path.endsWith('.webp')   || path.endsWith('.gif')   ||
+    path.endsWith('.ico')    || path.endsWith('.woff')  ||
+    path.endsWith('.woff2')  || path.endsWith('.ttf')   ||
+    path.endsWith('.lottie')
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// CACHE STRATEGIES
+// ════════════════════════════════════════════════════════════════════════
+
+// Cache First — serve dari cache, refresh di background untuk JS/CSS
+function cacheFirst(req, cacheName) {
+  return caches.open(cacheName).then(function(cache) {
+    return cache.match(req).then(function(cached) {
+      if (cached) {
+        backgroundRefresh(req, cache);
+        return cached;
+      }
+      return fetchAndStore(req, cache);
+    });
+  });
+}
+
+// Lazy Cache First — identik dengan cacheFirst tapi semantiknya berbeda:
+// tidak ada pre-warming, file baru di-fetch saat pertama kali diakses
+function lazyCacheFirst(req, cacheName) {
+  return caches.open(cacheName).then(function(cache) {
+    return cache.match(req).then(function(cached) {
+      if (cached) {
+        backgroundRefresh(req, cache);
+        return cached;
+      }
+      return fetchAndStore(req, cache);
+    });
+  });
+}
+
+// Network First — coba network, fallback ke cache jika offline
+function networkFirst(req, cacheName) {
+  return fetch(req).then(function(response) {
+    if (response && response.status === 200) {
+      var clone = response.clone();
+      caches.open(cacheName).then(function(cache) { cache.put(req, clone); });
+    }
+    return response;
+  }).catch(function() {
+    return caches.match(req).then(function(cached) {
+      return cached || offlineFallback(req);
+    });
+  });
+}
+
+// Fetch lalu simpan ke cache
+function fetchAndStore(req, cache) {
+  return fetch(req).then(function(response) {
+    if (response && (response.status === 200 || response.type === 'opaque')) {
+      cache.put(req, response.clone());
+    }
+    return response;
+  }).catch(function(err) {
+    console.warn('[SW] Fetch gagal:', req.url, err.message);
+    return offlineFallback(req);
+  });
+}
+
+// Background refresh — update cache diam-diam untuk JS & CSS
+function backgroundRefresh(req, cache) {
+  var url = req.url;
+  if (url.endsWith('.js') || url.endsWith('.css')) {
+    fetch(req).then(function(response) {
+      if (response && response.status === 200) {
+        cache.put(req, response);
+      }
+    }).catch(function() {});
+  }
+}
+
+// Fallback saat offline
+function offlineFallback(req) {
+  var accept = req.headers.get('accept') || '';
+  if (accept.includes('text/html')) {
+    return caches.match('./index.html').then(function(r) {
+      return r || caches.match('/');
     });
   }
-  if (e.data.type === 'SCHEDULE_NOTIFICATION') {
-    const d = e.data;
-    const delay = d.fireAt - Date.now();
+  return new Response('', { status: 503, statusText: 'Service Unavailable' });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// MESSAGE — kontrol dari halaman utama
+// ════════════════════════════════════════════════════════════════════════
+self.addEventListener('message', function(event) {
+  if (!event.data) return;
+
+  // Force update SW
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+
+  // Hapus semua cache (misal setelah logout / clear data)
+  if (event.data.type === 'CLEAR_CACHE') {
+    caches.keys().then(function(keys) {
+      return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+    }).then(function() {
+      event.ports[0] && event.ports[0].postMessage({ cleared: true });
+    });
+  }
+
+  // Pre-warm cache untuk lazy assets secara opsional
+  // Kirim dari app: navigator.serviceWorker.controller.postMessage({
+  //   type: 'WARM_CACHE',
+  //   paths: ['./boss/boss.js', './boss/iblis-kemalasan.js', ...]
+  // })
+  if (event.data.type === 'WARM_CACHE') {
+    var paths = event.data.paths || [];
+    caches.open(LAZY_CACHE).then(function(cache) {
+      paths.forEach(function(path) {
+        cache.match(path).then(function(hit) {
+          if (!hit) {
+            fetch(path).then(function(res) {
+              if (res && res.status === 200) cache.put(path, res);
+            }).catch(function() {});
+          }
+        });
+      });
+    });
+  }
+
+  // Tampilkan notifikasi langsung
+  if (event.data.type === 'SHOW_NOTIFICATION') {
+    var d = event.data;
+    self.registration.showNotification(d.title, {
+      body:     d.body,
+      icon:     d.icon || '/icons/icon-192x192.png',
+      badge:    '/icons/icon-96x96.png',
+      tag:      d.tag  || 'chitask-reminder',
+      renotify: true,
+      vibrate:  [200, 100, 200],
+      requireInteraction: false,
+      data:     { taskId: d.taskId, url: '/' }
+    });
+  }
+
+  // Jadwalkan notifikasi (hanya untuk < 5 menit ke depan)
+  if (event.data.type === 'SCHEDULE_NOTIFICATION') {
+    var d = event.data;
+    var delay = d.fireAt - Date.now();
     if (delay <= 0) return;
     if (delay < 5 * 60 * 1000) {
-      setTimeout(() => {
+      setTimeout(function() {
         self.registration.showNotification(d.title, {
-          body:    d.body,
-          icon:    '/icons/icon-192x192.png',
-          badge:   '/icons/icon-96x96.png',
-          tag:     d.tag || 'chitask-reminder',
+          body:     d.body,
+          icon:     '/icons/icon-192x192.png',
+          badge:    '/icons/icon-96x96.png',
+          tag:      d.tag || 'chitask-reminder',
           renotify: true,
-          vibrate: [200, 100, 200],
+          vibrate:  [200, 100, 200],
           requireInteraction: false,
-          data:    { taskId: d.taskId, url: '/' }
+          data:     { taskId: d.taskId, url: '/' }
         });
       }, delay);
     }
   }
 });
 
-// ── NOTIFICATION CLICK: Buka/focus tab app ───────────────────────
-self.addEventListener('notificationclick', e => {
-  e.notification.close();
-  const targetUrl = (e.notification.data && e.notification.data.url) || '/';
-  e.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-      for (const client of list) {
+// ════════════════════════════════════════════════════════════════════════
+// NOTIFICATION CLICK — buka / focus tab app
+// ════════════════════════════════════════════════════════════════════════
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  var targetUrl = (event.notification.data && event.notification.data.url) || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
+      for (var i = 0; i < list.length; i++) {
+        var client = list[i];
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           return client.focus();
         }
@@ -224,15 +444,18 @@ self.addEventListener('notificationclick', e => {
   );
 });
 
-// ── PUSH: Tangani raw push event (fallback jika FCM tidak handle) ─
-self.addEventListener('push', e => {
-  if (!e.data) return;
+// ════════════════════════════════════════════════════════════════════════
+// PUSH — tangani raw push event (fallback jika FCM tidak handle)
+// ════════════════════════════════════════════════════════════════════════
+self.addEventListener('push', function(event) {
+  if (!event.data) return;
   try {
-    const d = e.data.json();
-    const title = (d.notification && d.notification.title) || (d.data && d.data.title) || d.title || 'ChiTask ⏰ Pengingat';
-    const body  = (d.notification && d.notification.body)  || (d.data && d.data.body)  || d.body  || '';
-    const tag   = (d.data && d.data.tag) || d.tag || 'chitask-push';
-    e.waitUntil(
+    var d     = event.data.json();
+    var title = (d.notification && d.notification.title) || (d.data && d.data.title) || d.title || 'ChiTask ⏰ Pengingat';
+    var body  = (d.notification && d.notification.body)  || (d.data && d.data.body)  || d.body  || '';
+    var tag   = (d.data && d.data.tag) || d.tag || 'chitask-push';
+
+    event.waitUntil(
       self.registration.showNotification(title, {
         body,
         icon:    '/icons/icon-192x192.png',
