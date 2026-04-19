@@ -9,7 +9,7 @@
 // ANNOUNCEMENT SYSTEM — Semua fungsi
 // ══════════════════════════════════════════════════════════════════
 
-var _ANN_DEVELOPER_UID = ''; // TODO: ganti dengan UID akun developer kamu dari Firebase Console
+var _ANN_DEVELOPER_UID = 'sCMFCu4mZVXELiv6nZoTY2KAmng1';
 
 function isDeveloper(){
   if(!_ANN_DEVELOPER_UID) return false;
