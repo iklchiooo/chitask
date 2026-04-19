@@ -47,6 +47,15 @@ html{background:var(--bg);overflow:hidden;overflow-x:hidden;width:100%;height:10
   --blue:#3b82f6;--purple:#8b5cf6;
   --pill:#fef3c7;--pill-text:#92400e;--hover:rgba(0,0,0,0.03);
   --radius:10px;--shadow:0 1px 3px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04);
+
+  /* Sidebar Lottie Position - edit nilai ini untuk atur posisi/ukuran lottie di sidebar */
+  --lottie-fluffy-w:32px;   /* lebar hamster lottie */
+  --lottie-fluffy-h:32px;   /* tinggi hamster lottie */
+  --lottie-fluffy-mt:0px;   /* margin-top (negatif = ke atas) */
+  --lottie-slytherin-w:70px;  /* lebar slytherin lottie */
+  --lottie-slytherin-h:70px;  /* tinggi slytherin lottie */
+  --lottie-slytherin-top:-10px; /* posisi top (absolute) */
+  --lottie-slytherin-left:100px; /* posisi left (absolute) */
 }
 body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--text);background:var(--bg);height:100vh;display:flex;flex-direction:column;overflow:hidden;overflow-x:hidden;width:100%;max-width:100vw}
 .app{display:flex;height:100%;min-height:500px;width:100%;overflow:hidden;max-width:100vw}
@@ -54,6 +63,32 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 /* Sidebar */
 .sidebar{width:220px;min-width:220px;background:var(--sidebar);display:flex;flex-direction:column;transition:width 0.22s ease,min-width 0.22s ease,transform 0.25s ease;overflow:hidden}
 .sidebar.collapsed{width:0;min-width:0}
+/* Sidebar edge toggle tab — desktop only, sticks to right edge of sidebar */
+#sidebarEdgeToggle{
+  display:none;
+  position:fixed;
+  top:50%;
+  left:220px;
+  transform:translateY(-50%);
+  z-index:100;
+  width:20px;height:52px;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-left:none;
+  border-radius:0 8px 8px 0;
+  cursor:pointer;
+  align-items:center;justify-content:center;
+  color:var(--muted);
+  font-size:11px;
+  transition:left 0.22s ease,background 0.15s,color 0.15s;
+  box-shadow:3px 0 10px rgba(0,0,0,0.10);
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  flex-shrink:0;
+}
+#sidebarEdgeToggle:hover{background:var(--hover);color:var(--text);}
+.sidebar.collapsed~* #sidebarEdgeToggle,
+body.sidebar-collapsed #sidebarEdgeToggle{left:0;}
 .sidebar-scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 0 4px}
 .sidebar-bottom{flex-shrink:0}
 .sidebar-brand{padding:14px 16px 14px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px;display:flex;align-items:center;gap:10px}
@@ -153,6 +188,60 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 
 /* Habit side panel */
 .habit-panel{width:268px;min-width:255px;background:var(--card);border-left:1px solid var(--border);padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;flex-shrink:0}
+/* Habit panel wrapper — for positioning edge toggle tab */
+.habit-panel-wrap{position:relative;display:flex;flex-direction:row;flex-shrink:0}
+/* Restore tab: appears at right edge when habit panel is fully collapsed */
+#habitPanelRestoreBtn{
+  display:none;
+  position:relative;
+  width:20px;
+  flex-shrink:0;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-right:none;
+  border-radius:8px 0 0 8px;
+  cursor:pointer;
+  align-items:center;justify-content:center;
+  color:var(--muted);
+  font-size:10px;
+  writing-mode:vertical-rl;
+  letter-spacing:1px;
+  padding:12px 0;
+  box-shadow:-3px 0 10px rgba(0,0,0,0.10);
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  transition:background 0.15s,color 0.15s;
+}
+#habitPanelRestoreBtn::after{content:'🔥'}
+#habitPanelRestoreBtn:hover{background:var(--hover);color:var(--text);}
+#habitPanelEdgeToggle{
+  display:none;
+  position:absolute;
+  top:50%;left:-20px;
+  transform:translateY(-50%);
+  z-index:10;
+  width:20px;height:52px;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-right:none;
+  border-radius:8px 0 0 8px;
+  cursor:pointer;
+  align-items:center;justify-content:center;
+  color:var(--muted);
+  font-size:11px;
+  transition:background 0.15s,color 0.15s;
+  box-shadow:-3px 0 10px rgba(0,0,0,0.10);
+  -webkit-tap-highlight-color:transparent;
+  user-select:none;
+  flex-shrink:0;
+}
+#habitPanelEdgeToggle:hover{background:var(--hover);color:var(--text);}
+/* Compact mode: narrower panel, dots only */
+.habit-panel-wrap.compact .habit-panel{
+  width:0px;min-width:0px;padding:0px 0px;gap:0px;overflow-x:hidden;
+}
+.habit-panel-wrap.compact .habit-panel .panel-title{display:none}
+.habit-panel-wrap.compact .habit-panel .habit-row{display:none}
 .ai-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--muted);animation:ai-blink 1.2s infinite}
 @keyframes ai-blink{0%,80%,100%{opacity:0.2}40%{opacity:1}}
 .panel-title{font-size:11px;font-weight:700;color:var(--text);padding-bottom:8px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:0.6px}
@@ -163,7 +252,7 @@ body{font-family:'DM Sans',-apple-system,sans-serif;font-size:14px;color:var(--t
 .habit-dots{display:flex;gap:2px;margin-bottom:6px}
 .dot{width:18px;height:18px;border-radius:3px;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:9px;transition:all 0.1s;flex-shrink:0;color:var(--muted)}
 .dot.done{background:var(--green);border-color:var(--green);color:#fff}
-.dot.miss{background:#fafaf9;border-color:#e7e5e4}
+.dot.miss{background:var(--hover);border-color:var(--border);color:var(--muted)}
 .dot.today-dot{border:2px solid var(--accent)}
 .habit-stats{display:flex;align-items:center;gap:6px}
 .streak-badge{font-size:11px;padding:2px 7px;border-radius:20px;background:#fff7ed;color:#c2410c;font-weight:700;white-space:nowrap;font-family:'DM Mono',monospace}
@@ -537,6 +626,9 @@ body.mobile-nav-sidebar .toast{bottom:var(--toast-bottom,calc(24px + env(safe-ar
   .fin-card{padding:10px}
   .fin-card-val{font-size:16px}
   .habit-panel{display:none!important}
+  /* Sembunyikan seluruh wrap dan restore btn di mobile — habit panel tidak pernah muncul di sini */
+  .habit-panel-wrap{display:none!important}
+  #habitPanelRestoreBtn{display:none!important}
   .stats-grid-4{grid-template-columns:repeat(2,1fr)}
   .stat-cards{grid-template-columns:repeat(2,1fr)}
   .topbar-actions .btn-icon{display:none}
@@ -581,7 +673,11 @@ body.mobile-nav-sidebar .toast{bottom:var(--toast-bottom,calc(24px + env(safe-ar
 @media(min-width:701px){
   .topbar{padding:16px 20px 10px}
   .topbar-row1{gap:8px}
-  #sidebarToggleBtn{display:flex!important}
+  #sidebarToggleBtn{display:none!important}
+  #sidebarEdgeToggle{display:flex!important}
+  #habitPanelEdgeToggle{display:flex!important}
+  /* habitPanelRestoreBtn visibility controlled by JS, just ensure it can flex on desktop */
+  #habitPanelRestoreBtn{align-items:center;justify-content:center;}
   #pageTitleWrap{text-align:center;flex:1}
   .page-title{font-size:21px;font-weight:700;color:var(--text);line-height:1.2;letter-spacing:-0.4px;text-align:center}
   .page-subtitle{font-size:12px;color:var(--muted);margin-top:3px;text-align:center}
@@ -591,7 +687,13 @@ body.mobile-nav-sidebar .toast{bottom:var(--toast-bottom,calc(24px + env(safe-ar
   .more-panel{display:none!important}
   .topbar-row2{display:none!important}
   @media(max-width:1100px){.fin-header-cards{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:900px){.habit-panel{display:none}.stats-grid-4{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:900px){
+    .habit-panel{display:none}
+    /* Sembunyikan wrap + restore btn di 701-900px — panel tidak muncul di sini juga */
+    .habit-panel-wrap{display:none!important}
+    #habitPanelRestoreBtn{display:none!important}
+    .stats-grid-4{grid-template-columns:repeat(2,1fr)}
+  }
 }
 /* Safe area padding for notch phones */
 @supports(padding-top:env(safe-area-inset-top)){
@@ -1012,6 +1114,20 @@ body.sololeveling-theme .sqa-select option{
 .shop-item-badge{position:absolute;top:-1px;right:-1px;font-size:8px;padding:3px 9px;border-radius:0 16px 0 11px;font-weight:800;line-height:1;letter-spacing:0.4px;z-index:2}
 .shop-item-badge.owned-badge{background:rgba(22,163,74,0.25);color:#4ade80;border-bottom:1px solid rgba(74,222,128,0.35);border-left:1px solid rgba(74,222,128,0.35)}
 .shop-item-badge.active-badge{background:rgba(245,158,11,0.28);color:#fbbf24;border-bottom:1px solid rgba(251,191,36,0.4);border-left:1px solid rgba(251,191,36,0.4)}
+/* ── Avatar Card Layout Fix ── */
+.shop-avatar-preview-wrap{display:flex;justify-content:center;gap:16px;margin-bottom:10px;padding:8px 4px}
+.shop-avatar-preview-wrap .job-picker-item-sprite-wrap{overflow:hidden;border-radius:10px;background:var(--card);border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,0.12)}
+.shop-avatar-preview{width:68px!important;height:68px!important;background-repeat:no-repeat;flex-shrink:0}
+.shop-avatar-gender-label{font-size:9px;color:var(--muted);font-weight:700;text-align:center;margin-bottom:3px;letter-spacing:0.3px}
+/* ── shop-item-btn: action button below avatar card ── */
+.shop-item-btn{display:block;width:calc(100% - 0px);margin:0;padding:8px 12px;border:none;border-radius:0 0 16px 16px;font-size:11.5px;font-weight:800;cursor:pointer;transition:all .2s cubic-bezier(.32,.72,0,1);letter-spacing:0.2px;line-height:1.3;text-align:center;font-family:inherit}
+.shop-item-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
+.shop-item-btn:active{transform:translateY(0);filter:brightness(0.96)}
+.shop-item-btn:disabled,.shop-item-btn[style*="opacity:0.5"]{cursor:not-allowed;filter:grayscale(0.4)}
+/* Rarity glow on epic/hidden avatar cards */
+.shop-item.rarity-epic .shop-avatar-preview-wrap{background:rgba(168,85,247,0.06);border-radius:10px}
+.shop-item.rarity-hidden .shop-avatar-preview-wrap{background:rgba(245,158,11,0.07);border-radius:10px}
+.shop-avatar-gender-label{font-size:8px;color:var(--muted);font-weight:700;text-align:center;margin-bottom:2px}
 .shop-item-free-badge{position:absolute;top:-1px;left:-1px;font-size:7.5px;padding:3px 9px;border-radius:16px 0 11px 0;font-weight:900;background:rgba(22,163,74,0.25);color:#4ade80;border-right:1px solid rgba(74,222,128,0.35);border-bottom:1px solid rgba(74,222,128,0.35);text-transform:uppercase;letter-spacing:0.6px;z-index:2}
 /* Rarity badge — ribbon kiri */
 .shop-rarity-badge{display:none;position:absolute;top:9px;left:0;font-size:7px;padding:2px 8px 2px 5px;border-radius:0 10px 10px 0;font-weight:900;letter-spacing:0.8px;text-transform:uppercase;z-index:2;border-left:none}
@@ -1132,6 +1248,124 @@ body.sololeveling-theme .sqa-select option{
 .dash-tx-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px}
 .dash-tx-row:last-child{border-bottom:none}
 
+/* ── TOP ROW: horoscope kiri + radar kanan, stretch sama tinggi ── */
+.dash-top-row{grid-column:1/-1;display:flex;gap:12px;align-items:stretch}
+.dash-top-horoscope{flex:0 0 auto;width:calc(50% - 6px);display:flex;flex-direction:column}
+.dash-top-horoscope #horoscope-slot{flex:1;display:flex;flex-direction:column}
+.dash-top-horoscope #horoscope-slot > .horoscope-card,
+.dash-top-horoscope #horoscope-slot > div{flex:1;display:flex;flex-direction:column;justify-content:center}
+.dash-top-radar{flex:0 0 auto;width:calc(50% - 6px);display:flex;flex-direction:column}
+.dash-top-radar #dashRadarWrap{flex:1;display:flex;flex-direction:column}
+.dash-top-radar .char-stats-card{flex:1}
+/* Saat radar off, horoscope ambil full width */
+.dash-wrap.radar-off .dash-top-row{display:contents}
+.dash-wrap.radar-off .dash-top-horoscope{width:100%}
+.dash-wrap.radar-off .dash-top-horoscope #horoscope-slot > .horoscope-card,
+.dash-wrap.radar-off .dash-top-horoscope #horoscope-slot > div{grid-column:1/-1}
+@media(max-width:700px){
+  .dash-top-row{flex-direction:column}
+  .dash-top-horoscope,.dash-top-radar{width:100%}
+}
+
+/* ── HOROSCOPE CARD ── */
+/* ═══ HOROSCOPE CARD — UPGRADED ═══ */
+@keyframes horoscopeSpin{to{transform:rotate(360deg)}}
+@keyframes horoscopeOrbit{0%{transform:rotate(0deg) translateX(3px) rotate(0deg)}100%{transform:rotate(360deg) translateX(3px) rotate(-360deg)}}
+@keyframes horoscopeIconFloat{0%,100%{transform:scale(1) rotate(-3deg)}50%{transform:scale(1.08) rotate(3deg)}}
+@keyframes horoscopeStarTwinkle{0%,100%{opacity:0.15}50%{opacity:0.55}}
+@keyframes horoscopeGlowPulse{0%,100%{text-shadow:0 0 8px rgba(167,139,250,0.4)}50%{text-shadow:0 0 20px rgba(167,139,250,0.85),0 0 40px rgba(167,139,250,0.3)}}
+
+.horoscope-card{
+  flex:1;height:100%;box-sizing:border-box;display:flex;flex-direction:column;
+  position:relative;overflow:hidden;
+  background:linear-gradient(145deg,color-mix(in srgb,#7c3aed 8%,var(--card)) 0%,var(--card) 55%,color-mix(in srgb,#1d4ed8 5%,var(--card)) 100%);
+  border-color:color-mix(in srgb,#7c3aed 25%,var(--border))!important;
+  padding:0!important;
+}
+/* Starfield overlay */
+.horoscope-card::before{
+  content:'★ · ✦ · ✧ · ★ · · ✦ · · ✧ ·  ★ · ✦ ·';
+  position:absolute;top:4px;left:6px;right:6px;
+  font-size:9px;letter-spacing:4px;color:rgba(167,139,250,0.18);
+  pointer-events:none;white-space:nowrap;overflow:hidden;line-height:1;
+  animation:horoscopeStarTwinkle 3s ease-in-out infinite;
+}
+.horoscope-card-inner{padding:12px 14px;position:relative;z-index:1;display:flex;flex-direction:column;height:100%;box-sizing:border-box}
+.horoscope-card .dash-card-title{flex-shrink:0;color:color-mix(in srgb,#a78bfa 60%,var(--muted))!important}
+.horoscope-card .dash-card-title a{color:#a78bfa!important}
+
+.horoscope-main-row{display:flex;align-items:center;gap:14px;flex:1;margin-top:4px}
+
+/* Sign column — icon with glow */
+.horoscope-sign-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:66px;gap:3px}
+.horoscope-big-icon-wrap{
+  width:56px;height:56px;border-radius:50%;
+  background:radial-gradient(circle at 40% 35%,color-mix(in srgb,#7c3aed 25%,var(--bg)) 0%,color-mix(in srgb,#7c3aed 8%,var(--bg)) 100%);
+  border:1.5px solid color-mix(in srgb,#7c3aed 35%,var(--border));
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 16px color-mix(in srgb,#7c3aed 20%,transparent),inset 0 1px 0 rgba(255,255,255,0.1);
+  position:relative;
+  flex-shrink:0;
+}
+.horoscope-big-icon{
+  font-size:28px;line-height:1;
+  animation:horoscopeIconFloat 3s ease-in-out infinite;
+  animation:horoscopeGlowPulse 2.5s ease-in-out infinite;
+}
+.horoscope-sign-name{font-size:10px;font-weight:800;color:color-mix(in srgb,#a78bfa 80%,var(--text));text-align:center;text-transform:uppercase;letter-spacing:0.5px}
+.horoscope-sign-date{font-size:8px;color:var(--muted);text-align:center;margin-top:1px;line-height:1.3}
+
+/* Divider */
+.horoscope-divider{width:1px;height:100%;background:linear-gradient(to bottom,transparent,color-mix(in srgb,#7c3aed 30%,var(--border)),transparent);flex-shrink:0;align-self:stretch;margin:0 2px}
+
+/* Desc column */
+.horoscope-desc-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.horoscope-desc{
+  font-size:11.5px;color:var(--text);line-height:1.65;margin:0;
+  opacity:0.9;
+  display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;
+}
+.horoscope-pills{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.horoscope-pill{
+  font-size:9px;font-weight:700;padding:3px 8px;border-radius:3px;
+  background:color-mix(in srgb,#7c3aed 12%,var(--border));
+  color:color-mix(in srgb,#a78bfa 70%,var(--text));
+  white-space:nowrap;border:1px solid color-mix(in srgb,#7c3aed 20%,var(--border));
+  text-transform:uppercase;letter-spacing:0.3px;
+}
+
+/* Loading */
+.horoscope-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px 0;flex:1}
+.horoscope-spin{font-size:22px;animation:horoscopeSpin 1.4s linear infinite;display:inline-block;filter:drop-shadow(0 0 6px rgba(167,139,250,0.6))}
+
+/* Picker — upgraded */
+.horoscope-picker-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.horoscope-picker-btn{
+  background:color-mix(in srgb,#7c3aed 6%,var(--border));
+  border:1.5px solid color-mix(in srgb,#7c3aed 15%,var(--border));
+  border-radius:10px;padding:10px 4px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  transition:all 0.15s;font-family:'DM Sans',sans-serif;
+}
+.horoscope-picker-btn:hover,.horoscope-picker-btn:active{
+  border-color:#7c3aed;
+  background:color-mix(in srgb,#7c3aed 15%,transparent);
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(124,58,237,0.2);
+}
+.horoscope-picker-ic{font-size:22px;line-height:1}
+.horoscope-picker-lbl{font-size:9px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:0.3px}
+@media(max-width:700px){.horoscope-picker-grid{grid-template-columns:repeat(3,1fr)}}
+
+/* ── Radar OFF: horoscope card jadi setengah lebar (kolom kiri), sejajar grid 2 kolom ── */
+.dash-wrap.radar-off #horoscope-slot > .horoscope-card,
+.dash-wrap.radar-off #horoscope-slot > div {
+  grid-column: 1 / -1;
+}
+/* Saat radar off, horoscope tetap full-width tapi padding lebih kecil karena tidak ada radar di bawahnya */
+.dash-wrap.radar-off .horoscope-card {
+  padding-bottom: 14px;
+}
+
 /* ═══ CHARACTER STATS / RADAR CHART ═══ */
 .char-stats-card{grid-column:1/-1;background:var(--card);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius);padding:16px;box-shadow:0 4px 24px rgba(0,0,0,0.18),inset 0 1px 0 rgba(255,255,255,0.05);position:relative;overflow:hidden}
 .char-stats-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(217,119,6,0.08) 0%,transparent 60%),radial-gradient(ellipse at 70% 50%,rgba(139,92,246,0.05) 0%,transparent 60%);pointer-events:none}
@@ -1150,6 +1384,366 @@ body.sololeveling-theme .sqa-select option{
 .char-class-badge{font-size:10px;padding:3px 10px;border-radius:10px;color:#fff;font-weight:800;font-family:'DM Mono',monospace;letter-spacing:0.5px}
 @keyframes radarPulse{0%,100%{opacity:0.85}50%{opacity:1;filter:drop-shadow(0 0 6px rgba(245,158,11,0.6))}}
 @media(max-width:700px){.char-stats-inner{justify-content:center;flex-wrap:wrap}.radar-wrap{width:190px!important;height:190px!important}}
+
+/* ═══ CHARACTER CARD (Dashboard) — UPGRADED ═══ */
+@keyframes charSpriteFloat{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-6px)}}
+/* Versi untuk elemen NON-absolute (placeholder, img fallback) */
+@keyframes charSpriteFloatRel{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes charSpriteGlow{0%,100%{box-shadow:0 0 0 0 transparent,inset 0 0 0 0 transparent}50%{box-shadow:0 0 24px 4px color-mix(in srgb,var(--accent) 35%,transparent),inset 0 0 16px 0 color-mix(in srgb,var(--accent) 15%,transparent)}}
+@keyframes charShinePass{0%{transform:translateX(-100%) rotate(20deg)}100%{transform:translateX(260%) rotate(20deg)}}
+@keyframes rarityPulse{0%,100%{opacity:1}50%{opacity:0.65}}
+@keyframes avatarRingPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 40%,transparent),0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 25%,transparent),0 0 0 8px color-mix(in srgb,var(--accent) 10%,transparent)}}
+
+.char-card{
+  grid-column:1/-1;display:flex;flex-direction:column;
+  position:relative;overflow:hidden;
+  background:linear-gradient(135deg,var(--card) 0%,color-mix(in srgb,var(--accent) 8%,var(--card)) 100%);
+  border:1.5px solid color-mix(in srgb,var(--accent) 25%,var(--border));
+  padding:0!important;
+  min-height:240px;
+  height:240px;
+}
+.char-card::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,0.012) 3px,rgba(255,255,255,0.012) 4px),repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(255,255,255,0.012) 3px,rgba(255,255,255,0.012) 4px);pointer-events:none;z-index:0;border-radius:inherit}
+.char-card-inner{padding:0;position:relative;z-index:1;display:flex;flex-direction:column;height:100%;flex:1;min-height:0}
+.char-card-header{display:flex;align-items:center;justify-content:flex-end;padding:8px 12px 0;margin-bottom:0}
+.char-card-header-title{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:flex;align-items:center;gap:4px}
+.char-card-header-action{font-size:10px;color:var(--accent);text-decoration:none;cursor:pointer;font-weight:600;opacity:0.85;transition:opacity 0.15s}
+.char-card-header-action:hover{opacity:1}
+.char-gender-toggle{background:color-mix(in srgb,var(--accent) 12%,transparent);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:12px;padding:2px 8px;font-size:9px;}
+
+/* ── PORTRAIT body: sprite panel absolute flush left, info panel right ── */
+.char-card-body{
+  display:flex;
+  align-items:stretch;
+  flex:1;
+  gap:0;
+  min-height:0;
+  position:relative;
+  overflow:hidden;
+}
+
+/* ── Portrait sprite panel — absolute flush ke char-card langsung, cover FULL tinggi kartu ── */
+.char-sprite-panel{
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:160px;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;
+  padding:0;
+  overflow:hidden;
+  z-index:2;
+}
+/* Character label — overlaid top-left, partially outside the sprite box feel */
+.char-sprite-label{
+  position:absolute;top:-1px;left:-1px;z-index:10;
+  background:color-mix(in srgb,var(--accent) 80%,var(--bg));
+  color:var(--bg);font-size:8px;font-weight:800;
+  letter-spacing:0.8px;text-transform:uppercase;
+  padding:2px 7px 2px 5px;
+  border-radius:0 0 6px 0;
+  line-height:1.5;
+  box-shadow:2px 2px 0 rgba(0,0,0,0.3);
+  white-space:nowrap;
+}
+/* Atmospheric glow behind sprite */
+.char-sprite-panel::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 70%, color-mix(in srgb,var(--accent) 22%,transparent) 0%, transparent 72%);
+  pointer-events:none;z-index:0;
+}
+.char-sprite-wrap{
+  width:100%;height:100%;min-height:100%;
+  border-radius:0;
+  background:linear-gradient(180deg,
+    color-mix(in srgb,var(--accent) 8%,transparent) 0%,
+    color-mix(in srgb,var(--accent) 18%,var(--bg)) 60%,
+    color-mix(in srgb,var(--accent) 28%,var(--bg)) 100%);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;        /* susun vertikal agar margin-auto bisa centering */
+  align-items:center;           /* selalu center horizontal */
+  justify-content:flex-end;     /* anchor ke bawah */
+  position:relative;
+  border:none;
+  image-rendering:pixelated;
+  animation:charSpriteGlow 3s ease-in-out infinite;
+  cursor:default;
+}
+.char-sprite-wrap::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,0.08) 0%,transparent 40%);pointer-events:none;z-index:1}
+.char-sprite-shine{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:3}
+.char-sprite-shine::before{content:'';position:absolute;top:0;left:0;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent);transform:translateX(-100%) rotate(15deg);animation:charShinePass 4s ease-in-out 1.5s infinite}
+/* Legacy <img> fallback (non-sprite-sheet static images) */
+.char-sprite-img{
+  width:138px;height:100%;min-height:220px;max-height:300px;object-fit:contain;object-position:bottom center;
+  image-rendering:pixelated;image-rendering:crisp-edges;
+  animation:charSpriteFloatRel 2.8s ease-in-out infinite;
+  position:relative;z-index:2;
+  filter:drop-shadow(0 8px 16px rgba(0,0,0,0.7));
+}
+.char-sprite-img[src$=".jpg"],.char-sprite-img[src$=".jpeg"],.char-sprite-img[src$=".png"]:not([src*="pixel"]):not([src*="sprite"]){
+  image-rendering:auto;object-fit:cover;
+}
+/* Animated sprite sheet div — 6 cols × 6 rows = 36 frames */
+@keyframes charSpriteIdle{
+  0.0%     { background-position: 0%   0%   }
+  2.7778%  { background-position: 20%  0%   }
+  5.5556%  { background-position: 40%  0%   }
+  8.3333%  { background-position: 60%  0%   }
+  11.1111% { background-position: 80%  0%   }
+  13.8889% { background-position: 100% 0%   }
+  16.6667% { background-position: 0%   20%  }
+  19.4444% { background-position: 20%  20%  }
+  22.2222% { background-position: 40%  20%  }
+  25.0%    { background-position: 60%  20%  }
+  27.7778% { background-position: 80%  20%  }
+  30.5556% { background-position: 100% 20%  }
+  33.3333% { background-position: 0%   40%  }
+  36.1111% { background-position: 20%  40%  }
+  38.8889% { background-position: 40%  40%  }
+  41.6667% { background-position: 60%  40%  }
+  44.4444% { background-position: 80%  40%  }
+  47.2222% { background-position: 100% 40%  }
+  50.0%    { background-position: 0%   60%  }
+  52.7778% { background-position: 20%  60%  }
+  55.5556% { background-position: 40%  60%  }
+  58.3333% { background-position: 60%  60%  }
+  61.1111% { background-position: 80%  60%  }
+  63.8889% { background-position: 100% 60%  }
+  66.6667% { background-position: 0%   80%  }
+  69.4444% { background-position: 20%  80%  }
+  72.2222% { background-position: 40%  80%  }
+  75.0%    { background-position: 60%  80%  }
+  77.7778% { background-position: 80%  80%  }
+  80.5556% { background-position: 100% 80%  }
+  83.3333% { background-position: 0%   100% }
+  86.1111% { background-position: 20%  100% }
+  88.8889% { background-position: 40%  100% }
+  91.6667% { background-position: 60%  100% }
+  94.4444% { background-position: 80%  100% }
+  97.2222% { background-position: 100% 100% }
+  100%     { background-position: 0%   0%   }
+}
+.char-sprite-anim{
+  /* Ukuran dikendalikan JS via style.width/height. CSS var sebagai fallback. */
+  width:var(--sprite-w, 138px);height:var(--sprite-h, 142px);
+  background-size:600% 600%; /* 6 cols × 6 rows */
+  background-repeat:no-repeat;
+  background-position:0 0;
+  image-rendering:pixelated;image-rendering:crisp-edges;
+  animation:
+    charSpriteFloat 2.8s ease-in-out infinite,
+    charSpriteIdle  1.0s steps(1) infinite;
+  /* Absolute centering: selalu tepat di tengah wrap meskipun ukuran > container */
+  position:absolute;
+  bottom:0;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:2;
+  filter:drop-shadow(0 8px 16px rgba(0,0,0,0.7));
+  /* charSpriteFloat pakai transform translateY — digabung via JS animation,
+     translateX(-50%) di sini tidak konflik karena animasi float hanya ubah Y */
+}
+.char-sprite-placeholder{
+  width:138px;min-height:220px;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:6px;position:relative;z-index:2;
+}
+.char-sprite-placeholder span{font-size:88px;filter:drop-shadow(0 6px 14px rgba(0,0,0,0.5));animation:charSpriteFloatRel 2.8s ease-in-out infinite}
+
+/* Ground shadow under sprite */
+.char-sprite-shadow{display:none}
+
+/* ── Info panel — offset right of absolute sprite panel ── */
+.char-card-info{
+  flex:1;min-width:0;
+  display:flex;flex-direction:column;
+  justify-content:center;
+  gap:6px;
+  padding:0 14px 14px 174px;
+}
+.char-name-row{display:flex;align-items:center;gap:6px;min-width:0}
+.char-name{font-size:19px;font-weight:800;color:var(--text);letter-spacing:-0.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15;flex:1;min-width:0}
+.char-edit-name-btn{flex-shrink:0;background:none;border:none;cursor:pointer;font-size:13px;opacity:0.5;padding:2px 4px;border-radius:6px;transition:opacity 0.15s,background 0.15s;line-height:1}
+.char-edit-name-btn:hover{opacity:1;background:color-mix(in srgb,var(--accent) 15%,transparent)}
+
+/* Job badge — rarity styled */
+.char-job-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;
+  border:1.5px solid;background:transparent;width:fit-content;
+  letter-spacing:0.4px;position:relative;overflow:hidden;
+  font-family:'DM Mono',monospace;text-transform:uppercase;
+}
+.char-job-badge.rarity-epic,.char-job-badge.rarity-hidden{animation:rarityPulse 2s ease-in-out infinite}
+.char-job-badge::after{content:'';position:absolute;inset:0;background:currentColor;opacity:0.06;pointer-events:none}
+
+
+.char-level-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
+.char-lv-num{font-size:13px;color:var(--accent);font-family:'DM Mono',monospace;font-weight:700;white-space:nowrap}
+.char-xp-label{font-size:10px;color:var(--muted);white-space:nowrap}
+
+.char-xp-bar{
+  height:10px;
+  background:color-mix(in srgb,var(--accent) 15%,var(--border));
+  border-radius:3px;overflow:hidden;margin-top:2px;
+  border:1px solid color-mix(in srgb,var(--accent) 20%,var(--border));
+  position:relative;
+}
+.char-xp-fill{
+  height:100%;
+  background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 70%,#fbbf24) 60%,#fbbf24);
+  border-radius:2px;
+  transition:width 0.6s cubic-bezier(.34,1.56,.64,1);
+  position:relative;
+}
+.char-xp-fill::after{content:'';position:absolute;top:2px;left:2px;right:2px;height:2px;background:rgba(255,255,255,0.35);border-radius:1px}
+
+.char-gold-row{font-size:12px;color:var(--text);margin-top:2px;display:flex;align-items:center;gap:4px}
+.char-gold-row b{color:#f59e0b;font-family:'DM Mono',monospace;font-size:13px}
+
+.char-card-rarity-strip{height:3px;width:100%;border-radius:var(--radius) var(--radius) 0 0;margin-bottom:0;flex-shrink:0;transition:background 0.3s}
+
+/* ── DESKTOP ── */
+@media(min-width:1024px){
+  :root{--sprite-w:172px;--sprite-h:177px}
+  .char-card{min-height:270px;height:270px}
+  .char-sprite-panel{width:190px}
+  .char-sprite-img{width:172px;height:100%;min-height:260px;max-height:320px}
+  .char-sprite-anim{width:var(--sprite-w,172px);height:var(--sprite-h,177px)} /* 172 × (200/194.3) ≈ 177 */
+  .char-sprite-placeholder{width:172px;min-height:260px}
+  .char-sprite-placeholder span{font-size:100px}
+  .char-name{font-size:21px}
+  .char-card-info{gap:7px;padding:0 16px 16px 206px}
+  .char-lv-num{font-size:14px}
+}
+
+/* ── MOBILE: keep portrait but shrink ── */
+@media(max-width:700px){
+  :root{--sprite-w:110px;--sprite-h:113px}
+  .char-card{min-height:195px;height:195px}
+  .char-card-header{padding:8px 10px 0}
+  .char-sprite-panel{width:118px}
+  .char-sprite-wrap{min-height:100%;height:100%}
+  .char-sprite-img{width:110px;min-height:190px;max-height:240px;height:100%}
+  .char-sprite-anim{width:var(--sprite-w,110px);height:var(--sprite-h,113px)} /* 110 × (200/194.3) ≈ 113 */
+  .char-sprite-placeholder{width:110px;min-height:190px}
+  .char-sprite-placeholder span{font-size:66px}
+  .char-card-info{padding:0 10px 12px 130px;gap:5px}
+  .char-name{font-size:16px}
+}
+
+/* ── CHARACTER SKILLS CARD ── */
+.char-skills-card{grid-column:1/-1}
+.char-skills-list{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.char-skill-row{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--accent) 5%,var(--bg));border:1px solid color-mix(in srgb,var(--accent) 12%,var(--border));transition:background 0.15s}
+.char-skill-row:hover{background:color-mix(in srgb,var(--accent) 10%,var(--bg))}
+.char-skill-icon{font-size:22px;flex-shrink:0;width:28px;text-align:center;line-height:1.2;margin-top:1px}
+.char-skill-body{flex:1;min-width:0}
+.char-skill-name-row{display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:2px}
+.char-skill-name{font-size:13px;font-weight:700;color:var(--text)}
+.char-skill-dmg{font-size:11px;font-family:'DM Mono',monospace;color:var(--accent);font-weight:700;white-space:nowrap;flex-shrink:0}
+.char-skill-desc{font-size:10px;color:var(--muted);line-height:1.45;margin-bottom:3px}
+.char-skill-effects{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.char-skill-eff-tag{font-size:9px;color:var(--muted);background:color-mix(in srgb,var(--accent) 8%,var(--border));border-radius:4px;padding:1px 6px;font-weight:600}
+.char-skill-weight{flex-shrink:0;width:6px;align-self:stretch;min-height:40px;background:color-mix(in srgb,var(--accent) 10%,var(--border));border-radius:3px;overflow:hidden;display:flex;align-items:flex-end}
+.char-skill-weight-fill{width:100%;background:color-mix(in srgb,var(--accent) 70%,var(--border));border-radius:3px;transition:height 0.3s}
+
+/* Job picker upgrades */
+/* Animated sprite in picker (shared base) */
+.job-picker-item-sprite{width:40px;height:40px;object-fit:contain;image-rendering:pixelated;image-rendering:crisp-edges;margin-bottom:2px}
+.job-picker-item-sprite-wrap{width:44px;height:44px;border-radius:8px;background:color-mix(in srgb,var(--accent) 8%,var(--bg));display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:2px}
+@keyframes pickerSpriteIdle{
+  0.0%     { background-position: 0%   0%   }
+  2.7778%  { background-position: 20%  0%   }
+  5.5556%  { background-position: 40%  0%   }
+  8.3333%  { background-position: 60%  0%   }
+  11.1111% { background-position: 80%  0%   }
+  13.8889% { background-position: 100% 0%   }
+  16.6667% { background-position: 0%   20%  }
+  19.4444% { background-position: 20%  20%  }
+  22.2222% { background-position: 40%  20%  }
+  25.0%    { background-position: 60%  20%  }
+  27.7778% { background-position: 80%  20%  }
+  30.5556% { background-position: 100% 20%  }
+  33.3333% { background-position: 0%   40%  }
+  36.1111% { background-position: 20%  40%  }
+  38.8889% { background-position: 40%  40%  }
+  41.6667% { background-position: 60%  40%  }
+  44.4444% { background-position: 80%  40%  }
+  47.2222% { background-position: 100% 40%  }
+  50.0%    { background-position: 0%   60%  }
+  52.7778% { background-position: 20%  60%  }
+  55.5556% { background-position: 40%  60%  }
+  58.3333% { background-position: 60%  60%  }
+  61.1111% { background-position: 80%  60%  }
+  63.8889% { background-position: 100% 60%  }
+  66.6667% { background-position: 0%   80%  }
+  69.4444% { background-position: 20%  80%  }
+  72.2222% { background-position: 40%  80%  }
+  75.0%    { background-position: 60%  80%  }
+  77.7778% { background-position: 80%  80%  }
+  80.5556% { background-position: 100% 80%  }
+  83.3333% { background-position: 0%   100% }
+  86.1111% { background-position: 20%  100% }
+  88.8889% { background-position: 40%  100% }
+  91.6667% { background-position: 60%  100% }
+  94.4444% { background-position: 80%  100% }
+  97.2222% { background-position: 100% 100% }
+  100%     { background-position: 0%   0%   }
+}
+.job-picker-item-sprite-anim{
+  width:40px;height:41px; /* 40 × (200/194.3) ≈ 41 */
+  background-size:600% 600%;
+  background-repeat:no-repeat;
+  background-position:0 0;
+  image-rendering:pixelated;image-rendering:crisp-edges;
+  animation:pickerSpriteIdle 1.0s steps(1) infinite;
+}
+
+/* ═══ JOB PICKER MODAL — UPGRADED ═══ */
+@keyframes jobPickerSlideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
+.job-picker-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(6px)}
+.job-picker-overlay.show{display:flex}
+.job-picker-box{
+  background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:540px;max-height:88dvh;
+  display:flex;flex-direction:column;
+  box-shadow:0 -12px 50px rgba(0,0,0,0.35),0 -1px 0 color-mix(in srgb,var(--accent) 20%,var(--border));
+  overflow:hidden;
+  animation:jobPickerSlideUp 0.28s cubic-bezier(.34,1.56,.64,1);
+}
+.job-picker-header{
+  padding:16px 18px 12px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);flex-shrink:0;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 5%,var(--card)) 0%,var(--card) 100%);
+}
+.job-picker-title{font-size:14px;font-weight:800;color:var(--text);letter-spacing:-0.2px}
+.job-picker-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);padding:0 4px;line-height:1;transition:color 0.15s}
+.job-picker-close:hover{color:var(--text)}
+.job-picker-scroll{overflow-y:auto;padding:14px;flex:1}
+.job-picker-section-label{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;margin-top:4px}
+.job-picker-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.job-picker-item{
+  background:var(--border);border:1.5px solid transparent;border-radius:12px;
+  padding:10px 6px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  transition:all 0.15s;text-align:center;position:relative;overflow:hidden;
+}
+.job-picker-item::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,0.015) 3px,rgba(255,255,255,0.015) 4px);pointer-events:none;border-radius:inherit}
+.job-picker-item:not([onclick]){cursor:default}
+.job-picker-item[onclick]:hover{
+  border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 12%,var(--border));
+  transform:translateY(-2px);
+  box-shadow:0 4px 14px color-mix(in srgb,var(--accent) 20%,transparent);
+}
+.job-picker-item-sprite-wrap{
+  width:44px;height:44px;border-radius:8px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 10%,var(--bg)) 0%,color-mix(in srgb,var(--accent) 4%,var(--bg)) 100%);
+  border:1px solid color-mix(in srgb,var(--accent) 15%,var(--border));
+  display:flex;align-items:flex-end;justify-content:center;overflow:hidden;margin-bottom:2px;
+}
+.job-picker-item-sprite{width:38px;height:38px;object-fit:contain;image-rendering:pixelated;image-rendering:crisp-edges}
+.job-picker-item-sprite-anim{width:38px;height:39px;background-size:600% 600%}
+@media(max-width:700px){.job-picker-grid{grid-template-columns:repeat(3,1fr)}}
 
 /* ═══ WEEKLY REVIEW ═══ */
 .wr-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:260;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}

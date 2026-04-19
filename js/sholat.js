@@ -388,11 +388,13 @@ function sholatAutoInject() {
         buatTask(jumatName, jumatTime, 'Mingguan');
       }
     } else {
-      // Bukan Jumat: keluarkan task Jumat dari My Day (tanpa sentuh done)
-      if (jumatTask && jumatTask.myday) {
-        jumatTask.myday    = false;
-        jumatTask.reminder = '';
-        changed = true;
+      // Bukan Jumat: keluarkan task Jumat dari My Day + hapus reminder
+      if (jumatTask) {
+        var jumatChanged = false;
+        if (jumatTask.myday)    { jumatTask.myday    = false; jumatChanged = true; }
+        if (jumatTask.reminder) { jumatTask.reminder = '';    jumatChanged = true; }
+        if (jumatTask.due && jumatTask.due !== todayStr) { jumatTask.due = todayStr; jumatChanged = true; }
+        if (jumatChanged) changed = true;
       }
     }
 

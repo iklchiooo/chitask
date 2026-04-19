@@ -41,16 +41,43 @@ function bossSave(){ try{ localStorage.setItem(BOSS_KEY,JSON.stringify(bossState
 function bossToday(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function bossCur(){ return BOSS_DEFS[bossState.idx]||BOSS_DEFS[0]; }
 
+function bossPickIdx(){
+  // Lucky Amstow (id:'lucky') harus muncul hanya ~3%.
+  // Boss lain mendapat sisa bobot dibagi rata.
+  // Cara: roll 0–100, jika < 3 → Lucky, sisanya → pilih acak dari non-Lucky.
+  var luckyIdx = -1;
+  var normalIdxs = [];
+  for(var i=0;i<BOSS_DEFS.length;i++){
+    if(BOSS_DEFS[i].id==='lucky') luckyIdx=i;
+    else normalIdxs.push(i);
+  }
+  // Jika Lucky belum terdaftar, fallback ke random biasa
+  if(luckyIdx === -1) return Math.floor(Math.random()*BOSS_DEFS.length);
+  // Jika tidak ada boss normal (edge case), selalu Lucky
+  if(normalIdxs.length === 0) return luckyIdx;
+  // Roll: angka 0..99 → 0-2 = Lucky (3%), 3-99 = Normal (97%)
+  var roll = Math.random() * 100;
+  if(roll < 3) return luckyIdx;
+  return normalIdxs[Math.floor(Math.random()*normalIdxs.length)];
+}
+
 function bossInit(){
   bossLoad();
   var today = bossToday();
   if(bossState.day !== today){
-    var idx = Math.floor(Math.random()*BOSS_DEFS.length);
+    var idx = bossPickIdx();
     // HP multiplier: Mon=hard, Fri=medium, weekend=easy
     var mult = [0.85,1.2,1.0,1.0,1.0,0.9,0.8][new Date().getDay()];
     var maxHp = Math.round(BOSS_DEFS[idx].maxHp * mult);
     bossState = { idx:idx, hp:maxHp, maxHp:maxHp, day:today, defeated:false };
     bossSave();
+    // Welcome overlay khusus Lucky Amstow saat dia terpilih sebagai boss hari ini
+    // Hanya tampil jika user sudah pilih mode 'gamer' di gami onboarding
+    if(BOSS_DEFS[idx].id === 'lucky'){
+      if(typeof loadGamificationMode === 'function' && loadGamificationMode() === 'gamer'){
+        setTimeout(showLuckyWelcomeOverlay, 900);
+      }
+    }
   }
   bossBuildCard();
   bossRefresh();   // bossRefresh already calls bossApplyTheme
@@ -63,7 +90,7 @@ function bossTauntLoop(){
   bossPhraseTimeout = setTimeout(function(){
     if(!bossState.defeated) bossShowPhrase();
     bossTauntLoop();
-  }, 3000 + Math.random()*4000);
+  }, 9000 + Math.random()*6000);
 }
 
 function bossShowPhrase(){
@@ -84,7 +111,7 @@ function bossShowPhrase(){
   setTimeout(function(){
     el.style.opacity = '0';
     el.style.transform = 'translateY(-6px) scale(0.95)';
-  }, isRageNow ? 1800 : 3300);
+  }, isRageNow ? 4000 : 6500);
 }
 
 // ── Sprite drawing ──
@@ -409,9 +436,16 @@ function bossRollReward(){
       {id:'theme-midnight',     name:'Midnight 🌌',      icon:'🌌', glowColor:'#8b5cf6'},
       {id:'theme-sunset',       name:'Sunset 🌅',        icon:'🌅', glowColor:'#ea580c'}
     ];
-    // Hanya tema yang belum dibeli di shop
+    // Hanya tema yang belum dibeli di shop DAN bukan tema yang sedang aktif sementara
+    var currentTempTheme = (typeof tempThemeExpiry !== 'undefined' && tempThemeExpiry > Date.now())
+      ? (typeof activeTheme !== 'undefined' ? activeTheme : '')
+      : '';
     var avail = allThemes.filter(function(th){
-      return typeof isOwned === 'function' ? !isOwned(th.id) : true;
+      // Skip kalau sudah dimiliki permanen di shop
+      if(typeof isOwned === 'function' && isOwned(th.id)) return false;
+      // Skip kalau tema ini yang sedang aktif sebagai tema sementara (hindari dapat sama)
+      if(currentTempTheme && th.id === currentTempTheme) return false;
+      return true;
     });
     if(avail.length > 0){
       var t = avail[Math.floor(Math.random()*avail.length)];
@@ -920,6 +954,114 @@ function showBossChestAnimation(reward, onDone){
 }
 
 
+// ── Lucky Amstow: welcome overlay saat dia jadi boss hari ini ──────────────
+function showLuckyWelcomeOverlay(){
+  var ov = document.createElement('div');
+  ov.id = 'luckyWelcomeOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);z-index:9600;display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:"Press Start 2P",monospace;text-align:center;padding:24px;cursor:pointer;';
+  ov.innerHTML = [
+    '<style>',
+    '@keyframes _lwPop{0%{transform:scale(0.4);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}',
+    '@keyframes _lwSpin{0%,100%{transform:rotate(-10deg) scale(1)}50%{transform:rotate(10deg) scale(1.08)}}',
+    '@keyframes _lwFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}',
+    '@keyframes _lwConfetti{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}',
+    '#_lwCard{animation:_lwPop 0.65s cubic-bezier(0.34,1.5,0.64,1) both;text-align:center;max-width:340px;}',
+    '#_lwIcon{font-size:82px;display:block;animation:_lwSpin 2.2s ease infinite;}',
+    '#_lwTitle{color:#facc15;font-size:13px;text-shadow:0 0 28px #fde68a,0 0 8px #facc15;margin:20px 0 12px;line-height:1.8;}',
+    '#_lwSub{color:#fef9c3;font-size:8px;line-height:2.2;opacity:0.9;max-width:280px;margin:0 auto;}',
+    '#_lwChance{color:#4ade80;font-size:8px;margin-top:16px;letter-spacing:1px;text-shadow:0 0 10px #4ade80;}',
+    '#_lwBtn{margin-top:24px;padding:12px 30px;border:2px solid #facc15;color:#facc15;background:transparent;font-family:inherit;font-size:8px;cursor:pointer;border-radius:4px;transition:background 0.2s;letter-spacing:1px;}',
+    '#_lwBtn:hover{background:rgba(250,204,21,0.15);}',
+    '._lwSticker{position:absolute;pointer-events:none;animation:_lwFloat ease infinite;}',
+    '._lwConf{position:absolute;pointer-events:none;animation:_lwConfetti linear forwards;}',
+    '</style>',
+    '<div id="_lwCard">',
+    '  <span id="_lwIcon">🍀</span>',
+    '  <div id="_lwTitle">LUCKY AMSTOW<br>MUNCUL HARI INI!</div>',
+    '  <div id="_lwSub">Kamu adalah 3% yang beruntung hari ini.<br>Selesaikan task untuk memberinya makan<br>dan dapatkan hadiah spesial! 🎁</div>',
+    '  <div id="_lwChance">✨ 3% CHANCE · HADIAH EKSKLUSIF MENANTI ✨</div>',
+    '  <button id="_lwBtn">SIAP BERBURU KEBERUNTUNGAN!</button>',
+    '</div>'
+  ].join('');
+
+  // Floating emoji stickers
+  var stickers = ['🍀','⭐','✨','🌟','🎁','💛','🐹'];
+  for(var i=0;i<14;i++){
+    var s=document.createElement('div');
+    s.className='_lwSticker';
+    s.textContent=stickers[Math.floor(Math.random()*stickers.length)];
+    s.style.cssText='font-size:'+(14+Math.random()*18)+'px;left:'+(Math.random()*95)+'%;top:'+(Math.random()*90)+'%;opacity:'+(0.35+Math.random()*0.45)+';animation-duration:'+(1.8+Math.random()*1.4)+'s;animation-delay:'+(Math.random()*1.2)+'s;';
+    ov.appendChild(s);
+  }
+  // Confetti burst
+  var confColors=['#facc15','#fde68a','#4ade80','#f9a8d4','#a78bfa','#fff'];
+  for(var j=0;j<22;j++){
+    var c=document.createElement('div');
+    c.className='_lwConf';
+    c.textContent=['✦','◆','●','★'][Math.floor(Math.random()*4)];
+    c.style.cssText='color:'+confColors[Math.floor(Math.random()*confColors.length)]+';font-size:'+(8+Math.random()*10)+'px;left:'+(5+Math.random()*90)+'%;top:-10px;animation-duration:'+(2.2+Math.random()*2)+'s;animation-delay:'+(Math.random()*1.5)+'s;';
+    ov.appendChild(c);
+  }
+
+  document.body.appendChild(ov);
+  function closeLW(){ if(ov.parentNode) document.body.removeChild(ov); }
+  ov.querySelector('#_lwBtn').addEventListener('click', closeLW);
+  ov.addEventListener('click', function(e){ if(e.target===ov) closeLW(); });
+  setTimeout(closeLW, 9000);
+}
+
+// ── Lucky Amstow: reward animation khusus (bukan chest biasa) ───────────────
+function showLuckyRewardAnimation(rewardLabel, rewardDesc, onDone){
+  var ov = document.createElement('div');
+  ov.id = 'bossChestOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.60);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:9500;display:flex;align-items:center;justify-content:center;flex-direction:column;overflow:hidden;cursor:pointer;user-select:none;font-family:"Press Start 2P",monospace;text-align:center;padding:20px;';
+  ov.innerHTML = [
+    '<style>',
+    '@keyframes _lrPop{0%{transform:scale(0.4) rotate(-15deg);opacity:0}65%{transform:scale(1.12) rotate(4deg)}100%{transform:scale(1) rotate(0deg);opacity:1}}',
+    '@keyframes _lrBounce{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-16px) scale(1.1)}}',
+    '@keyframes _lrGlow{0%,100%{text-shadow:0 0 20px #facc15,0 0 40px #fde68a}50%{text-shadow:0 0 40px #facc15,0 0 80px #fde68a,0 0 120px #fff}}',
+    '@keyframes _lrStar{0%{transform:translateY(-30px) rotate(0deg) scale(0);opacity:0}30%{opacity:1;transform:translateY(0) rotate(180deg) scale(1.2)}100%{transform:translateY(60px) rotate(360deg) scale(0.5);opacity:0}}',
+    '#_lrWrap{animation:_lrPop 0.7s cubic-bezier(0.34,1.5,0.64,1) both;text-align:center;max-width:320px;}',
+    '#_lrHamster{font-size:80px;display:block;animation:_lrBounce 1.4s ease infinite;}',
+    '#_lrTitle{color:#facc15;font-size:11px;animation:_lrGlow 1.8s ease infinite;margin:18px 0 10px;line-height:1.8;}',
+    '#_lrLabel{color:#fef9c3;font-size:10px;margin:10px 0 6px;line-height:1.8;}',
+    '#_lrDesc{color:#fde68a;font-size:8px;opacity:0.85;line-height:2;}',
+    '#_lrDivider{width:200px;height:2px;background:linear-gradient(90deg,transparent,#facc15,transparent);margin:16px auto;}',
+    '#_lrBtn{margin-top:20px;padding:12px 30px;border:2px solid #facc15;color:#facc15;background:transparent;font-family:inherit;font-size:8px;cursor:pointer;border-radius:4px;transition:background 0.2s;letter-spacing:1px;}',
+    '#_lrBtn:hover{background:rgba(250,204,21,0.15);}',
+    '._lrStar{position:absolute;pointer-events:none;animation:_lrStar ease forwards;}',
+    '</style>',
+    '<div id="_lrWrap">',
+    '  <span id="_lrHamster">🐹</span>',
+    '  <div id="_lrTitle">LUCKY AMSTOW<br>KENYANG TOTAL! 🍀</div>',
+    '  <div id="_lrDivider"></div>',
+    '  <div id="_lrLabel">'+rewardLabel+'</div>',
+    '  <div id="_lrDesc">'+rewardDesc+'</div>',
+    '  <button id="_lrBtn">TERIMA KASIH LUCKY! 🎉</button>',
+    '</div>'
+  ].join('');
+
+  // Star burst particles
+  var starEmojis=['⭐','🌟','✨','💛','🍀'];
+  for(var i=0;i<20;i++){
+    var st=document.createElement('div');
+    st.className='_lrStar';
+    st.textContent=starEmojis[Math.floor(Math.random()*starEmojis.length)];
+    st.style.cssText='font-size:'+(12+Math.random()*16)+'px;left:'+(5+Math.random()*90)+'%;top:'+(Math.random()*60)+'%;animation-duration:'+(1.2+Math.random()*1.8)+'s;animation-delay:'+(Math.random()*1.2)+'s;';
+    ov.appendChild(st);
+  }
+
+  document.body.appendChild(ov);
+  function closeLR(){
+    if(!ov.parentNode) return;
+    document.body.removeChild(ov);
+    if(onDone) onDone();
+  }
+  ov.querySelector('#_lrBtn').addEventListener('click', closeLR);
+  ov.addEventListener('click', function(e){ if(e.target===ov) closeLR(); });
+  setTimeout(closeLR, 10000);
+}
+
 function bossVictory(){
   var b = bossCur();
 
@@ -948,7 +1090,47 @@ function bossVictory(){
   }
   showToast('⚔️ BOSS DEFEATED! '+b.name+' dikalahkan!');
 
-  // Roll & show reward chest setelah victory overlay selesai
+  // ── Lucky Amstow: hadiah khusus tema 14 hari + animasi Lucky sendiri ────
+  // TIDAK memanggil bossRollReward/showBossChestAnimation (beda alur dari boss biasa)
+  if(b.id === 'lucky'){
+    var _luckyThemes = [
+      {id:'theme-sololeveling', name:'Solo Leveling ⚔️', icon:'⚔️'},
+      {id:'theme-slytherin',    name:'Slytherin 🐍',     icon:'🐍'},
+      {id:'theme-fluffytown',   name:'Fluffy Town 🐹',   icon:'🐹'},
+      {id:'theme-midnight',     name:'Midnight 🌌',      icon:'🌌'},
+      {id:'theme-sunset',       name:'Sunset 🌅',        icon:'🌅'}
+    ];
+    var _luckyCurrentTemp = (typeof tempThemeExpiry !== 'undefined' && tempThemeExpiry > Date.now())
+      ? (typeof activeTheme !== 'undefined' ? activeTheme : '')
+      : '';
+    var _luckyAvail = _luckyThemes.filter(function(t){
+      if(typeof isOwned === 'function' && isOwned(t.id)) return false;
+      if(_luckyCurrentTemp && t.id === _luckyCurrentTemp) return false;
+      return true;
+    });
+    var _lt = _luckyAvail.length > 0
+      ? _luckyAvail[Math.floor(Math.random()*_luckyAvail.length)]
+      : null;
+    if(_lt && typeof shopPurchases !== 'undefined'){
+      var _expDate = new Date();
+      _expDate.setDate(_expDate.getDate()+14);
+      var _expStr = _expDate.toISOString().slice(0,10);
+      shopPurchases = shopPurchases.filter(function(p){ return !(p.id===_lt.id && p.source==='lucky'); });
+      shopPurchases.push({id:_lt.id, name:_lt.name, icon:_lt.icon, source:'lucky', expires:_expStr, date:new Date().toISOString().slice(0,10)});
+      if(typeof saveData === 'function') saveData(true);
+    }
+    // Tampilkan animasi reward Lucky yang unik setelah victory overlay selesai
+    setTimeout(function(){
+      var lbl = _lt ? (_lt.icon+' Tema '+_lt.name+' — GRATIS 14 HARI!') : '🍀 Keberuntunganmu Aktif Hari Ini!';
+      var dsc = _lt ? 'Sudah ditambahkan ke koleksi temamu.' : 'Semua tema sudah kamu miliki — kamu keren!';
+      showLuckyRewardAnimation(lbl, dsc, function(){
+        if(_lt && typeof showToast==='function') showToast('🍀 Tema '+_lt.icon+' '+_lt.name+' gratis aktif 14 hari!');
+      });
+    }, 5800);
+    return; // Lucky tidak dapat chest biasa
+  }
+
+  // ── Boss normal: roll & show reward chest ────────────────────────────────
   var reward = bossRollReward();
   setTimeout(function(){
     showBossChestAnimation(reward, function(){
@@ -1204,6 +1386,32 @@ function bossBuildCard(){
       30%  { opacity:1; transform:translateY(-24px) scale(1.35); }
       100% { opacity:0; transform:translateY(-58px) scale(0.8); }
     }
+    /* ── Skill popup ── */
+    .boss-skill-popup {
+      position: absolute; bottom: 12%; left: 8%;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+      background: rgba(0,0,0,0.72); border: 1.5px solid rgba(255,200,50,0.5);
+      border-radius: 10px; padding: 6px 10px 5px;
+      font-family: 'DM Sans', sans-serif;
+      pointer-events: none; z-index: 62;
+      animation: skillPopupAnim 2.2s ease-out forwards;
+      backdrop-filter: blur(4px);
+    }
+    .boss-skill-icon { font-size: 18px; line-height: 1; }
+    .boss-skill-name {
+      font-size: 11px; font-weight: 800; color: #ffe066;
+      text-shadow: 0 0 8px rgba(255,200,0,0.6);
+      white-space: nowrap; letter-spacing: 0.3px;
+    }
+    .boss-skill-effects {
+      font-size: 9px; color: rgba(255,255,255,0.7); white-space: nowrap;
+    }
+    @keyframes skillPopupAnim {
+      0%   { opacity:0; transform: translateY(10px) scale(0.85); }
+      12%  { opacity:1; transform: translateY(0)    scale(1.05); }
+      70%  { opacity:1; transform: translateY(-4px) scale(1);    }
+      100% { opacity:0; transform: translateY(-18px) scale(0.9); }
+    }
     .boss-blood {
       position: absolute; top: 8%;
       border-radius: 50% 50% 60% 40%;
@@ -1455,8 +1663,6 @@ function bossBuildCard(){
 var _bossMinimized = false;
 var _bossUserMinimized = false; // true only when user explicitly clicked minimize
 function bossMinimize(){
-  // Kalau ada auto-minimize aktif dan user klik tab, clear auto state dulu
-  if(window._bossClearAutoMinimize) window._bossClearAutoMinimize();
   _bossMinimized = !_bossMinimized;
   _bossUserMinimized = _bossMinimized; // track user's explicit intent
   var panel = document.getElementById('bossBattlePanel');
@@ -1494,7 +1700,6 @@ function bossMinimize(){
     bossApplyTheme();
     if(typeof _bossTabBindSwipe === 'function') _bossTabBindSwipe(tabEl);
     if(typeof _bossMobileBallDrag === 'function') _bossMobileBallDrag(tabEl);
-    if(typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
 
   } else {
     // Restore panel dengan animasi smooth
@@ -1524,308 +1729,35 @@ function bossMinimize(){
           panel.classList.add('boss-showing');
           setTimeout(function(){ panel.classList.remove('boss-showing'); }, 420);
         }
-        if(typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
         bossStartLoop();
         bossApplyTheme();
       }, 300);
     }
 
     // Kalau tab sedang di atas, slide turun dulu baru restore panel
-    if(tabEl && typeof window._bossResetTabTop === 'function' && tabEl.classList.contains('boss-tab-top')){
-      tabEl.classList.remove('boss-tab-top'); // slide turun smooth (~450ms)
-      setTimeout(_doRestorePanel, 200); // mulai fade tab sedikit sebelum slide selesai agar mulus
+    if(tabEl && tabEl.classList.contains('boss-tab-top')){
+      tabEl.classList.remove('boss-tab-top');
+      setTimeout(_doRestorePanel, 200);
     } else {
-      if(typeof window._bossResetTabTop === 'function') window._bossResetTabTop();
       _doRestorePanel();
     }
   }
 }
-
-// ── Auto-minimize boss saat scroll mentok bawah, restore saat scroll naik ──
-(function(){
-  var _bossTabScrollBound = false;
-  window._bossTabAtTop = false; var _bossTabAtTop = window._bossTabAtTop = false
-  var _bossAutoMinimized  = false;
-  var _bossAnimating      = false; // guard: jangan trigger ulang saat animasi berjalan
-  var _bossBoundScrollEl  = null; // elemen scroll yang sedang di-listen
-
-  // Deteksi scroll container aktif berdasarkan currentView
-  function _bossGetScrollContainer(){
-    var cv = (typeof currentView !== 'undefined') ? currentView : 'myday';
-    // Fin views: pakai finScroll (inner) atau finWrap
-    if(typeof isFinView === 'function' && isFinView(cv)){
-      return document.getElementById('finScroll') || document.getElementById('finWrap');
-    }
-    // Maint views: finWrap dipakai sebagai container flex column, cari inner scroll
-    if(typeof isMaintView === 'function' && isMaintView(cv)){
-      var fw = document.getElementById('finWrap');
-      if(fw){
-        var inner = fw.querySelector('[style*="overflow-y:auto"],[style*="overflow-y: auto"]');
-        if(inner) return inner;
-      }
-      return fw;
-    }
-    // Semua view lain (task, journal, calendar, dashboard, dll) pakai taskScroll
-    return document.getElementById('taskScroll');
-  }
-
-  function _bossTabComputeOffset(tabEl){
-    var isMobile = window.innerWidth <= 700;
-    var isSidebarMode = isMobile && document.body.classList.contains('mobile-nav-sidebar');
-    var tabBottom = isMobile && !isSidebarMode ? 70 : 20;
-    var tabH = tabEl.offsetHeight || 36;
-    var tabTopEdge = window.innerHeight - tabBottom - tabH;
-    var targetTop;
-    if(isSidebarMode){
-      var sqaEl = document.getElementById('sidebarQuickAdd');
-      if(sqaEl && sqaEl.offsetParent !== null && sqaEl.style.display !== 'none'){
-        targetTop = sqaEl.getBoundingClientRect().bottom + 10;
-      } else {
-        var tb = document.querySelector('.topbar');
-        targetTop = tb ? tb.getBoundingClientRect().bottom + 10 : 80;
-      }
-    } else {
-      var tb2 = document.querySelector('.topbar');
-      targetTop = tb2 ? tb2.getBoundingClientRect().bottom + 10 : (isMobile ? 80 : 70);
-    }
-    return targetTop - tabTopEdge;
-  }
-  window._bossTabComputeOffset = _bossTabComputeOffset; // expose untuk swipe handler
-
-  function _bossDoAutoMinimize(){
-    if(_bossMinimized || _bossUserMinimized || _bossAnimating) return;
-    _bossAutoMinimized = true;
-    _bossMinimized = true;
-    _bossAnimating = true;
-
-    var panel = document.getElementById('bossBattlePanel');
-
-    // Siapkan tab — set ke state tersembunyi (tanpa transition) dulu
-    var tabEl = document.getElementById('bossTab');
-    if(!tabEl){
-      tabEl = document.createElement('div');
-      tabEl.id = 'bossTab';
-      tabEl.onclick = bossMinimize;
-      tabEl.title = 'Buka Boss Battle';
-      document.body.appendChild(tabEl);
-    }
-    var b = bossCur();
-    var pct = bossState.hp / bossState.maxHp;
-    var phase = bossState.defeated ? (b.id==='lucky' ? '🍀' : '☠') : (b.id==='lucky' ? (pct<0.3?'🤤':pct<0.5?'😊':'🍽️') : (pct<0.3?'🔥':pct<0.5?'⚡':'⚔'));
-    tabEl.innerHTML = '<span id="bossTabIcon">'+phase+'</span><span>'+b.name.split(' ').slice(0,2).join(' ')+'</span>';
-    tabEl.style.animation = '';
-    tabEl.style.transition = 'none'; // nonaktifkan transition sementara
-    tabEl.classList.remove('boss-tab-top');
-    tabEl.classList.add('boss-tab-hidden'); // posisi bawah + opacity 0, tanpa animasi
-    tabEl.style.display = 'flex';
-    bossApplyTheme();
-    if(typeof _bossTabBindSwipe === 'function') _bossTabBindSwipe(tabEl);
-    if(typeof _bossMobileBallDrag === 'function') _bossMobileBallDrag(tabEl);
-
-    // Step 1: Panel fade+slide ke kiri
-    if(panel){
-      panel.classList.remove('boss-showing');
-      panel.classList.add('boss-hiding');
-      // Setelah animasi hiding selesai (~310ms), set display:none agar state konsisten
-      setTimeout(function(){ if(panel) panel.classList.add('boss-minimized'); }, 320);
-    }
-
-    // Step 2: Setelah panel hilang (~310ms) → tab muncul naik dari bawah
-    setTimeout(function(){
-      if(bossSpriteRaf){ cancelAnimationFrame(bossSpriteRaf); bossSpriteRaf = null; }
-      // Aktifkan transition, reflow, lalu hapus hidden → tab naik muncul dari bawah
-      tabEl.style.transition = '';
-      void tabEl.offsetWidth;
-      tabEl.classList.remove('boss-tab-hidden'); // translateY(30px)+opacity:0 → translateY(0)+opacity:1
-
-      // Step 3: Tunggu transition naik selesai dulu (450ms) → BARU slide ke atas
-      setTimeout(function(){
-        var sc = _bossGetScrollContainer();
-        var stillAtBottom = sc && (sc.scrollHeight - sc.scrollTop - sc.clientHeight) < 60;
-        if(stillAtBottom && !_bossTabAtTop){
-          _bossTabAtTop = window._bossTabAtTop = true
-          var offset = _bossTabComputeOffset(tabEl);
-          tabEl.style.setProperty('--boss-tab-offset', offset + 'px');
-          // Sedikit delay lagi agar browser commit dulu state translateY(0) sebelum naik
-          void tabEl.offsetWidth;
-          tabEl.classList.add('boss-tab-top'); // translateY(0) → translateY(offset) smooth
-          var _arr = tabEl.querySelector('.boss-tab-arrow');
-          if(_arr) _arr.textContent = '▼'; // tab sedang di atas → bisa turun
-        }
-        if(typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
-        setTimeout(function(){ _bossAnimating = false; }, 480);
-      }, 470); // harus lebih dari transition duration (450ms)
-    }, 310);
-  }
-
-  function _bossDoAutoRestore(){
-    if(!_bossAutoMinimized || _bossAnimating) return;
-    _bossAutoMinimized = false;
-    _bossMinimized = false;
-    _bossAnimating = true;
-
-    var panel = document.getElementById('bossBattlePanel');
-    var tabEl  = document.getElementById('bossTab');
-
-    function _showPanel(){
-      if(tabEl){
-        tabEl.style.transition = 'none';
-        tabEl.classList.add('boss-tab-hidden');
-        tabEl.classList.remove('boss-tab-top');
-        tabEl.style.display = 'none';
-        tabEl.style.transition = '';
-      }
-      if(panel){
-        panel.classList.remove('boss-hiding');
-        panel.classList.add('boss-showing');
-        panel.classList.remove('boss-minimized');
-        setTimeout(function(){
-          panel.classList.remove('boss-showing');
-          _bossAnimating = false;
-        }, 420);
-      } else {
-        _bossAnimating = false;
-      }
-      bossStartLoop();
-      bossApplyTheme();
-    }
-
-    if(tabEl && tabEl.style.display !== 'none'){
-      if(_bossTabAtTop){
-        // Tab di atas → slide turun ke posisi normal dulu via CSS transition
-        _bossTabAtTop = window._bossTabAtTop = false
-        tabEl.classList.remove('boss-tab-top'); // translateY(offset) → translateY(0) smooth
-        // Setelah transition turun selesai (~450ms) → fade out ke bawah
-        setTimeout(function(){
-          void tabEl.offsetWidth;
-          tabEl.classList.add('boss-tab-hidden'); // opacity:1 → 0, slide turun 30px
-          setTimeout(_showPanel, 320);
-        }, 460);
-      } else {
-        // Tab sudah di bawah → langsung fade out
-        tabEl.classList.add('boss-tab-hidden');
-        setTimeout(_showPanel, 320);
-      }
-    } else {
-      _showPanel();
-    }
-  }
-
-  var _bossScrollDebounce = null;
-  function _bossTabCheckScroll(){
-    clearTimeout(_bossScrollDebounce);
-    _bossScrollDebounce = setTimeout(function(){
-      if(_bossAnimating) return; // jangan interrupt animasi yang sedang berjalan
-      var sc = _bossGetScrollContainer();
-      if(!sc) return;
-      var atBottom = (sc.scrollHeight - sc.scrollTop - sc.clientHeight) < 60;
-
-      if(atBottom){
-        // Scroll mentok bawah
-        if(!_bossMinimized && !_bossUserMinimized){
-          // Boss masih tampil & user belum minimize → auto-minimize
-          _bossDoAutoMinimize();
-        }
-        // Kalau sudah minimize (manual atau auto), pindah tab ke atas
-        if(_bossMinimized && !_bossTabAtTop){
-          var tabEl = document.getElementById('bossTab');
-          if(tabEl && tabEl.style.display !== 'none'){
-            _bossTabAtTop = window._bossTabAtTop = true
-            var offset = _bossTabComputeOffset(tabEl);
-            tabEl.style.setProperty('--boss-tab-offset', offset + 'px');
-            tabEl.classList.add('boss-tab-top');
-            var _arrSc = tabEl.querySelector('.boss-tab-arrow');
-            if(_arrSc) _arrSc.textContent = '▼';
-          }
-        }
-      } else {
-        // Scroll tidak di bawah lagi
-        if(_bossAutoMinimized){
-          // Kita yang minimize → restore boss
-          _bossDoAutoRestore();
-          _bossTabAtTop = window._bossTabAtTop = false
-        } else if(_bossMinimized && _bossTabAtTop){
-          // User minimize manual → cukup turunkan tab kembali
-          var tabEl2 = document.getElementById('bossTab');
-          if(tabEl2) tabEl2.classList.remove('boss-tab-top');
-          var _arrD = tabEl2 && tabEl2.querySelector('.boss-tab-arrow');
-          if(_arrD) _arrD.textContent = '▲';
-          _bossTabAtTop = window._bossTabAtTop = false
-        }
-      }
-    }, 80);
-  }
-
-  function _bossBindScrollIfNeeded(){
-    var sc = _bossGetScrollContainer();
-    if(!sc) return;
-    // Jika sudah bind ke elemen yang sama, skip
-    if(_bossTabScrollBound && _bossBoundScrollEl === sc) return;
-    // Lepas listener dari elemen lama
-    if(_bossBoundScrollEl && _bossBoundScrollEl !== sc){
-      _bossBoundScrollEl.removeEventListener('scroll', _bossTabCheckScroll);
-    }
-    sc.addEventListener('scroll', _bossTabCheckScroll, {passive:true});
-    _bossBoundScrollEl = sc;
-    _bossTabScrollBound = true;
-  }
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', _bossBindScrollIfNeeded);
-  } else {
-    setTimeout(_bossBindScrollIfNeeded, 800);
-  }
-  window._bossTabRebindScroll = function(){
-    _bossTabScrollBound = false;
-    _bossTabAtTop = window._bossTabAtTop = false
-    setTimeout(_bossBindScrollIfNeeded, 200);
-  };
-  // Reset auto state saat view berganti
-  window._bossScrollResetAuto = function(){
-    if(_bossAutoMinimized) _bossDoAutoRestore();
-    // ✅ FIX: saat ganti view, turunkan tab boss ke bawah dengan smooth
-    // _bossTabRebindScroll TIDAK boleh melakukan ini (dipanggil juga di konteks lain)
-    // jadi reset DOM class dilakukan di sini, khusus untuk view-switch
-    var tabEl = document.getElementById('bossTab');
-    if(tabEl && _bossTabAtTop){
-      tabEl.classList.remove('boss-tab-top'); // CSS transition: slide down ~450ms
-      var _arrow = tabEl.querySelector('.boss-tab-arrow');
-      if(_arrow) _arrow.textContent = '▲'; // reset ke ▲
-      // Tunda rebind scroll hingga slide-down selesai, agar scroll-check
-      // tidak langsung memicu naik lagi di view baru
-      _bossTabAtTop = window._bossTabAtTop = false
-      setTimeout(function(){
-        if(typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
-      }, 500);
-    } else {
-      _bossTabAtTop = window._bossTabAtTop = false
-    }
-  };
-  // Clear auto flag saja (tanpa restore) — dipanggil saat user klik tab manual
-  window._bossClearAutoMinimize = function(){
-    _bossAutoMinimized = false;
-  };
-  // Reset posisi tab ke bawah — dipanggil dari bossMinimize saat user restore
-  window._bossResetTabTop = function(){
-    if(_bossTabAtTop){
-      var tabEl = document.getElementById('bossTab');
-      if(tabEl) tabEl.classList.remove('boss-tab-top');
-      _bossTabAtTop = window._bossTabAtTop = false
-    }
-  };
-  // Force reset animating flag — dipanggil saat user override animasi yang sedang berjalan
-  window._bossForceResetAnim = function(){
-    _bossAnimating = false;
-    _bossAutoMinimized = false;
-  };
-})();
 // ── Boss Tab Swipe Up/Down untuk toggle posisi atas/bawah ──
 function _bossTabToggleTop(tabEl, goTop){
   if(!tabEl) return;
   if(goTop){
     if(window._bossTabAtTop) return;
     window._bossTabAtTop = true;
-    var offset = (typeof window._bossTabComputeOffset === 'function')
-      ? window._bossTabComputeOffset(tabEl) : -200;
+    // Compute offset: move tab near top of screen (below topbar)
+    var tb = document.querySelector('.topbar');
+    var targetTop = tb ? tb.getBoundingClientRect().bottom + 10 : 70;
+    var tabH = tabEl.offsetHeight || 36;
+    var isMobileCheck = window.innerWidth <= 700;
+    var isSidebarModeCheck = isMobileCheck && document.body.classList.contains('mobile-nav-sidebar');
+    var tabBottom = isMobileCheck && !isSidebarModeCheck ? 70 : 20;
+    var tabTopEdge = window.innerHeight - tabBottom - tabH;
+    var offset = targetTop - tabTopEdge;
     tabEl.style.setProperty('--boss-tab-offset', offset + 'px');
     void tabEl.offsetWidth;
     tabEl.classList.add('boss-tab-top');
@@ -1873,7 +1805,7 @@ function _bossTabBindSwipe(tabEl){
       _isVertical = dy > dx * 0.8; // lebih vertikal dari horizontal
     }
     // Kalau gerakan vertikal, cegah scroll halaman agar swipe boss tab jalan
-    if(_isVertical) e.preventDefault();
+    if(_isVertical && e.cancelable) e.preventDefault();
   }, {passive: false});
 
   tabEl.addEventListener('touchend', function(e){
@@ -1882,7 +1814,7 @@ function _bossTabBindSwipe(tabEl){
     var adx = Math.abs(e.changedTouches[0].clientX - _sx);
     var ady = Math.abs(dy);
     if(ady < 20 || adx > ady * 0.8) return; // bukan swipe vertikal
-    e.preventDefault();
+    if(e.cancelable) e.preventDefault();
     e.stopPropagation();
     _bossTabToggleTop(tabEl, dy < 0); // up = naik, down = turun
   }, {passive: false});
@@ -1946,24 +1878,23 @@ function _bossFlashDamageIfMinimized(dmg, onDone){
   }, 80);
 }
 
-// ── Hook toggleDone — task tanpa langkah: damage 70-120 langsung ──
+// ── Hook toggleDone — task tanpa langkah: damage via skill karakter ──
+// (flat damage 70-120 dihapus; digantikan sepenuhnya oleh CT_JobSkills)
 var _origToggleDone = toggleDone;
 toggleDone = function(id){
   var tBefore = tasks.filter(function(x){ return x.id===id; })[0];
   var wasDone = tBefore ? tBefore.done : false;
-  // Task due masa depan: toggleDone akan bail out tanpa mengubah state
   if(tBefore && !wasDone && tBefore.due && tBefore.due > todayStr) return _origToggleDone(id);
   _origToggleDone(id);
   var tAfter = tasks.filter(function(x){ return x.id===id; })[0];
   if(!tAfter || bossState.defeated) return;
-  // Lucky Amstow punya mekanisme sendiri (makan), skip slash
   if(bossCur().id === 'lucky'){
     var wasJustCompletedLucky = !wasDone && (tAfter.done || tAfter._nextDue !== undefined);
     if(wasJustCompletedLucky){
       setTimeout(function(){
         if(bossState.defeated) return;
         if(bossCur().id !== 'lucky') return;
-        var dmg = 70 + Math.floor(Math.random()*51);
+        var dmg = _rollJobDamage(false);
         var pctNow = bossState.hp / bossState.maxHp;
         bossState._luckyPrevState = (pctNow < 0.3) ? 'happy' : 'idle';
         bossState._luckyEating = true;
@@ -1981,7 +1912,7 @@ toggleDone = function(id){
     setTimeout(function(){
       if(bossState.defeated) return;
       if(bossCur().id === 'lucky') return;
-      var dmg = 70 + Math.floor(Math.random()*51);
+      var dmg = _rollJobDamage(false);
       bossState.hp = Math.max(0, bossState.hp - dmg);
       if(bossState.hp === 0 && !bossState.defeated){
         bossState.defeated = true;
@@ -2041,25 +1972,24 @@ toggleDone = function(id) {
 // ── Akumulator damage per langkah (kunci: task id) ──
 var _bossStepAccum = {};
 
-// ── Hook toggleStep — damage dikumpulkan, animasi slash hanya saat task selesai ──
+// ── Hook toggleStep — damage via skill karakter, dikumpulkan per langkah ──
+// (flat damage 20-40 per langkah dihapus; digantikan oleh CT_JobSkills)
 var _origToggleStep = toggleStep;
 toggleStep = function(id, idx){
   var tBefore = tasks.filter(function(x){ return x.id===id; })[0];
   var stepsBefore = tBefore ? (tBefore.stepsDone||0) : 0;
   var wasDone = tBefore ? tBefore.done : false;
-  // Task due masa depan tidak boleh memberikan damage boss
   if(tBefore && tBefore.due && tBefore.due > todayStr) return _origToggleStep(id, idx);
   _origToggleStep(id, idx);
   var tAfter = tasks.filter(function(x){ return x.id===id; })[0];
   if(!tAfter || bossState.defeated) return;
-  // Lucky Amstow punya mekanisme sendiri (makan), skip slash
   if(bossCur().id === 'lucky'){
     var newlyCheckedLucky = (tAfter.stepsDone||0) > stepsBefore && !wasDone;
     if(newlyCheckedLucky){
       setTimeout(function(){
         if(bossState.defeated) return;
         if(bossCur().id !== 'lucky') return;
-        var dmg = 30 + Math.floor(Math.random()*31);
+        var dmg = _rollJobDamage(true);
         var pctNow = bossState.hp / bossState.maxHp;
         bossState._luckyPrevState = (pctNow < 0.3) ? 'happy' : 'idle';
         bossState._luckyEating = true;
@@ -2082,12 +2012,11 @@ toggleStep = function(id, idx){
 
   if(!_bossStepAccum[id]) _bossStepAccum[id] = {dmgs:[], total:0};
   for(var si=0; si<newCount; si++){
-    var d = 20 + Math.floor(Math.random()*21); // 20-40 per langkah
+    var d = _rollJobDamage(true);
     _bossStepAccum[id].dmgs.push(d);
     _bossStepAccum[id].total += d;
   }
 
-  // Hanya apply + animasi saat semua langkah selesai
   if(tAfter.done || stepsAfter >= totalSteps){
     var acc = _bossStepAccum[id];
     delete _bossStepAccum[id];
@@ -2391,12 +2320,16 @@ function bossApplyTheme(){
 // Tunggu sampai app benar-benar ready (sudah login & gami dipilih)
 // sebelum menjalankan bossInit, agar welcome overlay Lucky Amstow
 // tidak muncul di halaman login.
+// FIX race condition: cek isGamificationModeSet() langsung dari localStorage
+// agar tidak ada celah timing antara _appReady=true dan showGamificationOnboarding().
+// Kalau mode belum dipilih sama sekali, boss tidak boleh init dulu.
 (function _waitAppReady(){
-  if (window._appReady) {
-    bossInit();
-  } else {
-    setTimeout(_waitAppReady, 300);
+  if (!window._appReady) { setTimeout(_waitAppReady, 300); return; }
+  // Jika gami mode belum pernah dipilih user, tunggu sampai selesai
+  if (typeof isGamificationModeSet === 'function' && !isGamificationModeSet()) {
+    setTimeout(_waitAppReady, 300); return;
   }
+  bossInit();
 })();
 
 
@@ -2504,7 +2437,7 @@ function _bossMobileBallDrag(tabEl) {
       var vw2 = window.innerWidth, vh2 = window.innerHeight;
       tabEl.style.left = clamp(drag.ox + dx, EDGE, vw2 - DIAM - EDGE) + 'px';
       tabEl.style.top  = clamp(drag.oy + dy, EDGE, vh2 - DIAM - EDGE) + 'px';
-      e.preventDefault();
+      if(e.cancelable) e.preventDefault();
     }
   }, { passive: false });
 
@@ -2518,3 +2451,63 @@ function _bossMobileBallDrag(tabEl) {
     }
   }, { passive: true });
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  SKILL SYSTEM INTEGRATION — CT_JobSkills × Boss Panel
+//  Dipatch setelah boss.js dan skills-engine.js keduanya loaded.
+// ═══════════════════════════════════════════════════════════════
+
+// ── Skill popup: tampilkan nama skill + efek di atas boss ──────
+function bossShowSkillPopup(roll) {
+  var panel = document.getElementById('bossBattlePanel');
+  if (!panel || !roll || !roll.skill) return;
+  var sk = roll.skill;
+
+  // Container popup
+  var el = document.createElement('div');
+  el.className = 'boss-skill-popup';
+  el.innerHTML =
+    '<span class="boss-skill-icon">' + (sk.icon || '⚔️') + '</span>'
+    + '<span class="boss-skill-name">' + sk.name + '</span>'
+    + (roll.activeEffects.length
+        ? '<span class="boss-skill-effects">' + roll.activeEffects.slice(0, 2).join(' · ') + '</span>'
+        : '');
+  el.style.left = (10 + Math.random() * 40) + '%';
+  panel.appendChild(el);
+  setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2200);
+
+  // Bonus XP if any
+  if (roll.bonusXP && typeof addXP === 'function') {
+    setTimeout(function () { addXP(roll.bonusXP); }, 400);
+  }
+}
+
+// ── Helper: get current active job id ─────────────────────────
+function _getActiveJobId() {
+  if (typeof charJobs !== 'undefined' && charJobs.getActive) {
+    return charJobs.getActive().id || 'adventurer';
+  }
+  return 'adventurer';
+}
+
+// ── Helper: roll skill damage (uses CT_JobSkills if available) ─
+function _rollJobDamage(isStep) {
+  // isStep: true = per-step damage (lighter), false = full task damage
+  if (typeof CT_JobSkills !== 'undefined') {
+    var jobId = _getActiveJobId();
+    var roll = CT_JobSkills.rollSkill(jobId);
+    // Per-step: scale down to ~35% of full skill damage
+    if (isStep) {
+      var minDmg = Math.round(roll.damage * 0.28);
+      var maxDmg = Math.round(roll.damage * 0.42);
+      roll.damage = minDmg + Math.floor(Math.random() * (maxDmg - minDmg + 1));
+    }
+    bossShowSkillPopup(roll);
+    return roll.damage;
+  }
+  // Fallback if skill engine not loaded
+  return isStep
+    ? (20 + Math.floor(Math.random() * 21))
+    : (70 + Math.floor(Math.random() * 51));
+}
+

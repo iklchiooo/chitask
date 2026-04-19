@@ -575,6 +575,14 @@ function applyGamificationMode(mode){
   }
   // Render settings toggles
   _updateGamiSettingsUI(mode);
+  // If switching to focus and shop avatar tab is active, reset to 'all'
+  if(mode === 'focus' && typeof shopCurrentTab !== 'undefined' && shopCurrentTab === 'avatars') {
+    if(typeof shopSetTab === 'function') shopSetTab('all');
+  }
+  // Jika user baru pertama kali pilih gamer dan belum punya nama petualang, tanya sekarang
+  if(mode === 'gamer' && typeof getCharUsername === 'function' && !getCharUsername()) {
+    setTimeout(function(){ if(typeof showUsernameOnboardingPrompt==='function') showUsernameOnboardingPrompt(); }, 800);
+  }
   if(typeof render === 'function') setTimeout(render, 50);
 }
 
@@ -715,19 +723,27 @@ function gamiOnbConfirm(){
     el.style.transition = 'opacity 0.4s';
     setTimeout(function(){
       el.style.display='none'; el.style.opacity=''; el.style.transition='';
+      // ✅ Onboarding flow selesai — baru boleh tampil pengumuman
+      window._onboardingFlowDone = true;
+      if(typeof _annDequeueNext === 'function') setTimeout(_annDequeueNext, 300);
       // Setelah gami onboarding ditutup, cek apakah tour perlu dijalankan
       // (kalau tourCheckAndStart sudah dipanggil sebelumnya tapi masih nunggu)
       // Jika tour belum aktif dan belum done, start sekarang
       if(!_tourActive){
-        // Tunggu _appReady — supaya chitask_v6_data sudah dimuat dan _tourDone sudah terisi
+        // Tunggu _appReady, pengumuman selesai, DAN username prompt selesai sebelum mulai tour
         var _tourWaitMs = 0;
         var _tourWaitPoll = setInterval(function(){
           _tourWaitMs += 100;
           var appDone = (typeof _appReady !== 'undefined' && _appReady === true);
-          var timedOut = _tourWaitMs >= 10000;
+          var timedOut = _tourWaitMs >= 15000;
           if(!appDone && !timedOut) return;
+          // Tahan jika pengumuman masih tampil atau masih di antrian
+          var annBusy = (typeof _annShowing !== 'undefined' && _annShowing)
+                     || (typeof _annQueue   !== 'undefined' && _annQueue.length > 0);
+          if(annBusy && !timedOut) return;
+          // Tahan jika username prompt masih tampil
+          if(document.getElementById('char-username-onboarding') && !timedOut) return;
           clearInterval(_tourWaitPoll);
-          // Cek localStorage (sudah pasti terisi kalau appReady)
           try{ if(localStorage.getItem('chitask_tour_done')) return; }catch(e){}
           if(typeof tourCheckAndStart === 'function' && fbUser && !fbUser._isGuest && !fbUser._isOffline){
             tourCheckAndStart();
@@ -760,6 +776,9 @@ function initGamificationMode(){
     if(isGamificationModeSet()){
       // Mode sudah tersimpan — terapkan sekarang data sudah pasti dimuat
       applyGamificationMode(loadGamificationMode());
+      // User sudah pernah onboarding — langsung boleh tampil pengumuman
+      window._onboardingFlowDone = true;
+      if(typeof _annDequeueNext === 'function') setTimeout(_annDequeueNext, 300);
       return;
     }
 
@@ -773,7 +792,7 @@ function initGamificationMode(){
       }, 150);
       setTimeout(function(){ clearInterval(_poll2); showGamificationOnboarding(); }, 3000);
     }
-    // Mobile: shown after nav onboarding (in onbConfirm)
+    // Mobile: _onboardingFlowDone di-set di gamiOnbConfirm setelah user selesai pilih
   }, 100);
 }
 document.addEventListener('DOMContentLoaded', function(){
@@ -792,3 +811,86 @@ if(typeof switchView === 'function'){
     }
   };
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  HOROSCOPE SETTINGS — Zodiak picker di dalam navPrefModal
+// ═══════════════════════════════════════════════════════════════
+
+function _initHoroscopeSettings() {
+  if (typeof horoscope === 'undefined') return;
+
+  var grid = document.getElementById('settingsZodiakGrid');
+  var info  = document.getElementById('settingsZodiakSelected');
+  if (!grid) return;
+
+  var current = horoscope.getZodiak();
+
+  // Build zodiak buttons
+  var html = '';
+  horoscope.ZODIAK_LIST.forEach(function(z) {
+    var isActive = (z.id === current);
+    html += '<button '
+      + 'id="settingsZodiak-' + z.id + '" '
+      + 'onclick="_settingsPickZodiak(\'' + z.id + '\')" '
+      + 'style="background:' + (isActive ? 'rgba(217,119,6,0.25)' : 'rgba(255,255,255,0.05)') + ';'
+      + 'border:1.5px solid ' + (isActive ? 'rgba(217,119,6,0.7)' : 'rgba(255,255,255,0.1)') + ';'
+      + 'border-radius:10px;padding:9px 4px;cursor:pointer;'
+      + 'display:flex;flex-direction:column;align-items:center;gap:3px;'
+      + 'transition:all 0.15s;font-family:\'DM Sans\',sans-serif;width:100%">'
+      + '<span style="font-size:18px;line-height:1">' + z.icon + '</span>'
+      + '<span style="font-size:9px;font-weight:700;color:' + (isActive ? 'rgba(217,119,6,1)' : 'rgba(255,255,255,0.6)') + '">' + z.label + '</span>'
+      + '</button>';
+  });
+  grid.innerHTML = html;
+
+  // Show current zodiak info banner
+  _syncZodiakSelectedBanner(current);
+}
+
+function _settingsPickZodiak(id) {
+  if (typeof horoscope === 'undefined') return;
+
+  // Update button highlight
+  horoscope.ZODIAK_LIST.forEach(function(z) {
+    var btn = document.getElementById('settingsZodiak-' + z.id);
+    if (!btn) return;
+    var isActive = (z.id === id);
+    btn.style.background = isActive ? 'rgba(217,119,6,0.25)' : 'rgba(255,255,255,0.05)';
+    btn.style.borderColor = isActive ? 'rgba(217,119,6,0.7)' : 'rgba(255,255,255,0.1)';
+    btn.querySelector('span:last-child').style.color = isActive ? 'rgba(217,119,6,1)' : 'rgba(255,255,255,0.6)';
+  });
+
+  // Apply & save via horoscope module
+  horoscope.setZodiak(id);
+
+  // Update banner
+  _syncZodiakSelectedBanner(id);
+
+  // Mini toast feedback
+  if (typeof showToast === 'function') {
+    var info = horoscope.ZODIAK_LIST.find(function(z){ return z.id === id; });
+    if (info) showToast(info.icon + ' Zodiak ' + info.label + ' disimpan!');
+  }
+}
+
+function _syncZodiakSelectedBanner(id) {
+  var info   = id ? horoscope.ZODIAK_LIST.find(function(z){ return z.id === id; }) : null;
+  var banner = document.getElementById('settingsZodiakSelected');
+  if (!banner) return;
+  if (info) {
+    banner.style.display = '';
+    banner.textContent   = info.icon + '  Zodiak aktif: ' + info.label + '  (' + info.date + ')';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+// Hook ke openNavPreferenceModal yang sudah ada
+var _origOpenNavPref = openNavPreferenceModal;
+openNavPreferenceModal = function() {
+  _origOpenNavPref.apply(this, arguments);
+  // Isi grid zodiak setiap modal dibuka (supaya state selalu fresh)
+  setTimeout(_initHoroscopeSettings, 50);
+};
+
+

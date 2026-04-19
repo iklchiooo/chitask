@@ -1,0 +1,39 @@
+<!-- ================================================================ -->
+<!--  NAV 4: SUB-DRAWER JOURNAL (Mobile)                               -->
+<!--  Muncul saat tombol "Jurnal" di Bottom Nav ditekan                -->
+<!--  Berisi: Tombol CTA Tulis Jurnal, Streak badge,                   -->
+<!--          Hari Ini, Semua Entry, Search                             -->
+<!--  Hapus file ini jika modul Journal tidak dipakai                  -->
+<!-- ================================================================ -->
+<div class="subdrawer" id="subdrawer-journal">
+  <div class="subdrawer-handle" id="sdhandle-journal"></div>
+  <div class="subdrawer-header">
+    <span class="subdrawer-title" id="sdi-journal-daily-header">📓 Jurnal Harian</span>
+    <button class="subdrawer-close" onclick="closeSubDrawer()">✕</button>
+  </div>
+  <div class="subdrawer-body">
+  <div style="padding:12px 14px 4px">
+    <!-- Write today button (CTA) -->
+    <button onclick="openJournalModal(todayStr);closeSubDrawer()" id="sdi-journal-write-btn"
+      style="width:100%;padding:14px;border:none;border-radius:12px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 3px 14px rgba(139,92,246,0.4);margin-bottom:10px;-webkit-tap-highlight-color:transparent">
+      <span style="font-size:20px">✍️</span>
+      <span id="sdi-journal-cta-label">Tulis Jurnal Hari Ini</span>
+    </button>
+    <!-- Streak badge -->
+    <div id="sdi-journal-streak" style="text-align:center;font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:10px;font-family:'DM Mono',monospace"></div>
+  </div>
+  <div id="sdi-journal-menu-label" style="padding:0 12px 4px;font-size:9px;font-weight:700;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px">Menu Jurnal</div>
+  <div class="subdrawer-grid">
+    <div class="subdrawer-item" id="sdi-journal-today" onclick="switchView('journal-today');closeSubDrawer()" style="color:rgba(255,255,255,0.7)">
+      <span class="sdi-ic">📖</span><span class="sdi-lbl">Hari Ini</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-journal-all" onclick="switchView('journal-all');closeSubDrawer()" style="color:rgba(255,255,255,0.7)">
+      <span class="sdi-ic">📋</span><span class="sdi-lbl">Semua Entry</span>
+      <span class="sdi-cnt" id="sdi-cnt-journal" style="display:none;background:#8b5cf6">0</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-journal-search" onclick="switchView('journal-search');closeSubDrawer()" style="color:rgba(255,255,255,0.7)">
+      <span class="sdi-ic">🔍</span><span class="sdi-lbl">Search</span>
+    </div>
+  </div>
+  </div>
+</div>

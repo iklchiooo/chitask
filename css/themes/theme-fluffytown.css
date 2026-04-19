@@ -151,6 +151,9 @@ body.fluffytown-theme {
   --border: rgba(244,114,182,0.22);
   --text: #4a1535;
   --muted: #b56b8a;
+  --sidebar-border: rgba(244,114,182,0.45);
+  --sidebar-text: #fce7f3;
+  --sidebar-muted: rgba(253,164,175,0.65);
   --shadow: 0 4px 20px rgba(244,114,182,0.2), 0 1px 4px rgba(244,114,182,0.1);
   --radius: 14px;
   background-color: #fce4f1;
@@ -1269,3 +1272,51 @@ body.fluffytown-theme .bha-icon {
 body.fluffytown-theme .bha-arrow { color: rgba(244,114,182,0.5); }
 
 body.fluffytown-theme .btn-habit-analisa:hover .bha-arrow { color: #ec4899; }
+/* ── Horoscope Card ── */
+body.fluffytown-theme .horoscope-card {
+  background: linear-gradient(145deg, #fff8fb, #fff0f7) !important;
+  border: 1.5px solid rgba(244,114,182,0.22) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 4px 20px rgba(244,114,182,0.12), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+}
+body.fluffytown-theme .horoscope-desc {
+  color: #4a1535;
+  opacity: 1;
+}
+body.fluffytown-theme .horoscope-sign-name {
+  color: #ec4899;
+  font-weight: 800;
+}
+body.fluffytown-theme .horoscope-sign-date {
+  color: #b56b8a;
+}
+body.fluffytown-theme .horoscope-picker-btn {
+  background: rgba(244,114,182,0.08) !important;
+  border-color: rgba(244,114,182,0.2) !important;
+  border-radius: 14px !important;
+}
+body.fluffytown-theme .horoscope-picker-btn:hover,
+body.fluffytown-theme .horoscope-picker-btn:active {
+  border-color: #f472b6 !important;
+  background: rgba(244,114,182,0.16) !important;
+}
+body.fluffytown-theme .horoscope-picker-lbl {
+  color: #ec4899 !important;
+}
+body.fluffytown-theme .dash-card-title a {
+  color: #ec4899 !important;
+}
+
+/* ── Character Card ── */
+body.fluffytown-theme .char-card {
+  background: linear-gradient(145deg, #fff8fb, #fff0f7) !important;
+  border: 1.5px solid rgba(244,114,182,0.22) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 4px 20px rgba(244,114,182,0.12), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+}
+body.fluffytown-theme .char-name { color: #4a1535 !important; }
+body.fluffytown-theme .char-xp-fill { background: linear-gradient(90deg, #f472b6, #fbb6ce) !important; }
+body.fluffytown-theme .char-sprite-wrap { background: rgba(244,114,182,0.08) !important; border-color: rgba(244,114,182,0.2) !important; border-radius: 16px !important; }
+body.fluffytown-theme .job-picker-box { background: #fff6fb !important; border-radius: 24px 24px 0 0 !important; }
+body.fluffytown-theme .job-picker-item { background: rgba(244,114,182,0.07) !important; border-radius: 14px !important; }
+body.fluffytown-theme .job-picker-item[onclick]:hover { background: rgba(244,114,182,0.16) !important; border-color: #f472b6 !important; }

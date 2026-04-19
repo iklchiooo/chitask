@@ -1,0 +1,632 @@
+
+<style>
+  :root {
+    --bg:#f0ede8;--sidebar:#1c1917;--card:#fff;--border:rgba(0,0,0,0.08);
+    --text:#1c1917;--muted:#78716c;--accent:#d97706;--accent2:#b45309;
+    --gold:#f59e0b;--radius:10px;--shadow:0 1px 3px rgba(0,0,0,0.06);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'DM Sans',-apple-system,sans-serif; font-size:13px; }
+
+  @keyframes charSpriteFloat {
+    0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)}
+  }
+  @keyframes charShinePass {
+    0%{transform:translateX(-100%) rotate(15deg)} 100%{transform:translateX(350%) rotate(15deg)}
+  }
+  @keyframes rarityPulse {
+    0%,100%{opacity:1} 50%{opacity:0.6}
+  }
+
+  .tool-wrap {
+    display:flex; gap:16px; padding:1rem; align-items:flex-start;
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-lg);
+  }
+
+  .left-panel { flex:1; min-width:0; }
+  .right-panel { width:280px; flex-shrink:0; }
+
+  .panel-label {
+    font-size:11px; font-weight:500; color:var(--color-text-secondary);
+    text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px;
+  }
+
+  /* ── AVATAR CARD (fixed layout dari main.css) ── */
+  .char-card {
+    position:relative; overflow:hidden;
+    background:linear-gradient(135deg,#fff 0%,color-mix(in srgb,#d97706 8%,#fff) 100%);
+    border:1.5px solid color-mix(in srgb,#d97706 25%,rgba(0,0,0,0.08));
+    padding:0 !important;
+    width:160px; min-width:160px;
+    min-height:238px; height:238px;
+    border-radius:10px;
+  }
+  .char-card::before {
+    content:''; position:absolute; inset:0;
+    background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,0.012) 3px,rgba(255,255,255,0.012) 4px),
+               repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(255,255,255,0.012) 3px,rgba(255,255,255,0.012) 4px);
+    pointer-events:none; z-index:0; border-radius:inherit;
+  }
+  .char-card-inner { padding:0; position:relative; z-index:1; display:flex; flex-direction:column; height:100%; }
+  .char-card-header { display:flex; align-items:center; justify-content:flex-end; padding:8px 12px 0; }
+  .char-card-header-action { font-size:10px; color:#d97706; cursor:pointer; font-weight:600; opacity:0.85; }
+  .char-card-body { display:flex; align-items:stretch; flex:1; gap:0; min-height:0; position:relative; overflow:hidden; }
+
+  .char-sprite-panel {
+    position:absolute; left:0; top:0; bottom:0; width:160px;
+    display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-end;
+    padding:0; overflow:hidden; z-index:2;
+    clip-path: inset(0);
+  }
+  .char-sprite-label {
+    position:absolute; top:-1px; left:-1px; z-index:10;
+    background:color-mix(in srgb,#d97706 80%,#f0ede8);
+    color:#f0ede8; font-size:8px; font-weight:800;
+    letter-spacing:0.8px; text-transform:uppercase;
+    padding:2px 7px 2px 5px; border-radius:0 0 6px 0;
+    box-shadow:2px 2px 0 rgba(0,0,0,0.3); white-space:nowrap;
+  }
+  .char-sprite-panel::before {
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(ellipse at 50% 70%,color-mix(in srgb,#d97706 22%,transparent) 0%,transparent 72%);
+    pointer-events:none; z-index:0;
+  }
+  .char-sprite-wrap {
+    width:100%; height:238px; min-height:238px;
+    background:linear-gradient(180deg,color-mix(in srgb,#d97706 8%,transparent) 0%,color-mix(in srgb,#d97706 18%,#f0ede8) 60%,color-mix(in srgb,#d97706 28%,#f0ede8) 100%);
+    overflow:visible; display:flex; align-items:flex-end; justify-content:center;
+    position:relative; image-rendering:pixelated;
+  }
+  .char-sprite-wrap::after {
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(180deg,rgba(255,255,255,0.08) 0%,transparent 40%);
+    pointer-events:none; z-index:1;
+  }
+  .char-sprite-shine { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:3; }
+  .char-sprite-shine::before {
+    content:''; position:absolute; top:0; left:0; width:40%; height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent);
+    transform:translateX(-100%) rotate(15deg);
+    animation:charShinePass 4s ease-in-out 1.5s infinite;
+  }
+
+  .char-sprite-anim {
+    width:160px; height:238px;
+    background-size:960px 1428px; /* 160*6 x 238*6 default */
+    background-repeat:no-repeat;
+    background-position:0 0;
+    image-rendering:pixelated; image-rendering:crisp-edges;
+    position:relative; z-index:2;
+    flex-shrink:0;
+    filter:drop-shadow(0 8px 16px rgba(0,0,0,0.7));
+    align-self:flex-end;
+    animation: charSpriteFloat 2.8s ease-in-out infinite;
+  }
+
+  /* ── MOBILE RESPONSIVE — scale card proporsional ── */
+  @media (max-width: 480px) {
+    .char-card {
+      /* Scale card 160x238 menjadi muat di layar kecil */
+      transform-origin: top left;
+      transform: scale(var(--card-scale, 1));
+      /* Tambah margin-bottom agar layout tidak overlap setelah scale */
+    }
+    .tool-wrap {
+      flex-direction: column;
+    }
+    .right-panel {
+      width: 100%;
+    }
+  }
+
+  .char-card-info {
+    flex:1; min-width:0; display:flex; flex-direction:column;
+    justify-content:center; gap:6px; padding:0 14px 14px 174px;
+  }
+  .char-name { font-size:19px; font-weight:800; color:#1c1917; letter-spacing:-0.5px; line-height:1.15; }
+  .char-job-badge {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:10px; font-weight:700; padding:3px 10px; border-radius:4px;
+    border:1.5px solid; background:transparent; width:fit-content;
+    letter-spacing:0.4px; position:relative; overflow:hidden;
+    font-family:monospace; text-transform:uppercase;
+  }
+  .char-level-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:2px; }
+  .char-lv-num { font-size:13px; color:#d97706; font-family:monospace; font-weight:700; }
+  .char-xp-bar {
+    height:10px; background:color-mix(in srgb,#d97706 15%,rgba(0,0,0,0.08));
+    border-radius:3px; overflow:hidden; margin-top:2px;
+    border:1px solid color-mix(in srgb,#d97706 20%,rgba(0,0,0,0.08)); position:relative;
+  }
+  .char-xp-fill {
+    height:100%;
+    background:linear-gradient(90deg,#d97706,color-mix(in srgb,#d97706 70%,#fbbf24) 60%,#fbbf24);
+    border-radius:2px; width:62%; position:relative;
+  }
+  .char-xp-fill::after {
+    content:''; position:absolute; top:2px; left:2px; right:2px; height:2px;
+    background:rgba(255,255,255,0.35); border-radius:1px;
+  }
+  .char-gold-row { font-size:12px; color:#1c1917; margin-top:2px; display:flex; align-items:center; gap:4px; }
+  .char-gold-row b { color:#f59e0b; font-family:monospace; font-size:13px; }
+  .char-card-rarity-strip { height:3px; width:100%; border-radius:10px 10px 0 0; flex-shrink:0; background:#d97706; }
+
+  /* ── CONTROLS ── */
+  .ctrl-card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 14px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .ctrl-row { display:flex; flex-direction:column; gap:4px; }
+  .ctrl-label { font-size:11px; color:var(--color-text-secondary); font-weight:500; }
+  .ctrl-row select, .ctrl-row input[type=file] {
+    font-size:12px; width:100%;
+  }
+  .ctrl-row input[type=range] { width:100%; }
+  .ctrl-val { font-size:12px; font-weight:500; color:var(--color-text-primary); font-family:monospace; }
+  .ctrl-2col { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+
+  .info-box {
+    background:var(--color-background-secondary);
+    border-radius:var(--border-radius-md);
+    padding:8px 10px; font-size:11px;
+    font-family:monospace; color:var(--color-text-secondary);
+    display:flex; flex-direction:column; gap:3px;
+  }
+  .info-row { display:flex; justify-content:space-between; }
+  .info-key { color:var(--color-text-secondary); }
+  .info-val { color:var(--color-text-primary); font-weight:500; }
+
+  .placeholder-box {
+    width:138px; height:142px; display:flex; align-items:center; justify-content:center;
+    position:relative; z-index:2; align-self:flex-end;
+    animation:charSpriteFloat 2.8s ease-in-out infinite;
+    color:rgba(0,0,0,0.2); font-size:11px; text-align:center; line-height:1.4;
+  }
+</style>
+
+<div class="tool-wrap">
+  <div class="left-panel">
+    <p class="panel-label">Preview</p>
+    <div class="char-card" id="charCard">
+      <div class="char-card-rarity-strip" id="rarityStrip"></div>
+      <div class="char-card-inner">
+        <div class="char-card-header">
+          <span class="char-card-header-action">✦ Customize</span>
+        </div>
+        <div class="char-card-body">
+          <div class="char-sprite-panel">
+            <span class="char-sprite-label" id="spriteLabel">Warrior</span>
+            <div class="char-sprite-wrap" id="spriteWrap">
+              <div class="char-sprite-shine"></div>
+              <div class="char-sprite-anim" id="spriteEl">
+                <div class="placeholder-box" id="placeholderTxt">Upload<br>sprite sheet</div>
+              </div>
+            </div>
+          </div>
+          <div class="char-card-info">
+            <div class="char-name" id="charName">Yusuf</div>
+            <div class="char-job-badge" id="jobBadge" style="color:#d97706;border-color:#d97706;">⚔ Warrior</div>
+            <div class="char-level-row">
+              <span class="char-lv-num">Lv. 12</span>
+              <span style="font-size:10px;color:#78716c;">4,200 / 6,000 XP</span>
+            </div>
+            <div class="char-xp-bar"><div class="char-xp-fill"></div></div>
+            <div class="char-gold-row">💰 <b>3,480</b> Gold</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <p class="panel-label">Sprite Config</p>
+    <div class="ctrl-card">
+
+      <div class="ctrl-row">
+        <span class="ctrl-label">Job</span>
+        <select id="selJob">
+          <option value="warrior">Warrior</option>
+          <option value="adventurer">Adventurer</option>
+          <option value="scholar">Scholar</option>
+          <option value="knight">Knight</option>
+          <option value="paladin">Paladin</option>
+          <option value="sage">Sage</option>
+          <option value="bard">Bard</option>
+          <option value="crusader">Crusader</option>
+          <option value="alchemist">Alchemist</option>
+          <option value="archmage">Archmage</option>
+          <option value="shadow">Shadow ✦</option>
+          <option value="sovereign">Sovereign ✦</option>
+        </select>
+      </div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label">Gender</span>
+        <select id="selGender">
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label">Sprite sheet (PNG)</span>
+        <input type="file" id="fileInput" accept="image/png,image/webp,image/gif">
+      </div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label">Auto-detect dari folder</span>
+        <button id="btnAutoDetect" style="font-size:11px;padding:5px 10px;cursor:pointer;border-radius:6px;border:1px solid var(--color-border-tertiary);background:var(--color-background-secondary);color:var(--color-text-primary);text-align:left;">
+          📁 Pilih folder character/jobs/
+        </button>
+        <span style="font-size:10px;color:var(--color-text-secondary);margin-top:2px;">Scan otomatis semua job & gender dari folder</span>
+      </div>
+
+      <hr style="border:none;border-top:0.5px solid var(--color-border-tertiary);">
+
+      <div class="ctrl-2col">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Display W <span class="ctrl-val" id="valW">160</span>px</span>
+          <input type="range" id="slW" min="60" max="240" step="1" value="160">
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Display H <span class="ctrl-val" id="valH">238</span>px</span>
+          <input type="range" id="slH" min="60" max="280" step="1" value="238">
+        </div>
+      </div>
+
+      <div class="ctrl-2col">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Cols <span class="ctrl-val" id="valCols">6</span></span>
+          <input type="range" id="slCols" min="1" max="12" step="1" value="6">
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Rows <span class="ctrl-val" id="valRows">6</span></span>
+          <input type="range" id="slRows" min="1" max="12" step="1" value="6">
+        </div>
+      </div>
+
+      <div class="ctrl-2col">
+        <div class="ctrl-row">
+          <span class="ctrl-label">FPS <span class="ctrl-val" id="valFps">12</span></span>
+          <input type="range" id="slFps" min="1" max="30" step="1" value="12">
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Frames <span class="ctrl-val" id="valFrames">36</span></span>
+          <input type="range" id="slFrames" min="1" max="144" step="1" value="36">
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:0.5px solid var(--color-border-tertiary);">
+
+      <div class="info-box" id="infoBox"></div>
+
+      <button onclick="copyConfig()" style="font-size:12px;">Copy config snippet ↗</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+//  SPRITE PREVIEW — per-job/per-gender state memory + pixel-based positioning
+// ══════════════════════════════════════════════════════════════════════════════
+
+var JOB_DEFAULT_FPS = {
+  adventurer:12, scholar:12, warrior:12, knight:12,
+  paladin:12, sage:12, bard:12, crusader:12,
+  alchemist:12, archmage:12, shadow:14, sovereign:10
+};
+
+var JOB_META = {
+  warrior    :{label:'Warrior',    color:'#d97706', icon:'⚔'},
+  adventurer :{label:'Adventurer', color:'#16a34a', icon:'🗺'},
+  scholar    :{label:'Scholar',    color:'#3b82f6', icon:'📖'},
+  knight     :{label:'Knight',     color:'#8b5cf6', icon:'⚔'},
+  paladin    :{label:'Paladin',    color:'#10b981', icon:'⚡'},
+  sage       :{label:'Sage',       color:'#6366f1', icon:'✦'},
+  bard       :{label:'Bard',       color:'#ec4899', icon:'♪'},
+  crusader   :{label:'Crusader',   color:'#64748b', icon:'🛡'},
+  alchemist  :{label:'Alchemist',  color:'#f59e0b', icon:'⚗'},
+  archmage   :{label:'Archmage',   color:'#a855f7', icon:'★'},
+  shadow     :{label:'Shadow',     color:'#374151', icon:'◈'},
+  sovereign  :{label:'Sovereign',  color:'#b45309', icon:'♛'}
+};
+
+// ── Per-job/per-gender config store ─────────────────────────────────────────
+// Setiap key: job+'_'+gender → { displayW, displayH, cols, rows, fps, frames, spriteUrl }
+var perJobConfig = {};
+
+function configKey(job, gender) { return job + '_' + gender; }
+
+function getDefaultState(job, gender) {
+  return {
+    job: job, gender: gender,
+    displayW: 160, displayH: 238,
+    cols: 6, rows: 6,
+    fps: JOB_DEFAULT_FPS[job] || 12,
+    frames: 36,
+    spriteUrl: null,
+    kfName: null
+  };
+}
+
+// State aktif (pointer ke entry di perJobConfig)
+var state = getDefaultState('warrior', 'male');
+perJobConfig[configKey('warrior','male')] = state;
+
+// ── Keyframe injection (pixel-based — bebas dari lebar elemen) ───────────────
+var styleTag = document.createElement('style');
+document.head.appendChild(styleTag);
+
+function injectKeyframes() {
+  // Gunakan pixel absolut bukan persen agar tidak tergantung ukuran elemen
+  // background-position: -col*frameW px  -row*frameH px
+  var w = state.displayW, h = state.displayH;
+  var cols = state.cols, rows = state.rows;
+  var frameCount = Math.min(state.frames, cols * rows);
+  var name = 'spriteIdle_' + state.job + '_' + state.gender + '_' + Date.now();
+  state.kfName = name;
+  var steps = [];
+  for (var f = 0; f < frameCount; f++) {
+    var col = f % cols;
+    var row = Math.floor(f / cols);
+    var xPx = -(col * w) + 'px';
+    var yPx = -(row * h) + 'px';
+    var tPct = (f / frameCount * 100).toFixed(4) + '%';
+    steps.push(tPct + '{background-position:' + xPx + ' ' + yPx + '}');
+  }
+  steps.push('100%{background-position:0px 0px}');
+  styleTag.textContent = '@keyframes ' + name + '{' + steps.join('') + '}';
+}
+
+// ── Apply sprite ke DOM ───────────────────────────────────────────────────────
+function applySprite() {
+  var el = document.getElementById('spriteEl');
+  var ph = document.getElementById('placeholderTxt');
+  var w = state.displayW, h = state.displayH;
+
+  el.style.width  = w + 'px';
+  el.style.height = h + 'px';
+
+  if (state.spriteUrl) {
+    ph.style.display = 'none';
+    el.style.backgroundImage = 'url(' + state.spriteUrl + ')';
+    // background-size = total sheet size dalam px
+    el.style.backgroundSize = (w * state.cols) + 'px ' + (h * state.rows) + 'px';
+    var dur = (Math.min(state.frames, state.cols * state.rows) / state.fps).toFixed(3) + 's';
+    injectKeyframes();
+    el.style.animation =
+      'charSpriteFloat 2.8s ease-in-out infinite, ' +
+      state.kfName + ' ' + dur + ' steps(1) infinite';
+  } else {
+    ph.style.display = 'flex';
+    el.style.backgroundImage = '';
+    el.style.backgroundPosition = '0px 0px';
+    el.style.animation = 'charSpriteFloat 2.8s ease-in-out infinite';
+  }
+
+  updateInfo();
+  updateJobUI();
+  syncSliders();
+}
+
+// ── Sync slider UI ke state aktif ────────────────────────────────────────────
+function syncSliders() {
+  document.getElementById('slW').value      = state.displayW;
+  document.getElementById('valW').textContent = state.displayW;
+  document.getElementById('slH').value      = state.displayH;
+  document.getElementById('valH').textContent = state.displayH;
+  document.getElementById('slCols').value   = state.cols;
+  document.getElementById('valCols').textContent = state.cols;
+  document.getElementById('slRows').value   = state.rows;
+  document.getElementById('valRows').textContent = state.rows;
+  document.getElementById('slFps').value    = state.fps;
+  document.getElementById('valFps').textContent = state.fps;
+  document.getElementById('slFrames').value = state.frames;
+  document.getElementById('valFrames').textContent = state.frames;
+}
+
+// ── Ganti job/gender → load config tersimpan atau buat default baru ───────────
+function switchJobGender(job, gender) {
+  var key = configKey(job, gender);
+  if (!perJobConfig[key]) {
+    perJobConfig[key] = getDefaultState(job, gender);
+    // Pertahankan sprite URL kalau sudah di-upload untuk job ini
+  }
+  state = perJobConfig[key];
+  state.job    = job;
+  state.gender = gender;
+}
+
+function updateJobUI() {
+  var m = JOB_META[state.job] || JOB_META.warrior;
+  document.getElementById('spriteLabel').textContent = m.label;
+  document.getElementById('jobBadge').textContent = m.icon + ' ' + m.label;
+  document.getElementById('jobBadge').style.color = m.color;
+  document.getElementById('jobBadge').style.borderColor = m.color;
+  document.getElementById('rarityStrip').style.background = m.color;
+  var card = document.getElementById('charCard');
+  card.style.background = 'linear-gradient(135deg,#fff 0%,color-mix(in srgb,' + m.color + ' 8%,#fff) 100%)';
+  card.style.borderColor = 'color-mix(in srgb,' + m.color + ' 25%,rgba(0,0,0,0.08))';
+}
+
+function updateInfo() {
+  var frameCount = Math.min(state.frames, state.cols * state.rows);
+  var dur = (frameCount / state.fps).toFixed(2);
+  var bgW = state.displayW * state.cols;
+  var bgH = state.displayH * state.rows;
+  var perJob = (state.displayW !== 160 || state.displayH !== 238) ? ' ⚡ (per-karakter)' : '';
+  document.getElementById('infoBox').innerHTML =
+    '<div class="info-row"><span class="info-key">karakter</span><span class="info-val">' + state.job + ' / ' + state.gender + '</span></div>' +
+    '<div class="info-row"><span class="info-key">display size</span><span class="info-val">' + state.displayW + ' × ' + state.displayH + ' px' + perJob + '</span></div>' +
+    '<div class="info-row"><span class="info-key">background-size</span><span class="info-val">' + bgW + ' × ' + bgH + ' px</span></div>' +
+    '<div class="info-row"><span class="info-key">grid</span><span class="info-val">' + state.cols + ' × ' + state.rows + ' = ' + (state.cols*state.rows) + ' cells</span></div>' +
+    '<div class="info-row"><span class="info-key">frames used</span><span class="info-val">' + frameCount + ' / ' + (state.cols*state.rows) + '</span></div>' +
+    '<div class="info-row"><span class="info-key">duration</span><span class="info-val">' + dur + 's @ ' + state.fps + 'fps</span></div>';
+}
+
+// ── Event bindings ────────────────────────────────────────────────────────────
+function bindRange(id, key, valId) {
+  document.getElementById(id).addEventListener('input', function() {
+    state[key] = parseInt(this.value);
+    if (valId) document.getElementById(valId).textContent = this.value;
+    applySprite();
+  });
+}
+
+bindRange('slW',      'displayW', 'valW');
+bindRange('slH',      'displayH', 'valH');
+bindRange('slCols',   'cols',     'valCols');
+bindRange('slRows',   'rows',     'valRows');
+bindRange('slFps',    'fps',      'valFps');
+bindRange('slFrames', 'frames',   'valFrames');
+
+document.getElementById('selJob').addEventListener('change', function() {
+  switchJobGender(this.value, state.gender);
+  applySprite();
+});
+
+document.getElementById('selGender').addEventListener('change', function() {
+  switchJobGender(state.job, this.value);
+  applySprite();
+});
+
+document.getElementById('fileInput').addEventListener('change', function() {
+  var file = this.files[0];
+  if (!file) return;
+  if (state.spriteUrl) URL.revokeObjectURL(state.spriteUrl);
+  state.spriteUrl = URL.createObjectURL(file);
+  applySprite();
+});
+
+// ── Copy config snippet ke clipboard ─────────────────────────────────────────
+function copyConfig() {
+  var job = state.job, gender = state.gender;
+  var isPerJob = (state.displayW !== 160 || state.displayH !== 238);
+  var txt =
+    '// Paste ke SPRITE_CONFIGS.' + job + '.' + gender + ' di sprite-config.js:\n' +
+    '{ cols: ' + state.cols + ', rows: ' + state.rows +
+    ', frameCount: ' + state.frames + ', fps: ' + state.fps +
+    ', frameW: 194, frameH: 200' +
+    ', displayW: ' + (isPerJob ? state.displayW : 'null') +
+    ', displayH: ' + (isPerJob ? state.displayH : 'null') + ' }';
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(txt).then(function() { alert('Copied! Paste ke sprite-config.js'); });
+  } else {
+    prompt('Copy ini ke sprite-config.js:', txt);
+  }
+}
+
+// ── Auto-detect sprite dari folder character/jobs/ ────────────────────────────
+// Gunakan File System Access API (Chrome/Edge) atau fallback ke upload folder
+(function setupAutoDetect() {
+  var btnAuto = document.getElementById('btnAutoDetect');
+  if (!btnAuto) return;
+
+  // Cek apakah browser support showDirectoryPicker
+  if (!window.showDirectoryPicker) {
+    btnAuto.title = 'Browser tidak support (gunakan Chrome/Edge)';
+    btnAuto.style.opacity = '0.4';
+    btnAuto.style.cursor = 'not-allowed';
+    return;
+  }
+
+  btnAuto.addEventListener('click', async function() {
+    try {
+      var dirHandle = await window.showDirectoryPicker();
+      var found = {};
+
+      // Scan rekursif jobs/normal dan jobs/hidden
+      async function scanDir(handle, pathParts) {
+        for await (var entry of handle.values()) {
+          if (entry.kind === 'directory') {
+            await scanDir(entry, pathParts.concat(entry.name));
+          } else if (entry.kind === 'file' && /\.(png|webp|gif)$/i.test(entry.name)) {
+            // Cari pola: jobs/(normal|hidden)/JOBNAME/GENDER.png atau JOBNAME_GENDER.png
+            var fullPath = pathParts.concat(entry.name).join('/');
+            var m = fullPath.match(/jobs\/(?:normal|hidden)\/([^/]+)\/([^/]+)\.(png|webp|gif)$/i);
+            if (!m) {
+              // pola flat: JOBNAME_male.png / JOBNAME_female.png
+              m = entry.name.match(/^([a-z]+)_(male|female)\.(png|webp|gif)$/i);
+              if (m) m = [null, m[1].toLowerCase(), m[2].toLowerCase()];
+            }
+            if (m) {
+              var jobId = m[1].toLowerCase();
+              var genderId = m[2].toLowerCase();
+              if (JOB_META[jobId] && (genderId === 'male' || genderId === 'female')) {
+                var key = jobId + '_' + genderId;
+                if (!found[key]) {
+                  var file = await entry.getFile();
+                  found[key] = URL.createObjectURL(file);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      await scanDir(dirHandle, []);
+
+      var count = Object.keys(found).length;
+      if (count === 0) {
+        alert('Tidak ada sprite ditemukan.\nPastikan folder berisi file seperti:\njobs/normal/warrior/male.png\natau warrior_male.png');
+        return;
+      }
+
+      // Load semua yang ditemukan ke perJobConfig
+      for (var k in found) {
+        var parts = k.split('_');
+        var job = parts[0], gender = parts[1];
+        if (!perJobConfig[k]) perJobConfig[k] = getDefaultState(job, gender);
+        if (perJobConfig[k].spriteUrl) URL.revokeObjectURL(perJobConfig[k].spriteUrl);
+        perJobConfig[k].spriteUrl = found[k];
+      }
+
+      alert('✅ ' + count + ' sprite ditemukan!\n\n' + Object.keys(found).map(function(k){
+        var cfg = perJobConfig[k];
+        return '• ' + k + (cfg.spriteUrl ? ' ✓' : '');
+      }).join('\n'));
+
+      // Apply ke job aktif kalau ada
+      var activeKey = configKey(state.job, state.gender);
+      if (perJobConfig[activeKey] && perJobConfig[activeKey].spriteUrl) {
+        state = perJobConfig[activeKey];
+        applySprite();
+      }
+    } catch(e) {
+      if (e.name !== 'AbortError') alert('Error: ' + e.message);
+    }
+  });
+})();
+
+// ── Mobile responsive scale ────────────────────────────────────────────────────
+// Hitung scale agar card 160×238 muat proporsional di viewport kecil
+(function initMobileScale() {
+  function updateScale() {
+    var card = document.getElementById('charCard');
+    if (!card) return;
+    var cardW = 160;
+    var wrap = document.querySelector('.left-panel');
+    if (!wrap) return;
+    var available = wrap.offsetWidth;
+    if (available < cardW) {
+      var scale = available / cardW;
+      card.style.transform = 'scale(' + scale + ')';
+      card.style.transformOrigin = 'top left';
+      card.style.marginBottom = ((238 * scale) - 238) + 'px';
+    } else {
+      card.style.transform = '';
+      card.style.marginBottom = '';
+    }
+  }
+  window.addEventListener('resize', updateScale);
+  // Delay sedikit agar layout sudah terbentuk
+  setTimeout(updateScale, 100);
+})();
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+applySprite();
+</script>

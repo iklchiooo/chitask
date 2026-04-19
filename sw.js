@@ -10,48 +10,60 @@
 // ║  Boss files & theme CSS hanya di-cache saat dibutuhkan             ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-// ── FCM: Import harus di baris paling atas SW ────────────────────────
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
+// ── FCM: Import Firebase untuk push notification background ──────────
+// Dibungkus try-catch agar SW tetap bisa berjalan saat offline.
+// Tanpa ini, importScripts yang gagal (no network) akan membuat SW
+// crash total → tidak ada fetch handler → blank putih saat offline.
+var _fcmReady = false;
+try {
+  importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
+  importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
-// ── Inisialisasi Firebase di SW ──────────────────────────────────────
-firebase.initializeApp({
-  apiKey:            "AIzaSyA_erlGbohRGlL0ei8l2RqJLR0sy-kVtvU",
-  authDomain:        "chitask.firebaseapp.com",
-  projectId:         "chitask",
-  storageBucket:     "chitask.firebasestorage.app",
-  messagingSenderId: "914322046491",
-  appId:             "1:914322046491:web:f35fc2b9258b9d710e82be"
-});
-
-const messaging = firebase.messaging();
-
-// ── FCM: Tangani push saat app background / ditutup ─────────────────
-messaging.onBackgroundMessage(function(payload) {
-  console.log('[sw.js] FCM background message:', payload);
-  const data   = payload.data || payload.notification || {};
-  const title  = data.title  || 'ChiTask ⏰ Pengingat';
-  const body   = data.body   || '';
-  const tag    = data.tag    || 'chitask-fcm-' + Date.now();
-  const taskId = data.taskId || '';
-
-  return self.registration.showNotification(title, {
-    body,
-    icon:    '/icons/icon-192x192.png',
-    badge:   '/icons/icon-96x96.png',
-    tag,
-    renotify: true,
-    vibrate: [200, 100, 200],
-    requireInteraction: false,
-    data: { taskId, url: '/' }
+  // ── Inisialisasi Firebase di SW ────────────────────────────────────
+  firebase.initializeApp({
+    apiKey:            "AIzaSyA_erlGbohRGlL0ei8l2RqJLR0sy-kVtvU",
+    authDomain:        "chitask.firebaseapp.com",
+    projectId:         "chitask",
+    storageBucket:     "chitask.firebasestorage.app",
+    messagingSenderId: "914322046491",
+    appId:             "1:914322046491:web:f35fc2b9258b9d710e82be"
   });
-});
+
+  const messaging = firebase.messaging();
+
+  // ── FCM: Tangani push saat app background / ditutup ───────────────
+  messaging.onBackgroundMessage(function(payload) {
+    console.log('[sw.js] FCM background message:', payload);
+    const data   = payload.data || payload.notification || {};
+    const title  = data.title  || 'ChiTask ⏰ Pengingat';
+    const body   = data.body   || '';
+    const tag    = data.tag    || 'chitask-fcm-' + Date.now();
+    const taskId = data.taskId || '';
+
+    return self.registration.showNotification(title, {
+      body,
+      icon:    '/icons/icon-192x192.png',
+      badge:   '/icons/icon-96x96.png',
+      tag,
+      renotify: true,
+      vibrate: [200, 100, 200],
+      requireInteraction: false,
+      data: { taskId, url: '/' }
+    });
+  });
+
+  _fcmReady = true;
+} catch (e) {
+  // Firebase tidak tersedia (offline atau CDN gagal) — SW tetap jalan normal,
+  // hanya fitur push notification background yang nonaktif sementara.
+  console.warn('[SW] Firebase FCM tidak tersedia, push notification background dinonaktifkan.', e.message);
+}
 
 // ════════════════════════════════════════════════════════════════════════
 // VERSI & NAMA CACHE
 // Bump CACHE_VERSION setiap deploy untuk force update SW
 // ════════════════════════════════════════════════════════════════════════
-const CACHE_VERSION = 'chitask-v9';
+const CACHE_VERSION = 'chitask-v10'; // v10: fix offline blank putih (FCM try-catch + cacheFirst HTML)
 const STATIC_CACHE  = CACHE_VERSION + '-static';   // critical shell
 const LAZY_CACHE    = CACHE_VERSION + '-lazy';     // boss, themes, extras
 const DYNAMIC_CACHE = CACHE_VERSION + '-dynamic';  // CDN, fonts, runtime
@@ -101,7 +113,7 @@ const CRITICAL_ASSETS = [
   // CSS utama — wajib ada sebelum render
   './css/main.css',
 
-  // JS core — urutan sesuai dependensi
+  // JS core — urutan sesuai dependensi di index.html
   './js/lang.js',
   './js/constants-helpers.js',
   './js/chipstate.js',
@@ -111,6 +123,27 @@ const CRITICAL_ASSETS = [
   './js/onboarding.js',
   './js/announcement.js',
   './js/sholat.js',
+  './js/horoscope.js',
+
+  // Character system — wajib ada untuk job & skill berjalan
+  './character/jobs/sprite-config.js',
+  './character/jobs/jobs.js',
+  './character/jobs/skills/skills-engine.js',
+
+  // Skill files semua job — tanpa ini skill fallback ke Basic Attack offline
+  './character/jobs/normal/Novice/skills/novice.js',
+  './character/jobs/normal/Hunter/skills/hunter.js',
+  './character/jobs/normal/Warrior/skills/warrior.js',
+  './character/jobs/normal/Knight/skills/knight.js',
+  './character/jobs/normal/Paladin/skills/paladin.js',
+  './character/jobs/normal/sage/skills/sage.js',
+  './character/jobs/normal/bard/skills/bard.js',
+  './character/jobs/normal/crusader/skills/crusader.js',
+  './character/jobs/normal/alchemist/skills/alchemist.js',
+  './character/jobs/normal/archmage/skills/archmage.js',
+  './character/jobs/hidden/shadow/skills/shadow.js',
+  './character/jobs/hidden/sovereign/skills/sovereign.js',
+  './character/jobs/paid/Slytherin/Char 1/skills/slytherin.js',
 ];
 
 // ════════════════════════════════════════════════════════════════════════
@@ -121,6 +154,8 @@ const CRITICAL_ASSETS = [
 const LAZY_PATHS = [
   '/boss/',
   '/css/themes/',
+  '/css/efek/',
+  '/character/',          // sprites semua job (webp)
   '/icons/icon-96x96.png',
   '/icons/icon-144x144.png',
   '/icons/icon-128x128.png',
@@ -220,9 +255,11 @@ function route(req, url) {
       return lazyCacheFirst(req, LAZY_CACHE);
     }
 
-    // 4. HTML navigation → network first, fallback ke index.html
+    // 4. HTML navigation → cache first, fallback ke network
+    // networkFirst dulu menyebabkan blank putih saat offline karena hard reload
+    // memaksa request baru ke network. cacheFirst langsung serve dari cache.
     if (path.endsWith('.html') || path === '/' || !path.includes('.')) {
-      return networkFirst(req, STATIC_CACHE);
+      return cacheFirst(req, STATIC_CACHE);
     }
 
     // 5. Aset statis lain same-origin → lazy cache
@@ -296,9 +333,12 @@ function lazyCacheFirst(req, cacheName) {
   });
 }
 
-// Network First — coba network, fallback ke cache jika offline
+// Network First — coba network dengan timeout 4s, fallback ke cache jika offline/lambat
 function networkFirst(req, cacheName) {
-  return fetch(req).then(function(response) {
+  var timeoutPromise = new Promise(function(_, reject) {
+    setTimeout(function() { reject(new Error('timeout')); }, 4000);
+  });
+  return Promise.race([fetch(req), timeoutPromise]).then(function(response) {
     if (response && response.status === 200) {
       var clone = response.clone();
       caches.open(cacheName).then(function(cache) { cache.put(req, clone); });
@@ -324,10 +364,15 @@ function fetchAndStore(req, cache) {
   });
 }
 
-// Background refresh — update cache diam-diam untuk JS & CSS
+// Background refresh — update cache diam-diam untuk semua aset statis
 function backgroundRefresh(req, cache) {
   var url = req.url;
-  if (url.endsWith('.js') || url.endsWith('.css')) {
+  var shouldRefresh = (
+    url.endsWith('.js')     || url.endsWith('.css')    ||
+    url.endsWith('.html')   || url.endsWith('.webp')   ||
+    url.endsWith('.png')    || url.endsWith('.lottie')
+  );
+  if (shouldRefresh) {
     fetch(req).then(function(response) {
       if (response && response.status === 200) {
         cache.put(req, response);

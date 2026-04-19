@@ -1,0 +1,30 @@
+<!-- ================================================================ -->
+<!--  NAV 6: BOTTOM NAV (Mobile)                                       -->
+<!--  Navigasi utama bawah layar di mobile                             -->
+<!--  Berisi: 4 tombol — Task | Keuangan | [FAB spacer] | Jurnal | Maintenance -->
+<!--  + FAB tombol tambah task (terpisah, tapi terhubung)              -->
+<!--  Hapus file ini jika ingin pakai sidebar-only (mode desktop)      -->
+<!--                                                                    -->
+<!--  PERHATIAN: FAB button (#fabAdd) ada di bawah section ini         -->
+<!--  di index.html (baris ~1298). Jika bottom nav dihapus,            -->
+<!--  FAB juga sebaiknya ikut dihapus.                                 -->
+<!-- ================================================================ -->
+<!-- Bottom Navigation (mobile) -->
+<nav class="bottom-nav" id="bottomNav">
+  <button class="bn-item active" id="bn-task" onclick="toggleSubDrawer('task')">
+    <span class="bn-ic">📋</span><span class="bn-lbl">Task</span>
+    <span class="bn-badge" id="bn-task-badge" style="display:none">0</span>
+  </button>
+  <button class="bn-item" id="bn-fin" onclick="toggleSubDrawer('fin')">
+    <span class="bn-ic">💰</span><span class="bn-lbl" id="bn-lbl-fin">Keuangan</span>
+  </button>
+  <div class="bn-fab-spacer"></div>
+  <button class="bn-item" id="bn-journal" onclick="toggleSubDrawer('journal')">
+    <span class="bn-ic">📓</span><span class="bn-lbl" id="bn-lbl-journal">Jurnal</span>
+  </button>
+  <button class="bn-item" id="bn-maint" onclick="toggleSubDrawer('maint')">
+    <span class="bn-ic">🔧</span><span class="bn-lbl" id="bn-lbl-maint">Maintenance</span>
+    <span class="bn-badge" id="bn-maint-badge" style="display:none">!</span>
+  </button>
+</nav>
+

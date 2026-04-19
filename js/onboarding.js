@@ -266,12 +266,14 @@ function tourCheckAndStart() {
 function _tourWaitSplashThenStart() {
   // Tunggu splash DAN gami/nav onboarding selesai, baru mulai tour
   function _bothReady() {
-    if (_tourFirestorePending) return false; // masih menunggu hasil Firestore
+    if (_tourFirestorePending) return false;
     if (!window._splashDismissed) return false;
-    var gamiEl = document.getElementById('gamiOnboarding');
-    if (gamiEl && gamiEl.style.display !== 'none' && gamiEl.style.display !== '') return false;
-    var navEl = document.getElementById('navOnboarding');
-    if (navEl && navEl.style.display !== 'none' && navEl.style.display !== '') return false;
+    if (!window._onboardingFlowDone) return false;
+    // Tahan jika pengumuman masih tampil atau masih di antrian
+    if (typeof _annShowing !== 'undefined' && _annShowing) return false;
+    if (typeof _annQueue !== 'undefined' && _annQueue.length > 0) return false;
+    // Tahan jika username prompt masih tampil
+    if (document.getElementById('char-username-onboarding')) return false;
     return true;
   }
   if (_bothReady()) {

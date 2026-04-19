@@ -21,8 +21,9 @@
 [[headers]]
   for = "/manifest.json"
   [headers.values]
-    Content-Type = "application/manifest+json"
-    Cache-Control = "no-cache"
+    Content-Type = "application/manifest+json; charset=utf-8"
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    X-Content-Type-Options = "nosniff"
 
 [[headers]]
   for = "/*.html"
@@ -32,12 +33,15 @@
 [[headers]]
   for = "/*.js"
   [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+    # Tidak pakai content-hash di nama file, jadi tidak boleh immutable.
+    # max-age=86400: browser boleh cache 1 hari, setelah itu harus revalidate.
+    # Ini mencegah user terjebak di JS versi lama setelah deploy baru.
+    Cache-Control = "public, max-age=86400, must-revalidate"
 
 [[headers]]
   for = "/*.css"
   [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "public, max-age=86400, must-revalidate"
 
 [[headers]]
   for = "/*"
@@ -45,3 +49,5 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+    # Referrer policy untuk keamanan dan kompatibilitas OAuth Firebase
+    Referrer-Policy = "strict-origin-when-cross-origin"

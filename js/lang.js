@@ -214,8 +214,8 @@ var _STRINGS = {
     gami_mode_gamer: '🎮 Gamer Mode Aktif',
     gami_mode_focus: '🎯 Fokus Mode Aktif',
     // ── Tour steps ──
-    tour_welcome_title: 'Selamat datang di ChiTask!',
-    tour_welcome_desc: 'Kamu baru aja masuk ke app produktivitas all-in-one yang bisa bantu kamu kelola <b>tugas</b>, <b>keuangan</b>, <b>kebiasaan</b>, dan <b>jurnal</b> harian — semuanya di satu tempat.',
+    tour_welcome_title: 'Selamat datang di ChiTask! 👋',
+    tour_welcome_desc: 'Kamu baru aja masuk ke app produktivitas all-in-one yang bisa bantu kamu kelola <b>tugas</b>, <b>keuangan</b>, <b>kebiasaan</b>, dan <b>jurnal</b> harian — semuanya di satu tempat.<br><br>Tutorial ini akan memandu kamu mengenal fitur-fitur utama. Yuk mulai! 🚀',
     tour_cloud_title: 'Data kamu aman di cloud',
     tour_cloud_desc: 'Karena kamu login pakai Google, semua data otomatis tersimpan di cloud dan bisa diakses dari device manapun. Tidak perlu khawatir data hilang!',
     tour_install_title: 'Install ke Home Screen',

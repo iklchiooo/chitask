@@ -1,0 +1,69 @@
+<!-- ================================================================ -->
+<!--  NAV 2: SUB-DRAWER TASK (Mobile)                                  -->
+<!--  Muncul saat tombol "Task" di Bottom Nav ditekan                  -->
+<!--  Berisi: Dashboard, My Day, Penting, Terjadwal, Kalender,         -->
+<!--          Habits, Semua Task, Selesai, Kelola Grup,                 -->
+<!--          Collaboration, Toko, Pencapaian, Settings                 -->
+<!--  Hapus file ini jika tidak butuh sub-drawer khusus Task           -->
+<!-- ================================================================ -->
+<div class="subdrawer" id="subdrawer-task">
+  <div class="subdrawer-handle" id="sdhandle-task"></div>
+  <div class="subdrawer-header">
+    <span class="subdrawer-title" id="sdi-task-header">📋 Task</span>
+    <button class="subdrawer-close" onclick="closeSubDrawer()">✕</button>
+  </div>
+  <div class="subdrawer-body">
+  <div class="subdrawer-grid">
+    <div class="subdrawer-item" id="sdi-dashboard" onclick="switchView('dashboard');closeSubDrawer()">
+      <span class="sdi-ic">🏠</span><span class="sdi-lbl">Dashboard</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-myday" onclick="switchView('myday');closeSubDrawer()">
+      <span class="sdi-ic">☀️</span><span class="sdi-lbl">My Day</span>
+      <span class="sdi-cnt" id="sdi-cnt-myday">0</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-important" onclick="switchView('important');closeSubDrawer()">
+      <span class="sdi-ic">⭐</span><span class="sdi-lbl">Penting</span>
+      <span class="sdi-cnt" id="sdi-cnt-important">0</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-planned" onclick="switchView('planned');closeSubDrawer()">
+      <span class="sdi-ic">📅</span><span class="sdi-lbl">Terjadwal</span>
+      <span class="sdi-cnt" id="sdi-cnt-planned">0</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-calendar" onclick="switchView('unified-calendar');closeSubDrawer()">
+      <span class="sdi-ic">🗓</span><span class="sdi-lbl">Kalender</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-habits" onclick="switchView('habits');closeSubDrawer()">
+      <span class="sdi-ic">🔥</span><span class="sdi-lbl">Habits</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-all" onclick="switchView('all');closeSubDrawer()">
+      <span class="sdi-ic">📋</span><span class="sdi-lbl">Semua Task</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-completed" onclick="switchView('completed');closeSubDrawer()">
+      <span class="sdi-ic">✅</span><span class="sdi-lbl">Selesai</span>
+      <span class="sdi-cnt" id="sdi-cnt-completed">0</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-task-groups" onclick="switchView('task-groups');closeSubDrawer()">
+      <span class="sdi-ic">🗂️</span><span class="sdi-lbl">Kelola Grup</span>
+    </div>
+    <div class="subdrawer-item" id="sdi-collab" onclick="CT_Collab.showProjectsView();closeSubDrawer()">
+      <span class="sdi-ic">🤝</span><span class="sdi-lbl">Collaboration</span>
+    </div>
+
+    <div class="subdrawer-item" id="sdi-shop" onclick="openShop();closeSubDrawer()">
+      <span class="sdi-ic">🏪</span><span class="sdi-lbl">Toko 🪙<span id="sdi-gold-cnt">0</span></span>
+    </div>
+    <div class="subdrawer-item" id="sdi-achievements" onclick="switchView('achievements');closeSubDrawer()">
+      <span class="sdi-ic">🏆</span><span class="sdi-lbl">Pencapaian</span>
+    </div>
+  </div>
+  <!-- Settings section -->
+  <div id="sdi-settings-hdr" style="padding:4px 12px 4px;font-size:9px;font-weight:700;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;border-top:1px solid rgba(255,255,255,0.07);margin-top:4px">⚙️ Pengaturan</div>
+  <div style="padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 80px);display:flex;flex-direction:column;gap:8px">
+    <div style="display:grid;grid-template-columns:1fr;gap:8px">
+      <button id="sdi-install-btn" class="sync-action-btn" onclick="installApp();closeSubDrawer()" style="background:rgba(217,119,6,0.3);font-size:12px;padding:10px">📲 Install App</button>
+      <button id="sdi-settings-btn" class="sync-action-btn" onclick="openNavPreferenceModal();closeSubDrawer()" style="background:rgba(255,255,255,0.08);font-size:12px;padding:10px">⚙️ Settings, Navigasi &amp; Gamifikasi</button>
+    </div>
+  </div>
+  </div>
+</div>
+

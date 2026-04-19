@@ -4,6 +4,37 @@
 <meta charset="UTF-8">
 <!-- ⚡ Anti-white-flash: dark bg before CSS loads, overrideable by theme vars -->
 <style>html{background:#1c1917;}body{background:#1c1917;margin:0;padding:0;}</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ChiTask">
+<meta name="theme-color" content="#1c1917">
+<title>ChiTask — Task Manager + Keuangan</title>
+<link rel="manifest" id="pwa-manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192x192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+<link rel="shortcut icon" href="icons/icon-96x96.png">
+<link rel="icon" href="icons/icon-96x96.png">
+<!-- Font preconnect (non-blocking) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap"></noscript>
+<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/themes/theme-midnight.css">
+<link rel="stylesheet" href="css/themes/theme-sunset.css">
+<link rel="stylesheet" href="css/themes/theme-slytherin.css">
+<link rel="stylesheet" href="css/themes/theme-fluffytown.css">
+<link rel="stylesheet" href="css/themes/theme-sololeveling.css">
+<!-- Google Identity Services — untuk OAuth token Calendar tanpa Firebase popup -->
+<!-- Google Identity Services dihapus — diganti Cloudflare Worker -->
+<!-- ⚡ Preload lottie asset & player supaya siap sebelum splash tampil -->
+<link rel="preload" href="css/themes/icons/hamster.lottie" as="fetch" crossorigin>
+<link rel="preload" href="css/themes/icons/slytherin.lottie" as="fetch" crossorigin>
+<link rel="modulepreload" href="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs">
+<script src="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs" type="module"></script>
 <script src="js/lang.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
@@ -503,8 +534,14 @@ function fbWritePresence() {
     payload.email       = fbUser.email || '';
     payload.displayName = fbUser.displayName || '';
     payload.photoURL    = fbUser.photoURL || '';
+    // Tambahkan charUsername (nama petualang) ke presence
+    var _cun = (typeof getCharUsername === 'function') ? getCharUsername() : '';
+    if (_cun) payload.charUsername = _cun;
   } else {
     payload.displayName = fbUser.displayName || 'Tamu';
+    // Tambahkan charUsername untuk guest juga
+    var _cunG = (typeof getCharUsername === 'function') ? getCharUsername() : '';
+    if (_cunG) payload.charUsername = _cunG;
   }
 
   fbDb.collection('presence').doc(docId).set(payload, { merge: true })
@@ -546,14 +583,14 @@ function updateAuthUI(user) {
         ? '<img src="'+user.photoURL+'" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0">'
         : '<div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">'+init+'</div>';
       if (user._isGuest) {
-        // Guest mode: tampilkan nama + upgrade prompt
-        var guestName = user.displayName || 'Tamu';
+        // Guest mode: tampilkan charUsername atau nama guest + upgrade prompt
+        var guestName = (typeof getCharUsername === 'function' && getCharUsername()) || user.displayName || 'Tamu';
         var guestInit = guestName.charAt(0).toUpperCase();
         userEl.innerHTML =
           '<div style="display:flex;flex-direction:column;gap:4px;width:100%;padding:2px 0">'
           + '<div style="display:flex;align-items:center;gap:7px">'
           + '<div style="width:26px;height:26px;border-radius:50%;background:rgba(245,158,11,0.25);border:1.5px solid rgba(245,158,11,0.5);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fbbf24;flex-shrink:0">'+guestInit+'</div>'
-          + '<span style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+guestName+'</span>'
+          + '<span id="sidebar-char-username" style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+guestName+'</span>'
           + '<span style="font-size:8px;background:rgba(245,158,11,0.2);color:#fbbf24;border:1px solid rgba(245,158,11,0.4);border-radius:4px;padding:1px 6px;margin-left:auto;white-space:nowrap;flex-shrink:0">TAMU</span>'
           + '</div>'
           + '<button onclick="showLoginScreen()" style="width:100%;padding:5px 8px;border:1px solid rgba(245,158,11,0.4);border-radius:6px;background:rgba(245,158,11,0.1);color:#fbbf24;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;text-align:left">☁️ Aktifkan sync → Masuk dengan Google</button>'
@@ -563,7 +600,7 @@ function updateAuthUI(user) {
           ? '<span style="font-size:9px;background:#f59e0b;color:#fff;border-radius:4px;padding:1px 5px;margin-left:4px">OFFLINE</span>'
           : '';
         userEl.innerHTML = photo
-          + '<span style="font-size:11px;color:rgba(255,255,255,0.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">' + (user.displayName||user.email) + '</span>'
+          + '<span id="sidebar-char-username" style="font-size:11px;color:rgba(255,255,255,0.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px">' + ((typeof getCharUsername==='function'&&getCharUsername())||user.displayName||user.email||'') + '</span>'
           + offlineBadge
           + '<button onclick="logout()" style="margin-left:auto;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.55);border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap">'+(t('btn_logout')||'Logout')+'</button>';
       }
@@ -871,26 +908,18 @@ body.tour-active #subdrawerOverlay {
 .ft-dot.done { background:rgba(217,119,6,0.4); }
 </style>
 
-<!-- FORM TOUR HTML -->
-<div id="ftOverlay">
-  <div id="ftHole"></div>
-  <div id="ftCard">
-    <div class="ft-badge" id="ftBadge">1 / 10</div>
-    <span class="ft-icon" id="ftIcon">✏️</span>
-    <div class="ft-title" id="ftTitle">Judul</div>
-    <div class="ft-desc" id="ftDesc">Deskripsi</div>
-    <div class="ft-actions">
-      <div class="ft-top">
-        <div class="ft-dots" id="ftDots"></div>
-        <button class="ft-skip" onclick="ftSkip()">Lewati</button>
-      </div>
-      <div class="ft-btn-row">
-        <button class="ft-btn prev" id="ftPrev" onclick="ftPrev()" style="display:none">← Prev</button>
-        <button class="ft-btn next" id="ftNext" onclick="ftNext()">Lanjut →</button>
-      </div>
-    </div>
-  </div>
-</div>
+</head>
+<body>
+<!-- ⚡ SPLASH FIRST — rendered before any JS/CSS to eliminate white flash -->
+<style>
+@keyframes splash-popchar{0%{opacity:0;transform:scale(0) translateY(20px)}70%{transform:scale(1.2) translateY(-4px);opacity:1}100%{transform:scale(1) translateY(0);opacity:1}}
+@keyframes splash-sub{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
+@keyframes splash-dot{0%,80%,100%{transform:scale(0.5);opacity:0.25}40%{transform:scale(1);opacity:1}}
+#chitask-splash{background:var(--sidebar,#1c1917)}
+#chitask-splash .brand-name{font-size:52px;letter-spacing:-2px;line-height:1;font-family:sans-serif;font-weight:800;color:#f5f0eb}
+#chitask-splash .brand-sub{font-size:12px;letter-spacing:2px;text-align:center;margin-top:10px;color:rgba(255,255,255,0.5)}
+/* splash theme overrides — dipindah ke css/themes/*.css */
+</style>
 
 <!-- ONBOARDING TOUR HTML -->
 <div id="tourOverlay">
@@ -912,51 +941,28 @@ body.tour-active #subdrawerOverlay {
     </div>
   </div>
 </div>
-
 <script src="js/onboarding.js"></script>
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ChiTask">
-<meta name="theme-color" content="#1c1917">
-<title>ChiTask — Task Manager + Keuangan</title>
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png">
-<link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png">
-<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
-<link rel="shortcut icon" href="/icons/icon-96x96.png">
-<!-- Font preconnect (non-blocking) -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" media="print" onload="this.media='all'">
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap"></noscript>
-<link rel="stylesheet" href="css/main.css">
-<link rel="stylesheet" href="css/themes/theme-midnight.css">
-<link rel="stylesheet" href="css/themes/theme-sunset.css">
-<link rel="stylesheet" href="css/themes/theme-slytherin.css">
-<link rel="stylesheet" href="css/themes/theme-fluffytown.css">
-<link rel="stylesheet" href="css/themes/theme-sololeveling.css">
-<!-- Google Identity Services — untuk OAuth token Calendar tanpa Firebase popup -->
-<!-- Google Identity Services dihapus — diganti Cloudflare Worker -->
-<!-- ⚡ Preload lottie asset & player supaya siap sebelum splash tampil -->
-<link rel="preload" href="css/themes/icons/hamster.lottie" as="fetch" crossorigin>
-<link rel="preload" href="css/themes/icons/slytherin.lottie" as="fetch" crossorigin>
-<link rel="modulepreload" href="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs">
-<script src="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs" type="module"></script>
-</head>
-<body>
-<!-- ⚡ SPLASH FIRST — rendered before any JS/CSS to eliminate white flash -->
-<style>
-@keyframes splash-popchar{0%{opacity:0;transform:scale(0) translateY(20px)}70%{transform:scale(1.2) translateY(-4px);opacity:1}100%{transform:scale(1) translateY(0);opacity:1}}
-@keyframes splash-sub{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
-@keyframes splash-dot{0%,80%,100%{transform:scale(0.5);opacity:0.25}40%{transform:scale(1);opacity:1}}
-#chitask-splash{background:var(--sidebar,#1c1917)}
-#chitask-splash .brand-name{font-size:52px;letter-spacing:-2px;line-height:1;font-family:sans-serif;font-weight:800;color:#f5f0eb}
-#chitask-splash .brand-sub{font-size:12px;letter-spacing:2px;text-align:center;margin-top:10px;color:rgba(255,255,255,0.5)}
-/* splash theme overrides — dipindah ke css/themes/*.css */
-</style>
+<!-- FORM TOUR HTML -->
+<div id="ftOverlay">
+  <div id="ftHole"></div>
+  <div id="ftCard">
+    <div class="ft-badge" id="ftBadge">1 / 10</div>
+    <span class="ft-icon" id="ftIcon">✏️</span>
+    <div class="ft-title" id="ftTitle">Judul</div>
+    <div class="ft-desc" id="ftDesc">Deskripsi</div>
+    <div class="ft-actions">
+      <div class="ft-top">
+        <div class="ft-dots" id="ftDots"></div>
+        <button class="ft-skip" onclick="ftSkip()">Lewati</button>
+      </div>
+      <div class="ft-btn-row">
+        <button class="ft-btn prev" id="ftPrev" onclick="ftPrev()" style="display:none">← Prev</button>
+        <button class="ft-btn next" id="ftNext" onclick="ftNext()">Lanjut →</button>
+      </div>
+    </div>
+  </div>
+</div>
 <!-- ⚡ EARLY THEME: baca tema dari localStorage SEBELUM splash render, tanpa tunggu JS/Firebase -->
 <script>
 (function(){
@@ -1045,6 +1051,12 @@ setTimeout(function() {
 }, 8000);
 </script>
 <script>
+// Manifest PWA menggunakan /manifest.json statis (tidak lagi blob: URL).
+// blob: URL menyebabkan Chrome/Safari menolak installability criteria
+// sehingga beforeinstallprompt tidak pernah tembak → PWA tidak bisa diinstall.
+// /manifest.json sudah di-link di <head id="pwa-manifest"> — tidak perlu diubah.
+</script>
+<script>
 // ══ EARLY PWA INSTALL PROMPT CAPTURE ══════════════════════════════════
 // HARUS dipasang SEBELUM Firebase & semua script async load.
 // beforeinstallprompt di Chrome Android bisa tembak dalam ~1-3 detik
@@ -1116,8 +1128,15 @@ setTimeout(function() {
   <div class="sly-spark" style="top:75%;left:30%;animation-delay:0.6s;background:#c0c0c0;box-shadow:0 0 6px rgba(192,192,192,0.9)"></div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- KOMPONEN NAV 1: nav/nav-1-overlays.html                  -->
+<!-- Overlays: sidebar-overlay, more-overlay, subdrawer-overlay-->
+<!-- ════════════════════════════════════════════════════════ -->
 <!-- Mobile sidebar overlay -->
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+
+<!-- Desktop sidebar edge toggle tab -->
+<button id="sidebarEdgeToggle" onclick="toggleSidebar()" title="Buka/Tutup Sidebar" aria-label="Toggle sidebar">&#x276E;</button>
 
 <!-- Mobile More Panel overlay -->
 <div class="more-overlay" id="moreOverlay" onclick="closeMorePanel()"></div>
@@ -1130,6 +1149,12 @@ setTimeout(function() {
 
 <!-- Sub-drawer overlays (mobile) -->
 <div class="subdrawer-overlay" id="subdrawerOverlay" onclick="closeSubDrawer()"></div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- KOMPONEN NAV 2: nav/nav-2-subdrawer-task.html            -->
+<!-- Sub-drawer Task: Dashboard, My Day, Habits, Toko, dll    -->
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- /KOMPONEN NAV 1 ════════════════════════════════════════ -->
 
 <!-- Sub-drawer: Task -->
 <div class="subdrawer" id="subdrawer-task">
@@ -1193,6 +1218,12 @@ setTimeout(function() {
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- KOMPONEN NAV 3: nav/nav-3-subdrawer-keuangan.html        -->
+<!-- Sub-drawer Keuangan: Overview, Cashflow, Transaksi, dll  -->
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- /KOMPONEN NAV 2 ════════════════════════════════════════ -->
+
 <!-- Sub-drawer: Keuangan -->
 <div class="subdrawer" id="subdrawer-fin">
   <div class="subdrawer-handle" id="sdhandle-fin"></div>
@@ -1235,6 +1266,12 @@ setTimeout(function() {
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- KOMPONEN NAV 4: nav/nav-4-subdrawer-journal.html         -->
+<!-- Sub-drawer Journal: CTA Tulis, Hari Ini, Semua, Search   -->
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- /KOMPONEN NAV 3 ════════════════════════════════════════ -->
+
 <!-- Sub-drawer: Journal -->
 <div class="subdrawer" id="subdrawer-journal">
   <div class="subdrawer-handle" id="sdhandle-journal"></div>
@@ -1269,6 +1306,12 @@ setTimeout(function() {
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- KOMPONEN NAV 5: nav/nav-5-subdrawer-maintenance.html     -->
+<!-- Sub-drawer Maintenance: Overview, Semua Item, Riwayat    -->
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- /KOMPONEN NAV 4 ════════════════════════════════════════ -->
+
 <!-- Sub-drawer: Lainnya (Maintenance) -->
 <div class="subdrawer" id="subdrawer-maint">
   <div class="subdrawer-handle" id="sdhandle-maint"></div>
@@ -1294,6 +1337,8 @@ setTimeout(function() {
   </div>
   </div>
 </div>
+
+<!-- /KOMPONEN NAV 5 ════════════════════════════════════════ -->
 
 <!-- FAB Add Task (mobile) -->
 <button class="fab-add" id="fabAdd" onclick="toggleMobileAddBar()">
@@ -1432,6 +1477,10 @@ setTimeout(function() {
 </div>
 <div class="mobile-add-overlay" id="mobileMaintAddOverlay" onclick="closeMobileMaintAddBar()"></div>
 
+<!-- ════════════════════════════════════════════════════════ -->
+<!-- KOMPONEN NAV 6: nav/nav-6-bottom-nav.html                -->
+<!-- Bottom Nav (mobile): Task | Keuangan | Jurnal | Maint    -->
+<!-- ════════════════════════════════════════════════════════ -->
 <!-- Bottom Navigation (mobile) -->
 <nav class="bottom-nav" id="bottomNav">
   <button class="bn-item active" id="bn-task" onclick="toggleSubDrawer('task')">
@@ -1450,6 +1499,8 @@ setTimeout(function() {
     <span class="bn-badge" id="bn-maint-badge" style="display:none">!</span>
   </button>
 </nav>
+
+<!-- /KOMPONEN NAV 6 ════════════════════════════════════════ -->
 
 <!-- ═══ LOGIN SCREEN ═══ -->
 <div id="fbLoginScreen" style="display:none">
@@ -1489,8 +1540,11 @@ setTimeout(function() {
 </div>
 
 <div class="app" id="app" style="display:none">
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- KOMPONEN NAV 7: nav/nav-7-sidebar.html                   -->
+  <!-- Sidebar (desktop/tablet): semua section nav sidebar      -->
+  <!-- ════════════════════════════════════════════════════════ -->
   <div class="sidebar" id="sidebar">
-    <div class="sidebar-scroll">
     <div class="sidebar-brand">
       <div>
         <div style="display:flex;align-items:center;gap:6px;">
@@ -1500,20 +1554,20 @@ setTimeout(function() {
             src="css/themes/icons/hamster.lottie"
             autoplay
             loop
-            style="width:32px;height:32px;display:none;flex-shrink:0;"
+            style="width:var(--lottie-fluffy-w,32px);height:var(--lottie-fluffy-h,32px);display:none;flex-shrink:0;margin-top:var(--lottie-fluffy-mt,0px);"
           ></dotlottie-player>
           <dotlottie-player
             id="slytherin-lottie"
             src="css/themes/icons/slytherin.lottie"
             autoplay
             loop
-            style="width:70px;height:70px;display:none;position:absolute;top:0px;left:100px;pointer-events:none;"
+            style="width:var(--lottie-slytherin-w,70px);height:var(--lottie-slytherin-h,70px);display:none;position:absolute;top:var(--lottie-slytherin-top,0px);left:var(--lottie-slytherin-left,100px);pointer-events:none;"
           ></dotlottie-player>
         </div>
         <div class="brand-sub" id="todayLabel"></div>
       </div>
     </div>
-
+    <div class="sidebar-scroll">
     <!-- Task Section -->
     <div class="nav-section" onclick="toggleNavSection('task')">
       <span id="navSecTask">📋 Task</span>
@@ -1678,8 +1732,13 @@ setTimeout(function() {
     </div>
     </div><!-- end sidebar-bottom -->
   </div>
+  <!-- /KOMPONEN NAV 7 ════════════════════════════════════════ -->
 
   <div class="main">
+    <!-- ════════════════════════════════════════════════════════ -->
+    <!-- KOMPONEN NAV 8: nav/nav-8-topbar.html                    -->
+    <!-- Topbar (mobile): logo, back btn, page title, action btns -->
+    <!-- ════════════════════════════════════════════════════════ -->
     <div class="topbar" id="topbar">
       <!-- Baris atas: logo/back + title(page mode) + actions -->
       <div class="topbar-row1">
@@ -1703,7 +1762,6 @@ setTimeout(function() {
         </div>
         <div class="topbar-actions">
           <button class="btn-icon" onclick="toggleSidebar()" id="sidebarToggleBtn" title="Buka/Tutup Sidebar" style="display:none">☰</button>
-          <button class="btn-icon" onclick="sortTasks()" id="sortBtn">↕ Urutkan</button>
         </div>
       </div>
       <!-- Baris bawah: hero title di home -->
@@ -1718,6 +1776,8 @@ setTimeout(function() {
         </div>
       </div>
     </div>
+
+    <!-- /KOMPONEN NAV 8 ════════════════════════════════════════ -->
 
     <!-- Task Add Bar -->
     <div class="add-bar" id="addBar">
@@ -1858,7 +1918,12 @@ setTimeout(function() {
     <div class="fin-wrap" id="finWrap" style="display:none"></div>
   </div>
 
-  <div class="habit-panel" id="habitPanel"></div>
+  <div class="habit-panel-wrap" id="habitPanelWrap">
+    <!-- Restore tab (shown when panel is collapsed) — di dalam wrap agar ikut hide -->
+    <button id="habitPanelRestoreBtn" onclick="toggleHabitPanel()" title="Buka Habit Hari Ini" style="display:none"></button>
+    <button id="habitPanelEdgeToggle" onclick="toggleHabitPanelWidth()" title="Tampilan Ringkas/Lengkap" aria-label="Toggle habit panel width">&#x276F;</button>
+    <div class="habit-panel" id="habitPanel"></div>
+  </div>
 </div>
 
 <!-- Detail panel -->
@@ -2318,6 +2383,7 @@ setTimeout(function() {
       <div class="shop-tab active" onclick="shopSetTab('all')" id="stab-all">🛍️ Semua</div>
       <div class="shop-tab" onclick="shopSetTab('themes')" id="stab-themes">🎨 Tema</div>
       <div class="shop-tab" onclick="shopSetTab('effects')" id="stab-effects">✨ Efek</div>
+      <div class="shop-tab" onclick="shopSetTab('avatars')" id="stab-avatars">🧙 Avatar Card</div>
       <div class="shop-tab" onclick="shopSetTab('custom')" id="stab-custom">⭐ Custom</div>
       <div class="shop-tab" onclick="shopSetTab('history')" id="stab-history">📜 Riwayat</div>
     </div>
@@ -2402,7 +2468,23 @@ setTimeout(function() {
   </div>
 </div>
 
+<script src="character/jobs/sprite-config.js"></script>
 <script src="js/constants-helpers.js"></script>
+<!-- ── Job Skills Engine (must load before boss.js) ── -->
+<script src="character/jobs/skills/skills-engine.js"></script>
+<script src="character/jobs/normal/Novice/skills/novice.js"></script>
+<script src="character/jobs/normal/Hunter/skills/hunter.js"></script>
+<script src="character/jobs/normal/Warrior/skills/warrior.js"></script>
+<script src="character/jobs/normal/knight/skills/knight.js"></script>
+<script src="character/jobs/normal/paladin/skills/paladin.js"></script>
+<script src="character/jobs/normal/sage/skills/sage.js"></script>
+<script src="character/jobs/normal/bard/skills/bard.js"></script>
+<script src="character/jobs/normal/crusader/skills/crusader.js"></script>
+<script src="character/jobs/normal/alchemist/skills/alchemist.js"></script>
+<script src="character/jobs/normal/archmage/skills/archmage.js"></script>
+<script src="character/jobs/hidden/shadow/skills/shadow.js"></script>
+<script src="character/jobs/hidden/sovereign/skills/sovereign.js"></script>
+<script src="character/jobs/paid/Slytherin/Char 1/skills/slytherin.js"></script>
 <script src="boss/boss.js"></script>
 <script src="boss/iblis-kemalasan.js"></script>
 <script src="boss/hantu-penunda.js"></script>
@@ -2737,6 +2819,18 @@ setTimeout(function() {
     <input type="file" id="backupImportFileInput" accept=".json,application/json" style="display:none" onchange="backupImportJSON(this)">
     <!-- Status message -->
     <div id="backupStatusMsg" style="display:none;margin-top:10px;padding:10px 12px;border-radius:10px;font-size:12px;font-weight:600;text-align:center"></div>
+  </div>
+
+  <!-- ══ HOROSCOPE — Pilih Zodiak ══ -->
+  <div id="horoscopeSettingsSection" style="margin-top:20px;border-top:1px solid rgba(255,255,255,0.08);padding-top:18px">
+    <div style="font-size:13px;font-weight:800;color:rgba(255,255,255,0.85);margin-bottom:4px">✨ Ramalan Harian</div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:14px">Pilih zodiak kamu untuk ditampilkan di Dashboard</div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px" id="settingsZodiakGrid">
+      <!-- Diisi oleh JS saat modal dibuka -->
+    </div>
+
+    <div id="settingsZodiakSelected" style="display:none;margin-top:12px;padding:10px 12px;background:rgba(217,119,6,0.12);border:1.5px solid rgba(217,119,6,0.35);border-radius:12px;font-size:12px;color:rgba(255,255,255,0.8);text-align:center"></div>
   </div>
 
   <div style="margin-top:18px;display:flex;gap:10px">
@@ -3228,6 +3322,7 @@ setTimeout(function() {
     transition:all 0.2s;
   }
   body.mobile-nav-sidebar .sidebar-collapse-btn{display:flex!important;}
+  .sidebar.mobile-open .sidebar-collapse-btn{display:flex!important;}
   body.mobile-nav-sidebar .sidebar-brand{
     display:flex!important;
     align-items:center!important;
@@ -3258,6 +3353,30 @@ setTimeout(function() {
 /* Focus mode: hide boss only; radar is now managed via JS individual toggle */
 body.gami-focus #bossBattlePanel,
 body.gami-focus #bossTab { display: none !important; }
+
+/* ── Focus mode: hide gamer-only dashboard elements ─────────────────────── */
+/* Character sprite card & skill card only show in gamer mode */
+body.gami-focus #char-card,
+body.gami-focus #char-skills-card { display: none !important; }
+/* Shop: hide Avatar Card tab in focus mode */
+body.gami-focus #stab-avatars { display: none !important; }
+/* Focus mode: Jurnal card is the last half-width card — stretch it full width */
+body.gami-focus #dash-journal-card { grid-column: 1 / -1; }
+/* Focus mode: radar is hidden, so horoscope should take full width like radar-off */
+body.gami-focus .dash-top-row { display: contents; }
+body.gami-focus .dash-top-horoscope { width: 100%; grid-column: 1 / -1; }
+body.gami-focus .dash-top-horoscope #horoscope-slot > .horoscope-card,
+body.gami-focus .dash-top-horoscope #horoscope-slot > div { grid-column: 1 / -1; }
+body.gami-focus .dash-top-radar { display: none; }
+
+/* ── Gamer mode: hide focus-only dashboard elements ──────────────────────── */
+/* Gold & Level card is redundant in gamer mode (char card already shows it) */
+body.gami-gamer #dash-gold-level-card { display: none !important; }
+/* Character sprite card & skill card show in gamer mode */
+body.gami-gamer #char-card,
+body.gami-gamer #char-skills-card { display: block !important; }
+/* Shop: show Avatar Card tab in gamer mode */
+body.gami-gamer #stab-avatars { display: block !important; }
 
 /* Gamer mode: tampilkan boss panel dan tab */
 body.gami-gamer #bossBattlePanel { display: flex !important; }
@@ -3373,6 +3492,8 @@ body.mobile-nav-sidebar .sidebar .nav-item:hover{
 }
 </style>
 
+<script src="js/horoscope.js"></script>
+<script src="character/jobs/jobs.js"></script>
 <script src="js/mobile-nav.js"></script>
 
 <!-- ═══ DAILY EXCEPT MODAL ═══ -->
@@ -3421,6 +3542,224 @@ body.mobile-nav-sidebar .sidebar .nav-item:hover{
 .de-day-btn:active{background:var(--accent);border-color:var(--accent);color:#fff}
 .cr-unit-btn{padding:7px 12px;border:1.5px solid var(--border);border-radius:20px;background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.15s,border-color 0.15s,color 0.15s}
 .cr-unit-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── Job Unlock / Level Up Overlay — EPIC CINEMATIC ───────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap');
+
+#jobUnlockOverlay{display:none;position:fixed;inset:0;z-index:9900;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif;perspective:800px}
+#jobUnlockOverlay.show{display:flex;animation:julFadeIn .4s ease}
+
+/* Backdrop with dramatic vignette */
+.jul-backdrop{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(8,5,20,.85) 0%,rgba(2,1,8,.97) 100%);backdrop-filter:blur(20px) saturate(1.5)}
+
+/* Particle canvas */
+.jul-rays-canvas{position:absolute;inset:0;pointer-events:none;z-index:0}
+
+/* Ambient orb glow */
+.jul-glow-blob{position:absolute;border-radius:50%;opacity:.7;filter:blur(80px);pointer-events:none;z-index:0;width:380px;height:380px;top:50%;left:50%;transform:translate(-50%,-70%);animation:julBlobPulse 4s ease-in-out infinite}
+
+/* ── MAIN WRAP ── */
+.jul-wrap{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:0}
+
+/* ── CARD ── */
+.jul-card{
+  position:relative;
+  width:min(290px,86vw);
+  border-radius:24px 24px 28px 28px;
+  padding:24px 22px 20px;
+  display:flex;flex-direction:column;align-items:center;
+  overflow:visible;
+  background:linear-gradient(170deg,rgba(18,10,35,.96) 0%,rgba(10,6,22,.99) 100%);
+  backdrop-filter:blur(32px);
+  border:1px solid var(--jul-border,rgba(192,132,252,.25));
+  box-shadow:0 0 0 1px rgba(255,255,255,.04) inset,
+             0 40px 80px rgba(0,0,0,.8),
+             0 0 60px var(--jul-glow-soft,rgba(192,132,252,.12));
+  animation:julCardIn .7s cubic-bezier(.22,1.4,.36,1) .05s both
+}
+
+/* Top edge light streak */
+.jul-card::before{
+  content:'';position:absolute;top:0;left:10%;right:10%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--jul-accent,rgba(192,132,252,.8)),transparent);
+  border-radius:50%;
+  filter:blur(.5px);
+  opacity:.6
+}
+/* Inner bottom glow */
+.jul-card::after{
+  content:'';position:absolute;bottom:0;left:5%;right:5%;height:80px;
+  background:radial-gradient(ellipse at 50% 100%,var(--jul-glow-soft,rgba(192,132,252,.1)) 0%,transparent 70%);
+  pointer-events:none;border-radius:0 0 28px 28px
+}
+
+/* Close btn */
+.jul-close{
+  position:absolute;top:10px;right:10px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.08);
+  color:rgba(255,255,255,.3);
+  width:26px;height:26px;border-radius:50%;
+  font-size:10px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .2s;z-index:10;
+  backdrop-filter:blur(4px)
+}
+.jul-close:hover{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.2);transform:rotate(90deg)}
+
+/* ── LEVEL BADGE ── */
+.jul-level-section{
+  display:flex;flex-direction:column;align-items:center;gap:0;
+  margin-bottom:6px;position:relative;z-index:10;
+  animation:julLevelIn .6s cubic-bezier(.34,1.8,.64,1) .15s both
+}
+.jul-level-label{
+  font-size:8px;font-weight:800;letter-spacing:5px;
+  color:var(--jul-accent,rgba(192,132,252,.8));
+  text-transform:uppercase;
+  text-shadow:0 0 12px var(--jul-accent,rgba(192,132,252,.6));
+  font-family:'Cinzel','DM Sans',sans-serif
+}
+.jul-level-num{
+  font-size:80px;font-weight:900;color:#fff;
+  letter-spacing:-6px;line-height:.85;
+  padding-right:6px;
+  font-family:'Cinzel','DM Sans',sans-serif;
+  background:linear-gradient(180deg,#fff 40%,var(--jul-accent,rgba(192,132,252,1)) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  filter:drop-shadow(0 0 20px var(--jul-accent,rgba(192,132,252,.5)));
+  animation:julNumGlow 2.5s ease-in-out infinite .8s
+}
+
+/* ── SPRITE (outside card, overlaps top) ── */
+.jul-sprite-section{
+  position:relative;display:flex;align-items:flex-end;justify-content:center;
+  margin-bottom:-55px;z-index:2;
+  animation:julSpriteIn .8s cubic-bezier(.22,1.5,.36,1) .25s both
+}
+.jul-sprite-halo{
+  position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+  border-radius:50%;
+  background:radial-gradient(ellipse at 50% 80%,var(--jul-glow,rgba(192,132,252,.5)) 0%,transparent 70%);
+  animation:julHaloPulse 3s ease-in-out infinite 1s;
+  pointer-events:none
+}
+.jul-aura-ring{
+  position:absolute;border-radius:50%;
+  background:radial-gradient(circle,var(--jul-glow,rgba(192,132,252,.22)) 0%,var(--jul-glow,rgba(192,132,252,.08)) 45%,transparent 70%);
+  box-shadow:0 0 0 2px var(--jul-glow,rgba(192,132,252,.3)),0 0 24px 6px var(--jul-glow,rgba(192,132,252,.18)),0 0 60px 10px var(--jul-glow,rgba(192,132,252,.08));
+  animation:julAuraRing 2.8s ease-in-out infinite .5s;
+  pointer-events:none;z-index:1
+}
+/* Subtle ground shadow under sprite */
+.jul-sprite-shadow{
+  position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+  width:80px;height:12px;
+  background:radial-gradient(ellipse,var(--jul-glow,rgba(192,132,252,.6)) 0%,transparent 70%);
+  filter:blur(4px);
+  border-radius:50%;
+  animation:julHaloPulse 3s ease-in-out infinite 1s
+}
+.jul-orbit1{
+  position:absolute;border-radius:50%;
+  border:1.5px solid var(--jul-accent,rgba(192,132,252,.35));
+  pointer-events:none;
+  box-shadow:0 0 10px var(--jul-glow,rgba(192,132,252,.25)),0 0 20px var(--jul-glow,rgba(192,132,252,.1)),0 0 6px var(--jul-glow,rgba(192,132,252,.2)) inset;
+  z-index:1;
+  animation:julOrbit1 14s linear infinite
+}
+.jul-orbit2{
+  position:absolute;border-radius:50%;
+  border:1px dashed var(--jul-accent,rgba(192,132,252,.22));
+  pointer-events:none;
+  box-shadow:0 0 6px var(--jul-glow,rgba(192,132,252,.15));
+  z-index:1;
+  animation:julOrbit2 9s linear infinite
+}
+.jul-sprite{background-repeat:no-repeat;image-rendering:pixelated;position:relative;z-index:10;filter:drop-shadow(0 0 18px var(--jul-glow,rgba(192,132,252,.7))) drop-shadow(0 16px 24px rgba(0,0,0,.9))}
+.jul-icon-fallback{font-size:88px;line-height:1;position:relative;z-index:2;filter:drop-shadow(0 0 20px rgba(255,255,255,.3))}
+
+/* ── RARITY PILL ── */
+.jul-rarity-pill{
+  font-size:8px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
+  padding:4px 14px;border-radius:20px;border:1px solid;
+  margin-bottom:6px;position:relative;z-index:10;
+  animation:julSlideUp .4s ease .6s both;
+  font-family:'Cinzel','DM Sans',sans-serif;
+  backdrop-filter:blur(4px);
+  box-shadow:0 0 16px currentColor;
+  opacity:.9
+}
+
+/* ── JOB NAME ── */
+.jul-job-name{
+  font-size:26px;font-weight:900;color:#fff;
+  text-align:center;letter-spacing:-.3px;line-height:1.05;
+  margin-bottom:7px;position:relative;z-index:10;
+  animation:julSlideUp .45s cubic-bezier(.34,1.56,.64,1) .68s both;
+  text-shadow:0 2px 20px rgba(255,255,255,.2)
+}
+.jul-job-desc{
+  font-size:11px;color:rgba(255,255,255,.4);
+  text-align:center;line-height:1.65;max-width:230px;
+  margin-bottom:4px;position:relative;z-index:10;
+  animation:julSlideUp .35s ease .76s both
+}
+.jul-hint{
+  font-size:9.5px;color:rgba(255,255,255,.18);
+  text-align:center;margin-bottom:14px;
+  position:relative;z-index:10;
+  animation:julSlideUp .35s ease .82s both
+}
+
+/* ── LEVEL-ONLY MODE ── */
+.jul-levelonly-icon{
+  font-size:64px;line-height:1;margin:16px 0 10px;
+  position:relative;z-index:10;
+  animation:julSpriteIn .7s cubic-bezier(.34,1.4,.64,1) .2s both
+}
+.jul-levelonly-desc{
+  font-size:12px;color:rgba(255,255,255,.35);
+  text-align:center;line-height:1.65;max-width:220px;
+  margin-bottom:18px;position:relative;z-index:10;
+  animation:julSlideUp .35s ease .45s both
+}
+
+/* ── CTA BUTTON ── */
+.jul-btn{
+  width:100%;padding:14px 16px;
+  border:none;border-radius:16px;
+  font-size:13px;font-weight:800;
+  cursor:pointer;font-family:'DM Sans',sans-serif;letter-spacing:.5px;
+  transition:transform .15s,filter .15s;
+  position:relative;overflow:hidden;z-index:10;
+  animation:julSlideUp .4s ease .9s both;
+  text-transform:uppercase
+}
+/* Shine sweep */
+.jul-btn::before{
+  content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
+  animation:julBtnShine 3.5s ease 1.6s infinite;
+  skewX:-15deg
+}
+.jul-btn:hover{filter:brightness(1.15);transform:translateY(-2px)}
+.jul-btn:active{transform:scale(.96)}
+
+/* ── KEYFRAMES ── */
+@keyframes julFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes julCardIn{from{transform:scale(.6) translateY(60px) rotateX(8deg);opacity:0}to{transform:scale(1) translateY(0) rotateX(0);opacity:1}}
+@keyframes julSpriteIn{from{transform:scale(.2) translateY(50px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+@keyframes julLevelIn{from{transform:scale(.5) translateY(-20px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+@keyframes julSlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes julOrbit{from{transform:translate(-50%,-50%) rotate(0deg)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes julOrbit1{from{transform:translate(-50%,-50%) rotate(0deg)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes julOrbit2{from{transform:translate(-50%,-50%) rotate(0deg)}to{transform:translate(-50%,-50%) rotate(-360deg)}}
+@keyframes julHaloPulse{0%,100%{transform:translateX(-50%) scale(1);opacity:.7}50%{transform:translateX(-50%) scale(1.3);opacity:1}}
+@keyframes julAuraRing{0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.7}50%{transform:translate(-50%,-50%) scale(1.08);opacity:1}}
+@keyframes julBlobPulse{0%,100%{transform:translate(-50%,-70%) scale(1)}50%{transform:translate(-50%,-70%) scale(1.18)}}
+@keyframes julNumGlow{0%,100%{filter:drop-shadow(0 0 16px var(--jul-accent,rgba(192,132,252,.5)))}50%{filter:drop-shadow(0 0 32px var(--jul-accent,rgba(192,132,252,.9)))}}
+@keyframes julBtnShine{0%{left:-100%}50%,100%{left:160%}}
 </style>
 
 <script>
@@ -3519,7 +3858,7 @@ body.mobile-nav-sidebar .sidebar .nav-item:hover{
 <!-- ══ ANNOUNCEMENT POPUP — tampil ke semua user ══════════════════ -->
 <style>
 /* ── Ann Modal ── */
-#annOverlay { display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:20px;box-sizing:border-box }
+#annOverlay { display:none;position:fixed;inset:0;z-index:99980;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:20px;box-sizing:border-box }
 #annCard {
   width:100%;max-width:440px;
   background:linear-gradient(145deg,rgba(15,15,25,0.97) 0%,rgba(20,20,35,0.98) 100%);
@@ -4781,11 +5120,37 @@ window.ctCloseChipTimerInfo = function() {
      Works for both guest and Google-logged-in users.
      ══════════════════════════════════════════════════════════════════════════ -->
 <script src="js/app.js"></script>
-<script src="debug/debug.js"></script>
+<script src="debug/debug.js"></script><script>
 
-<script>
 // ── Theme Lottie: tampil sesuai tema aktif ──
 // _updateThemeLottie() dipanggil dari applyTheme di constants-helpers.js
 </script>
+<!-- ── JOB PICKER MODAL ── -->
+<div class="job-picker-overlay" id="char-job-picker-modal" onclick="if(event.target===this)charJobs.closePicker()">
+  <div class="job-picker-box">
+    <div class="job-picker-header">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <span class="job-picker-title">⚔️ Pilih Job Karakter</span>
+        <span style="font-size:10px;color:var(--muted);font-weight:500">Unlock lebih banyak job seiring naik level</span>
+      </div>
+      <button class="job-picker-close" onclick="charJobs.closePicker()">✕</button>
+    </div>
+    <div class="job-picker-scroll">
+      <div class="job-picker-section-label">⚔️ Normal Jobs</div>
+      <div class="job-picker-grid" id="char-job-picker-list"></div>
+      <div id="char-job-picker-hidden-section" style="display:none"><div class="job-picker-section-label" style="margin-top:12px;color:color-mix(in srgb,#f59e0b 70%,var(--muted))">✦ Hidden Jobs</div>
+      <div class="job-picker-grid" id="char-job-picker-hidden-list"></div></div>
+      <div id="char-job-picker-paid-section" style="display:none"><div class="job-picker-section-label" style="margin-top:12px;color:color-mix(in srgb,#a855f7 70%,var(--muted))">💎 Premium Avatars</div>
+      <div class="job-picker-grid" id="char-job-picker-paid-list"></div></div>
+      <div style="font-size:10px;color:var(--muted);text-align:center;padding:10px 0 4px;border-top:1px solid var(--border);margin-top:8px">
+        Hidden jobs punya kondisi unlock spesial — temukan sendiri rahasianya.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Job Unlock / Level Up Overlay ── -->
+<div id="jobUnlockOverlay"></div>
+
 </body>
 </html>

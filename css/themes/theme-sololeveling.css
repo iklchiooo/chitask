@@ -327,6 +327,9 @@ body.sololeveling-theme {
   --muted: #5a5890;
   --border: rgba(124,106,247,0.2);
   --hover: rgba(124,106,247,0.1);
+  --sidebar-border: rgba(124,106,247,0.3);
+  --sidebar-text: #d4d0f5;
+  --sidebar-muted: rgba(168,156,255,0.5);
   background-color: #04040c;
   background-image:
     radial-gradient(ellipse 900px 700px at 10% 5%, rgba(124,106,247,0.1) 0%, transparent 55%),
@@ -1057,3 +1060,48 @@ body.sololeveling-theme .sqa-select option{
   background:#0a0720;
   color:#d4d0f5;
 }
+/* ── Horoscope Card ── */
+body.sololeveling-theme .horoscope-card {
+  background: linear-gradient(145deg, #080818, #0a0a1e, #060614) !important;
+  border-color: rgba(124,106,247,0.22) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.65), inset 0 1px 0 rgba(124,106,247,0.07) !important;
+}
+body.sololeveling-theme .horoscope-desc {
+  color: #d4d0f5;
+  opacity: 0.9;
+}
+body.sololeveling-theme .horoscope-sign-name {
+  color: #a89cff;
+  font-weight: 800;
+}
+body.sololeveling-theme .horoscope-sign-date {
+  color: #5a5890;
+}
+body.sololeveling-theme .horoscope-picker-btn {
+  background: rgba(124,106,247,0.08);
+  border-color: rgba(124,106,247,0.18);
+}
+body.sololeveling-theme .horoscope-picker-btn:hover,
+body.sololeveling-theme .horoscope-picker-btn:active {
+  border-color: #7c6af7;
+  background: rgba(124,106,247,0.18);
+}
+body.sololeveling-theme .horoscope-picker-lbl {
+  color: #a89cff;
+}
+body.sololeveling-theme .dash-card-title a {
+  color: #7c6af7;
+}
+
+/* ── Character Card ── */
+body.sololeveling-theme .char-card {
+  background: linear-gradient(145deg, #080818, #0a0a1e, #060614) !important;
+  border-color: rgba(124,106,247,0.22) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.65), inset 0 1px 0 rgba(124,106,247,0.07) !important;
+}
+body.sololeveling-theme .char-name { color: #d4d0f5; }
+body.sololeveling-theme .char-xp-fill { background: linear-gradient(90deg, #7c6af7, #a89cff); }
+body.sololeveling-theme .char-sprite-wrap { background: rgba(124,106,247,0.1); border-color: rgba(124,106,247,0.25); }
+body.sololeveling-theme .job-picker-box { background: #0a0a1e; }
+body.sololeveling-theme .job-picker-item { background: rgba(124,106,247,0.08); }
+body.sololeveling-theme .job-picker-item[onclick]:hover { background: rgba(124,106,247,0.2); }

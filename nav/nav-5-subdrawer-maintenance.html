@@ -1,0 +1,30 @@
+<!-- ================================================================ -->
+<!--  NAV 5: SUB-DRAWER MAINTENANCE (Mobile)                           -->
+<!--  Muncul saat tombol "Maintenance" di Bottom Nav ditekan           -->
+<!--  Berisi: Overview, Semua Item, Riwayat, Kategori                  -->
+<!--  Hapus file ini jika modul Maintenance tidak dipakai              -->
+<!-- ================================================================ -->
+<div class="subdrawer" id="subdrawer-maint">
+  <div class="subdrawer-handle" id="sdhandle-maint"></div>
+  <div class="subdrawer-header">
+    <span class="subdrawer-title" id="sdi-maint-header-label">🔧 Maintenance</span>
+    <button class="subdrawer-close" onclick="closeSubDrawer()">✕</button>
+  </div>
+  <div class="subdrawer-body">
+  <div class="subdrawer-grid" id="sdi-maint-grid">
+    <div class="subdrawer-item maint" id="sdi-maint-overview" onclick="switchView('maint-overview');closeSubDrawer()">
+      <span class="sdi-ic">🔧</span><span class="sdi-lbl">Overview</span>
+      <span class="sdi-cnt maint" id="sdi-cnt-maint">0</span>
+    </div>
+    <div class="subdrawer-item maint" id="sdi-maint-all" onclick="switchView('maint-all');closeSubDrawer()">
+      <span class="sdi-ic">📋</span><span class="sdi-lbl">Semua Item</span>
+    </div>
+    <div class="subdrawer-item maint" id="sdi-maint-log" onclick="switchView('maint-log');closeSubDrawer()">
+      <span class="sdi-ic">📜</span><span class="sdi-lbl">Riwayat</span>
+    </div>
+    <div class="subdrawer-item maint" id="sdi-maint-categories" onclick="switchView('maint-categories');closeSubDrawer()">
+      <span class="sdi-ic">⚙️</span><span class="sdi-lbl">Kategori</span>
+    </div>
+  </div>
+  </div>
+</div>

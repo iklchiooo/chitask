@@ -105,7 +105,8 @@ body.slytherin-theme {
   --bg:#020905; --card:#07120a; --border:rgba(45,187,93,0.16); --text:#cce0cc; --muted:#527a5f;
   --accent:#2dbb5d; --accent2:#1a8a40; --pill:rgba(45,187,93,0.16); --pill-text:#5ddba0;
   --hover:rgba(45,187,93,0.08); --shadow:0 2px 12px rgba(0,0,0,0.6),0 0 6px rgba(45,187,93,0.05);
-  --radius:8px; background-color:#020905;
+  --radius:8px; --sidebar-border:rgba(45,187,93,0.28); --sidebar-text:#a7f3d0; --sidebar-muted:rgba(93,219,160,0.5);
+  background-color:#020905;
   background-image:
     radial-gradient(ellipse 800px 600px at 8% 15%, rgba(45,187,93,0.09) 0%, transparent 60%),
     radial-gradient(ellipse 600px 800px at 92% 85%, rgba(180,210,180,0.06) 0%, transparent 60%),
@@ -397,3 +398,49 @@ body.slytherin-theme .btn-habit-analisa:hover .bha-arrow { color:#5ddba0; }
 #slyActivateOverlay .sly-snake { position:absolute; right:15%; width:2px; height:30%; background:linear-gradient(180deg,transparent 0%,rgba(45,187,93,0.65) 25%,rgba(200,200,200,0.92) 50%,rgba(45,187,93,0.65) 75%,transparent 100%); animation:sly-snake-crawl 1.4s linear 0.1s forwards; border-radius:2px; box-shadow:0 0 6px rgba(45,187,93,0.6); }
 #slyActivateOverlay .sly-snake2 { position:absolute; left:12%; width:2px; height:22%; background:linear-gradient(180deg,transparent 0%,rgba(192,192,192,0.58) 40%,rgba(45,187,93,0.48) 70%,transparent 100%); animation:sly-snake-crawl 1.4s linear 0.5s forwards; border-radius:2px; }
 #slyActivateOverlay .sly-spark { position:absolute; width:4px; height:4px; border-radius:50%; background:#3dd870; box-shadow:0 0 8px rgba(45,187,93,0.95); animation:sly-activate-ring 0.9s ease-out forwards; }
+
+/* ── Horoscope Card ── */
+body.slytherin-theme .horoscope-card {
+  background: linear-gradient(145deg, #07120a, #091508, #060f08) !important;
+  border-color: rgba(45,187,93,0.18) !important;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.6), inset 0 1px 0 rgba(45,187,93,0.06) !important;
+}
+body.slytherin-theme .horoscope-desc {
+  color: #cce0cc;
+  opacity: 0.92;
+}
+body.slytherin-theme .horoscope-sign-name {
+  color: #5ddba0;
+  font-weight: 800;
+}
+body.slytherin-theme .horoscope-sign-date {
+  color: #527a5f;
+}
+body.slytherin-theme .horoscope-picker-btn {
+  background: rgba(45,187,93,0.07);
+  border-color: rgba(45,187,93,0.18);
+}
+body.slytherin-theme .horoscope-picker-btn:hover,
+body.slytherin-theme .horoscope-picker-btn:active {
+  border-color: #2dbb5d;
+  background: rgba(45,187,93,0.16);
+}
+body.slytherin-theme .horoscope-picker-lbl {
+  color: #5ddba0;
+}
+body.slytherin-theme .dash-card-title a {
+  color: #2dbb5d;
+}
+
+/* ── Character Card ── */
+body.slytherin-theme .char-card {
+  background: linear-gradient(145deg, #07120a, #091508, #060f08) !important;
+  border-color: rgba(45,187,93,0.18) !important;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.6), inset 0 1px 0 rgba(45,187,93,0.06) !important;
+}
+body.slytherin-theme .char-name { color: #cce0cc; }
+body.slytherin-theme .char-xp-fill { background: linear-gradient(90deg, #2dbb5d, #5ddba0); }
+body.slytherin-theme .char-sprite-wrap { background: rgba(45,187,93,0.07); border-color: rgba(45,187,93,0.2); }
+body.slytherin-theme .job-picker-box { background: #07120a; }
+body.slytherin-theme .job-picker-item { background: rgba(45,187,93,0.07); }
+body.slytherin-theme .job-picker-item[onclick]:hover { background: rgba(45,187,93,0.18); }

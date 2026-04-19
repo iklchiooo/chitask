@@ -1,0 +1,46 @@
+<!-- ================================================================ -->
+<!--  NAV 8: TOPBAR (Mobile)                                           -->
+<!--  Header bar paling atas di mobile                                 -->
+<!--  Berisi:                                                           -->
+<!--    - Row 1: Logo (home) / Back button (pages) / Page title /      -->
+<!--             Action buttons (sidebar toggle, sort)                  -->
+<!--    - Row 2: Hero title + tanggal di halaman home                  -->
+<!--  Hapus file ini hanya jika membuat custom header sendiri          -->
+<!-- ================================================================ -->
+    <div class="topbar" id="topbar">
+      <!-- Baris atas: logo/back + title(page mode) + actions -->
+      <div class="topbar-row1">
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <!-- Logo (home only) -->
+          <div class="mobile-logo" id="mobileLogo">
+            <span class="mobile-logo-text"><span class="chi">Chi</span><span class="tsk">Task</span></span>
+          </div>
+          <!-- Back button (pages only) -->
+          <button class="mobile-back-btn hidden" id="mobileBackBtn" onclick="openParentDrawer()" title="Kembali ke menu">‹</button>
+          <!-- Title di tengah (page mode) -->
+          <div id="pageTitleWrap" style="flex:1;min-width:0;text-align:center">
+            <div class="page-title" id="pageTitle">☀️ My Day</div>
+            <div class="page-subtitle" id="pageSubtitle" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">
+              <span id="onlineIndicatorBody" style="display:none;align-items:center;gap:4px;font-size:10px;font-family:'DM Mono',monospace;">
+                <span id="onlineDotBody" class="dot-pulse-online" style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block;flex-shrink:0"></span>
+                <span id="onlineTextBody" style="color:var(--muted)">Online</span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn-icon" onclick="sortTasks()" id="sortBtn">↕ Urutkan</button>
+        </div>
+      </div>
+      <!-- Baris bawah: hero title di home -->
+      <div class="topbar-row2" id="topbarRow2">
+        <div class="home-title-hero" id="homeTitleHero">☀️ My Day</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+          <div class="home-date-hero" id="homeDateHero"></div>
+          <span id="onlineIndicatorHero" style="display:none;align-items:center;gap:3px;font-size:10px;font-family:'DM Mono',monospace;">
+            <span id="onlineDotHero" class="dot-pulse-online" style="width:5px;height:5px;border-radius:50%;background:#4ade80;display:inline-block;flex-shrink:0"></span>
+            <span id="onlineTextHero" style="color:var(--muted)">Online</span>
+          </span>
+        </div>
+      </div>
+    </div>

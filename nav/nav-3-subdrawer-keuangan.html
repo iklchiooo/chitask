@@ -1,0 +1,47 @@
+<!-- ================================================================ -->
+<!--  NAV 3: SUB-DRAWER KEUANGAN (Mobile)                              -->
+<!--  Muncul saat tombol "Keuangan" di Bottom Nav ditekan              -->
+<!--  Berisi: Overview, Cash Flow, Transaksi, Dompet, Wishlist,        -->
+<!--          Tagihan, Hutang, Kategori, Budget                         -->
+<!--  Hapus file ini jika modul Keuangan tidak dipakai                 -->
+<!-- ================================================================ -->
+<div class="subdrawer" id="subdrawer-fin">
+  <div class="subdrawer-handle" id="sdhandle-fin"></div>
+  <div class="subdrawer-header">
+    <span class="subdrawer-title" id="sdi-fin-header-label">💰 Keuangan</span>
+    <button class="subdrawer-close" onclick="closeSubDrawer()">✕</button>
+  </div>
+  <div class="subdrawer-body">
+  <div class="subdrawer-grid">
+    <div class="subdrawer-item fin" id="sdi-fin-overview" onclick="switchView('fin-overview');closeSubDrawer()">
+      <span class="sdi-ic">📈</span><span class="sdi-lbl">Overview</span>
+    </div>
+    <div class="subdrawer-item fin" id="sdi-fin-cashflow" onclick="switchView('fin-cashflow');closeSubDrawer()">
+      <span class="sdi-ic">💸</span><span class="sdi-lbl">Cash Flow</span>
+    </div>
+    <div class="subdrawer-item fin" id="sdi-fin-transactions" onclick="switchView('fin-transactions');closeSubDrawer()">
+      <span class="sdi-ic">📒</span><span class="sdi-lbl">Transaksi</span>
+    </div>
+    <div class="subdrawer-item fin" id="sdi-fin-wallets" onclick="switchView('fin-wallets');closeSubDrawer()">
+      <span class="sdi-ic">👛</span><span class="sdi-lbl">Dompet</span>
+    </div>
+    <div class="subdrawer-item fin" id="sdi-fin-wishlist" onclick="switchView('fin-wishlist');closeSubDrawer()">
+      <span class="sdi-ic">🎯</span><span class="sdi-lbl">Wishlist</span>
+    </div>
+    <div class="subdrawer-item fin" id="sdi-fin-tagihan" onclick="switchView('fin-tagihan');closeSubDrawer()">
+      <span class="sdi-ic">🧾</span><span class="sdi-lbl">Tagihan</span>
+      <span class="sdi-cnt fin" id="sdi-cnt-tagihan">0</span>
+    </div>
+    <div class="subdrawer-item fin" id="sdi-fin-hutang" onclick="switchView('fin-hutang');closeSubDrawer()">
+      <span class="sdi-ic">🤝</span><span class="sdi-lbl">Hutang</span>
+      <span class="sdi-cnt fin" id="sdi-cnt-hutang">0</span>
+    </div>
+    <div class="subdrawer-item fin" id="sdi-fin-categories" onclick="switchView('fin-categories');closeSubDrawer()">
+      <span class="sdi-ic">🏷️</span><span class="sdi-lbl">Kategori</span>
+    </div>
+    <div class="subdrawer-item fin" id="sdi-fin-budget" onclick="switchView('fin-budget');closeSubDrawer()">
+      <span class="sdi-ic">🎯</span><span class="sdi-lbl">Budget</span>
+    </div>
+  </div>
+  </div>
+</div>

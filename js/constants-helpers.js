@@ -93,6 +93,7 @@ var GOLD_PER_TASK = 2;
 var goldBalance = 0;
 var shopPurchases = []; // [{id, name, type, cost, date}]
 var shopCustomItems = []; // [{id, name, icon, desc, cost}]
+var shopLoginDays = []; // array of ISO date strings for actual login days this week
 var activeTheme = 'theme-light'; // id of active theme
 var tempThemeExpiry = 0;  // timestamp ms kapan tema sementara kedaluwarsa (0 = tidak ada)
 var tempThemePrev   = ''; // tema sebelum dapat tema sementara
@@ -127,16 +128,28 @@ var SHOP_EFFECTS = [
   {id:'effect-firework',name:'Kembang Api',icon:'🎆',desc:'Efek kembang api meriah',price:60},
   {id:'effect-hamster',name:'Hamster Makan',icon:'🐹',desc:'🌟 EKSKLUSIF — Hamster lucu makan kuaci saat task selesai!',price:120},
 ];
-// XP per level progresif — makin tinggi makin susah
+
+var SHOP_AVATARS = [
+  {
+    id: 'avatar-slytherin-char1',
+    jobId: 'Slytherin_Char1',
+    name: 'Slytherin',
+    icon: '🐍',
+    desc: 'Karakter eksklusif Slytherin. Unlock skin male & female.',
+    price: 150,
+    rarity: 'epic',
+    spriteMale:   'character/jobs/paid/Slytherin/Char 1/male.webp',
+    spriteFemale: 'character/jobs/paid/Slytherin/Char 1/female.webp'
+  }
+];
+var activeAvatarCard = null;
+
+// XP per level progresif — bertahap naik, tidak langsung curam
 function getXpForLevel(lv){
-  // Level 1-5: 100 XP, naik bertahap tiap 5 level
-  if(lv<=5)  return 100;
-  if(lv<=10) return 120;
-  if(lv<=15) return 150;
-  if(lv<=20) return 185;
-  if(lv<=25) return 225;
-  if(lv<=30) return 270;
-  return 270+(lv-30)*15;
+  // Formula: base 100 XP di level 1, naik ~8% tiap level, smooth & gradual
+  // Lv1→2: 100, Lv5→6: ~136, Lv10→11: ~200, Lv20→21: ~437, Lv30→31: ~954
+  if(lv<=1) return 100;
+  return Math.round(100 * Math.pow(1.08, lv - 1));
 }
 function getTotalXpForLevel(lv){
   // total XP yang dibutuhkan untuk mencapai level lv
@@ -186,9 +199,52 @@ function getStatLevelThreshold(level){
 function getStatLevel(key){var p=charStatProgress[key]||0,lv=0;while(p>=getStatLevelThreshold(lv+1)&&lv<99)lv++;return lv;}
 function getStatLevelPct(key){var lv=getStatLevel(key),cur=charStatProgress[key]||0,prev=getStatLevelThreshold(lv),next=getStatLevelThreshold(lv+1);if(next===prev)return 100;return Math.round((cur-prev)/(next-prev)*100);}
 function getStatNextNeeded(key){var lv=getStatLevel(key),cur=charStatProgress[key]||0,next=getStatLevelThreshold(lv+1);return Math.max(0,next-cur);}
-function awardStatProgress(t){var key=matchTaskToStat(t),prevLv=getStatLevel(key);charStatProgress[key]=(charStatProgress[key]||0)+1;charStatLastActivity[key]=todayStr;var newLv=getStatLevel(key);if(newLv>prevLv){var def=CHAR_STAT_DEF.filter(function(d){return d.key===key;})[0];setTimeout(function(){showToast('⬆️ '+def.icon+' '+def.name+' naik ke Lv '+newLv+'!');},400);}}
+
+// Rank berdasarkan stat level: F→E→D→C→B→A→S→SS→SSS
+function getStatRank(key){
+  var lv=getStatLevel(key);
+  if(lv===0)  return {rank:'F', color:'rgba(148,163,184,0.5)'};
+  if(lv<=2)   return {rank:'E', color:'#94a3b8'};
+  if(lv<=5)   return {rank:'D', color:'#86efac'};
+  if(lv<=9)   return {rank:'C', color:'#67e8f9'};
+  if(lv<=14)  return {rank:'B', color:'#60a5fa'};
+  if(lv<=20)  return {rank:'A', color:'#a78bfa'};
+  if(lv<=29)  return {rank:'S', color:'#fbbf24'};
+  if(lv<=39)  return {rank:'SS', color:'#f97316'};
+  return              {rank:'SSS', color:'#ef4444'};
+}
+// Next rank label helper — shows what rank the stat upgrades to
+getStatRank._nextRankLabel = function(key, currentLv){
+  var nextLv = currentLv + 1;
+  var r;
+  if(nextLv<=1)  r='E';
+  else if(nextLv<=2)  r='E';
+  else if(nextLv<=5)  r='D';
+  else if(nextLv<=9)  r='C';
+  else if(nextLv<=14) r='B';
+  else if(nextLv<=20) r='A';
+  else if(nextLv<=29) r='S';
+  else if(nextLv<=39) r='SS';
+  else r='SSS';
+  return 'Rank '+r;
+};
+function getOverallRank(){
+  // Rata-rata level semua stat → rank keseluruhan
+  var total=CHAR_STAT_DEF.reduce(function(s,d){return s+getStatLevel(d.key);},0);
+  var avg=total/CHAR_STAT_DEF.length;
+  if(avg<1)   return {rank:'F',  color:'rgba(148,163,184,0.5)'};
+  if(avg<3)   return {rank:'E',  color:'#94a3b8'};
+  if(avg<6)   return {rank:'D',  color:'#86efac'};
+  if(avg<10)  return {rank:'C',  color:'#67e8f9'};
+  if(avg<15)  return {rank:'B',  color:'#60a5fa'};
+  if(avg<21)  return {rank:'A',  color:'#a78bfa'};
+  if(avg<30)  return {rank:'S',  color:'#fbbf24'};
+  if(avg<40)  return {rank:'SS', color:'#f97316'};
+  return             {rank:'SSS',color:'#ef4444'};
+}
+function awardStatProgress(t){var key=matchTaskToStat(t),prevLv=getStatLevel(key);charStatProgress[key]=(charStatProgress[key]||0)+1;charStatLastActivity[key]=todayStr;var newLv=getStatLevel(key);if(newLv>prevLv){var def=CHAR_STAT_DEF.filter(function(d){return d.key===key;})[0];var newRank=getStatRank(key);setTimeout(function(){showToast('⬆️ '+def.icon+' '+def.name+' naik ke Rank '+newRank.rank+'!');},400);}}
 function revokeStatProgress(t){var key=matchTaskToStat(t);charStatProgress[key]=Math.max(0,(charStatProgress[key]||0)-1);}
-function getCharClass(){var top=CHAR_STAT_DEF.slice().sort(function(a,b){return getStatLevel(b.key)-getStatLevel(a.key);})[0];var cls={intelligence:'Scholar',strength:'Warrior',wisdom:'Sage',vitality:'Guardian',charisma:'Leader',discipline:'Monk'};return cls[top.key]||'Adventurer';}
+function getCharClass(){var top=CHAR_STAT_DEF.slice().sort(function(a,b){return getStatLevel(b.key)-getStatLevel(a.key);})[0];var cls={intelligence:'Hunter',strength:'Warrior',wisdom:'Sage',vitality:'Guardian',charisma:'Leader',discipline:'Monk'};return cls[top.key]||'Novice';}
 var calendarMonth=today.getMonth(), calendarYear=today.getFullYear();
 var calSelectedDate=todayStr;
 var _unifiedCalTab='all'; // 'all'|'task'|'journal'|'gcal'
@@ -354,7 +410,7 @@ function _gcalInitForUser(user) {
     }).catch(function() { /* offline atau worker error — skip */ });
   }
 }
-var navSectionOpen={task:true,fin:true,maint:true,journal:true};
+var navSectionOpen={task:false,fin:false,maint:false,journal:false};
 var STORAGE_KEY='chitask_v6_data';
 var _syncTimer=null;
 
@@ -433,9 +489,9 @@ function saveData(userAction){
     finTagihan:finTagihan,finHutang:finHutang,
     finBudgets:finBudgets,
     journalEntries:journalEntries,journalNextId:journalNextId,
-    goldBalance:goldBalance,shopPurchases:shopPurchases,shopCustomItems:shopCustomItems,
+    goldBalance:goldBalance,shopPurchases:shopPurchases,shopCustomItems:shopCustomItems,shopLoginDays:shopLoginDays,
     shoppingItems:shoppingItems,shoppingItemNextId:shoppingItemNextId,
-    activeTheme:activeTheme,activeEffect:activeEffect,finSavingTarget:finSavingTarget,
+    activeTheme:activeTheme,activeEffect:activeEffect,activeAvatarCard:activeAvatarCard,finSavingTarget:finSavingTarget,
     tempThemeExpiry:tempThemeExpiry,tempThemePrev:tempThemePrev,
     weeklyReviewLastSeen:weeklyReviewLastSeen,
     charStatProgress:charStatProgress,
@@ -675,7 +731,9 @@ function getLevelXpNeeded(){
 }
 function getTaskXP(t){return t.xpVal||(t.type==='Habit'?XP_PER_HABIT:XP_PER_TASK);}
 function addXP(amount,label){
+  var levelBefore = getLevel();
   xp+=amount;
+  var levelAfter = getLevel();
   var el=document.getElementById('xpToast');
   el.textContent='+'+(label||amount)+' XP';
   el.classList.remove('show');
@@ -683,6 +741,10 @@ function addXP(amount,label){
   el.classList.add('show');
   clearTimeout(el._to);el._to=setTimeout(function(){el.classList.remove('show');},2200);
   updateXPBar();checkAchievements();
+  // Cek level up & job unlock baru
+  if(levelAfter > levelBefore){
+    setTimeout(function(){ _checkAndShowJobUnlock(levelBefore, levelAfter); }, 600);
+  }
 }
 function updateXPBar(){
   var lv=getLevel(),needed=getLevelXpNeeded(),cur=getLevelXP(),pct=needed>0?(cur/needed*100):100;
@@ -692,6 +754,283 @@ function updateXPBar(){
   if(lbl)lbl.textContent='Lv '+lv;
   if(xlbl)xlbl.textContent=cur+'/'+needed+' XP';
   if(fill)fill.style.width=pct+'%';
+}
+
+// ── Job Unlock Overlay ────────────────────────────────────────────────────
+function _checkAndShowJobUnlock(levelBefore, levelAfter){
+  if(typeof charJobs === 'undefined') return;
+  var allJobs = charJobs.NORMAL_JOBS || [];
+  // Kumpulkan semua job yang unlock di range level ini
+  var newlyUnlocked = allJobs.filter(function(j){
+    return j.unlockLevel > levelBefore && j.unlockLevel <= levelAfter && !j.comingSoon;
+  });
+  if(!newlyUnlocked.length){
+    // Tetap tampilkan level-up overlay tanpa job baru
+    showLevelUpOverlay(levelAfter, null);
+    return;
+  }
+  // Tampilkan satu per satu jika ada beberapa (delay antar overlay)
+  newlyUnlocked.forEach(function(job, i){
+    setTimeout(function(){
+      showLevelUpOverlay(levelAfter, job);
+    }, i * 3200);
+  });
+}
+
+var _julRaysRaf = null;
+
+function _julStartRays(canvas, glowColor) {
+  if (_julRaysRaf) cancelAnimationFrame(_julRaysRaf);
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  var ctx = canvas.getContext('2d');
+  var cx = canvas.width / 2, cy = canvas.height * 0.45;
+  var angle = 0;
+
+  // Particle system
+  var particles = [];
+  for (var p = 0; p < 28; p++) {
+    particles.push({
+      x: cx, y: cy,
+      vx: (Math.random()-0.5)*3.5,
+      vy: (Math.random()-1.4)*3.5,
+      life: Math.random(),
+      maxLife: 0.6 + Math.random()*0.8,
+      size: 1.5 + Math.random()*2.5,
+      delay: Math.random()*1.5
+    });
+  }
+  var startTime = null;
+
+  function draw(ts) {
+    if (!startTime) startTime = ts;
+    var elapsed = (ts - startTime) / 1000;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    var len = Math.hypot(canvas.width, canvas.height);
+
+    // Rotating rays — 24 rays, more vivid
+    for (var i = 0; i < 24; i++) {
+      var a = angle + (i / 24) * Math.PI * 2;
+      var isAccent = i % 4 === 0;
+      var isBright = i % 4 === 2;
+      var grad = ctx.createLinearGradient(cx, cy, cx + Math.cos(a)*len, cy + Math.sin(a)*len);
+      if (isAccent) {
+        grad.addColorStop(0,   glowColor.replace(/[\d.]+\)$/, '0.12)'));
+        grad.addColorStop(0.35, glowColor.replace(/[\d.]+\)$/, '0.04)'));
+        grad.addColorStop(1,   'rgba(0,0,0,0)');
+      } else if (isBright) {
+        grad.addColorStop(0,   'rgba(255,255,255,0.05)');
+        grad.addColorStop(0.4, 'rgba(255,255,255,0.015)');
+        grad.addColorStop(1,   'rgba(0,0,0,0)');
+      } else {
+        grad.addColorStop(0,   glowColor.replace(/[\d.]+\)$/, '0.03)'));
+        grad.addColorStop(1,   'rgba(0,0,0,0)');
+      }
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, len, a - 0.04, a + 0.04);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Particles burst (only in first 3 seconds)
+    if (elapsed < 3) {
+      particles.forEach(function(pt) {
+        if (elapsed < pt.delay) return;
+        var t = elapsed - pt.delay;
+        if (t > pt.maxLife) {
+          // Reset particle
+          pt.x = cx; pt.y = cy;
+          pt.vx = (Math.random()-0.5)*4;
+          pt.vy = (Math.random()-1.6)*4;
+          pt.delay = elapsed + Math.random()*0.3;
+          pt.life = 0; pt.maxLife = 0.5 + Math.random()*0.7;
+          return;
+        }
+        var progress = t / pt.maxLife;
+        var alpha = Math.sin(progress * Math.PI) * 0.85;
+        var px = cx + pt.vx * t * 80;
+        var py = cy + pt.vy * t * 80 + 0.5 * 120 * t * t; // slight gravity
+        ctx.beginPath();
+        ctx.arc(px, py, pt.size * (1 - progress * 0.5), 0, Math.PI*2);
+        ctx.fillStyle = glowColor.replace(/[\d.]+\)$/, alpha + ')');
+        ctx.fill();
+      });
+    }
+
+    // Center radial flash (only at start)
+    if (elapsed < 1.2) {
+      var flashAlpha = Math.max(0, 0.18 * (1 - elapsed / 1.2));
+      var flashGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 200);
+      flashGrad.addColorStop(0, glowColor.replace(/[\d.]+\)$/, flashAlpha + ')'));
+      flashGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(cx, cy, 200, 0, Math.PI*2);
+      ctx.fillStyle = flashGrad;
+      ctx.fill();
+    }
+
+    angle += 0.0025;
+    _julRaysRaf = requestAnimationFrame(draw);
+  }
+  draw(performance.now());
+}
+
+function showLevelUpOverlay(newLevel, job) {
+  // Per-rarity theme: accent color, glow rgba, blob color (CSS), border alpha, btn text color
+  var RC = {
+    common:   { accent:'#94a3b8', glow:'rgba(148,163,184,', blob:'rgba(100,116,139,0.25)',  border:'rgba(148,163,184,.22)', btnBg:'rgba(148,163,184,.15)', btnBorder:'rgba(148,163,184,.4)', btnColor:'#cbd5e1' },
+    uncommon: { accent:'#4ade80', glow:'rgba(74,222,128,',  blob:'rgba(34,197,94,0.22)',    border:'rgba(74,222,128,.2)',   btnBg:'rgba(74,222,128,.12)',  btnBorder:'rgba(74,222,128,.38)',  btnColor:'#86efac' },
+    rare:     { accent:'#60a5fa', glow:'rgba(96,165,250,',  blob:'rgba(59,130,246,0.25)',   border:'rgba(96,165,250,.22)', btnBg:'rgba(96,165,250,.12)',  btnBorder:'rgba(96,165,250,.4)',   btnColor:'#93c5fd' },
+    epic:     { accent:'#c084fc', glow:'rgba(192,132,252,', blob:'rgba(139,92,246,0.28)',   border:'rgba(192,132,252,.22)',btnBg:'rgba(192,132,252,.12)', btnBorder:'rgba(192,132,252,.38)', btnColor:'#d8b4fe' },
+    hidden:   { accent:'#fbbf24', glow:'rgba(251,191,36,',  blob:'rgba(245,158,11,0.28)',   border:'rgba(251,191,36,.22)', btnBg:'rgba(251,191,36,.1)',   btnBorder:'rgba(251,191,36,.38)',  btnColor:'#fde68a' }
+  };
+  var rarity = job ? (job.rarity || 'common') : 'common';
+  var rc = RC[rarity] || RC.common;
+
+  var overlay = document.getElementById('jobUnlockOverlay');
+  if (!overlay) return;
+
+  var rarityLabel = {common:'Common',uncommon:'Uncommon',rare:'Rare',epic:'Epic',hidden:'Hidden'}[rarity] || rarity;
+
+  var spriteUrl = '';
+  var jobGender = (typeof charGender !== 'undefined') ? charGender.get() : 'male';
+  if (job && typeof charJobs !== 'undefined') {
+    spriteUrl = charJobs.getSpriteUrl(job.id, jobGender);
+  }
+
+  // Orbit ring sizes based on sprite display size
+  var orbitBig = 190, orbitSml = 158;
+
+  var bodyHtml = '';
+  if (job) {
+    var sprHtml = spriteUrl
+      ? '<div id="julSprite" class="jul-sprite"></div>'
+      : '<div class="jul-icon-fallback">' + job.icon + '</div>';
+
+    bodyHtml =
+        '<div class="jul-sprite-section" id="julSpriteSection">'
+      +   '<div class="jul-sprite-halo" style="width:' + (orbitBig+32) + 'px;height:' + (orbitBig+32) + 'px"></div>'
+      +   '<div class="jul-orbit1" style="width:' + orbitBig + 'px;height:' + orbitBig + 'px"></div>'
+      +   '<div class="jul-orbit2" style="width:' + orbitSml + 'px;height:' + orbitSml + 'px"></div>'
+      +   sprHtml
+      + '</div>'
+      + '<div class="jul-rarity-pill" style="color:' + rc.accent + ';border-color:' + rc.accent + '44;background:' + rc.accent + '14">' + rarityLabel + '</div>'
+      + '<div class="jul-job-name">' + job.name + '</div>'
+      + '<div class="jul-job-desc">' + job.desc + '</div>'
+      + '<div class="jul-hint">Bisa dipilih di Job Picker ↗</div>';
+  } else {
+    bodyHtml =
+        '<div class="jul-levelonly-desc">Kamu semakin kuat.<br>Terus tingkatkan dirimu.</div>';
+  }
+
+  // Build sprite section separately (outside card) so it overflows the top
+  var spriteSectionHtml = '';
+  var bodyInsideCard = bodyHtml;
+  if (job) {
+    var sprHtml2 = spriteUrl
+      ? '<div id="julSprite" class="jul-sprite"></div>'
+      : '<div class="jul-icon-fallback">' + job.icon + '</div>';
+    spriteSectionHtml =
+        '<div class="jul-sprite-section" id="julSpriteSection" style="margin-bottom:-55px;z-index:2;position:relative;width:' + (orbitBig+20) + 'px;height:' + (orbitBig+20) + 'px;">'
+      +   '<div class="jul-sprite-halo" style="width:' + (orbitBig+60) + 'px;height:' + (orbitBig+60) + 'px;top:50%;left:50%;transform:translate(-50%,-50%)"></div>'
+      +   '<div class="jul-aura-ring" style="width:' + (orbitBig+10) + 'px;height:' + (orbitBig+10) + 'px;top:50%;left:50%;transform:translate(-50%,-50%)"></div>'
+      +   '<div class="jul-orbit1" style="width:' + orbitBig + 'px;height:' + orbitBig + 'px;top:50%;left:50%;transform:translate(-50%,-50%)"></div>'
+      +   '<div class="jul-orbit2" style="width:' + orbitSml + 'px;height:' + orbitSml + 'px;top:50%;left:50%;transform:translate(-50%,-50%)"></div>'
+      +   '<div class="jul-sprite-shadow" style="bottom:0;left:50%"></div>'
+      +   '<div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:10">' + sprHtml2 + '</div>'
+      + '</div>';
+    bodyInsideCard =
+        '<div class="jul-rarity-pill" style="color:' + rc.accent + ';border-color:' + rc.accent + '44;background:' + rc.accent + '14">' + rarityLabel + '</div>'
+      + '<div class="jul-job-name">' + job.name + '</div>'
+      + '<div class="jul-job-desc">' + job.desc + '</div>'
+      + '<div class="jul-hint">Bisa dipilih di Job Picker ↗</div>';
+  }
+
+  overlay.innerHTML =
+      '<canvas class="jul-rays-canvas" id="julRaysCanvas"></canvas>'
+    + '<div class="jul-backdrop"></div>'
+    + '<div class="jul-glow-blob" style="background:' + rc.blob + '"></div>'
+    + '<div class="jul-wrap" style="--jul-accent:' + rc.accent + ';--jul-glow:' + rc.glow + '0.4);--jul-glow-soft:' + rc.glow + '0.15);--jul-border:' + rc.border + '">'
+    +   spriteSectionHtml
+    +   '<div class="jul-card" style="border-color:' + rc.border + ';' + (job ? 'padding-top:65px;' : '') + '">'
+    +     '<button class="jul-close" onclick="closeJobUnlockOverlay()">✕</button>'
+    +     '<div class="jul-level-section">'
+    +       '<div class="jul-level-label">✦ Level Up ✦</div>'
+    +       '<div class="jul-level-num" style="--jul-accent:' + rc.accent + '">' + newLevel + '</div>'
+    +     '</div>'
+    +     bodyInsideCard
+    +     '<button class="jul-btn" style="background:' + rc.btnBg + ';border:1px solid ' + rc.btnBorder + ';color:' + rc.btnColor + ';box-shadow:0 0 20px ' + rc.glow + '0.25)' + '" onclick="' + (job ? 'closeJobUnlockOverlay();setTimeout(function(){if(typeof charJobs!==\'undefined\')charJobs.openPicker();},350)' : 'closeJobUnlockOverlay()') + '">'
+    +       (job ? 'Pilih Job Sekarang' : 'Lanjutkan!')
+    +     '</button>'
+    +   '</div>'
+    + '</div>';
+
+  overlay.classList.add('show');
+
+  var canvas = document.getElementById('julRaysCanvas');
+  if (canvas) _julStartRays(canvas, rc.glow + '1)');
+
+  // Sprite sheet animation
+  if (job && spriteUrl && typeof CT_SpriteConfig !== 'undefined') {
+    setTimeout(function() {
+      var el = document.getElementById('julSprite');
+      if (!el) return;
+      var cfg = CT_SpriteConfig.getConfig(job.id, jobGender);
+      if (!cfg) return;
+      var dW = cfg.displayW || 170;
+      var dH = cfg.displayH || 185;
+      el.style.width          = dW + 'px';
+      el.style.height         = dH + 'px';
+      el.style.backgroundImage = 'url(\'' + spriteUrl + '\')';
+      if (cfg.isStatic) {
+        el.style.backgroundSize     = '100% 100%';
+        el.style.backgroundPosition = '0 0';
+      } else {
+        el.style.backgroundSize = (dW * cfg.cols) + 'px ' + (dH * cfg.rows) + 'px';
+        el.style.backgroundPosition = '0px 0px';
+        // Inject unique @keyframes
+        var keyName = 'julOvr_' + job.id + '_' + jobGender;
+        var old = document.getElementById('ct-jul-kf');
+        if (old) old.remove();
+        var frames = Math.min(cfg.frameCount, cfg.cols * cfg.rows);
+        var steps = [];
+        for (var f = 0; f < frames; f++) {
+          var col = f % cfg.cols;
+          var row = Math.floor(f / cfg.cols);
+          steps.push(((f / frames)*100).toFixed(2) + '%{background-position:' + (-col*dW) + 'px ' + (-row*dH) + 'px}');
+        }
+        steps.push('100%{background-position:0px 0px}');
+        var tag = document.createElement('style');
+        tag.id = 'ct-jul-kf';
+        tag.textContent = '@keyframes ' + keyName + '{' + steps.join('') + '}';
+        document.head.appendChild(tag);
+        var dur = (frames / cfg.fps).toFixed(3) + 's';
+        el.style.animation = keyName + ' ' + dur + ' steps(1) infinite';
+      }
+    }, 150);
+  }
+
+  if (typeof triggerConfetti === 'function' && activeEffect === 'effect-confetti') triggerConfetti();
+  else if (typeof triggerFirework === 'function' && activeEffect === 'effect-firework') triggerFirework();
+}
+
+function closeJobUnlockOverlay() {
+  if (_julRaysRaf) { cancelAnimationFrame(_julRaysRaf); _julRaysRaf = null; }
+  var kf = document.getElementById('ct-jul-kf');
+  if (kf) kf.remove();
+  var overlay = document.getElementById('jobUnlockOverlay');
+  if (!overlay) return;
+  overlay.style.opacity = '0';
+  overlay.style.transition = 'opacity 0.3s ease';
+  setTimeout(function() {
+    overlay.classList.remove('show');
+    overlay.style.opacity = '';
+    overlay.style.transition = '';
+    overlay.innerHTML = '';
+  }, 300);
 }
 function getStats(){
   // Gunakan lastKnownStreak jika ada (sudah di-persist saat toggle), fallback ke calcStreak
@@ -796,16 +1135,18 @@ function _fcmDeleteReminder(userId, taskId) {
 
 // ────────────────────────────────────────────────────────────────────────────
 // ── Register Service Worker dari /sw.js (PWA proper) ──
+// CATATAN: registrasi SW dilakukan SATU KALI di setupPWA() (lihat bawah).
+// _initReminderSW() tidak lagi menduplikasi register() — cukup tunggu SW ready.
 (function _initReminderSW(){
   if(!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('/sw.js', { scope: '/' })
-    .then(function(reg){
-      window._reminderSWReg = reg;
-      console.log('[ChiTask] SW registered:', reg.scope);
-    })
-    .catch(function(err){
-      console.warn('[ChiTask] SW register gagal, fallback ke Notification API:', err);
-    });
+  // Gunakan navigator.serviceWorker.ready — menunggu SW apapun yang sudah/akan aktif
+  // tanpa mendaftarkan ulang. Ini mencegah race condition dengan setupPWA().
+  navigator.serviceWorker.ready.then(function(reg){
+    window._reminderSWReg = reg;
+    console.log('[ChiTask] SW ready (reminder):', reg.scope);
+  }).catch(function(err){
+    console.warn('[ChiTask] SW ready gagal:', err);
+  });
 })();
 
 // ── Kirim notifikasi: SW jika tersedia, fallback Notification API ──
@@ -937,6 +1278,8 @@ function scheduleReminders(){
 
   tasks.forEach(function(t){
     if(!t.reminder || t.done) return;
+    // Sholat Jumat: skip scheduling kalau task tidak aktif (myday=false = bukan hari Jumat)
+    if(t.name === '🕌 Sholat Jumat' && !t.myday) return;
     var parts = t.reminder.split(':');
     var hh = parseInt(parts[0],10), mm = parseInt(parts[1],10);
     if(isNaN(hh)||isNaN(mm)) return;
@@ -1104,7 +1447,7 @@ function init(){
     totalDone=saved.totalDone||0;
     perfectDays=saved.perfectDays||0;
     totalSubtasks=saved.totalSubtasks||0;
-    navSectionOpen=saved.navSectionOpen||{task:true,fin:true,maint:true,journal:true};
+    navSectionOpen=saved.navSectionOpen||{task:false,fin:false,maint:false,journal:false};
     finTransactions=saved.finTransactions||[];
     finWallets=saved.finWallets||JSON.parse(JSON.stringify(DEFAULT_WALLETS));
     finWishlist=saved.finWishlist||[];
@@ -1122,6 +1465,7 @@ function init(){
     goldBalance=saved.goldBalance||0;
     shopPurchases=saved.shopPurchases||[];
     shopCustomItems=saved.shopCustomItems||[];
+    shopLoginDays=saved.shopLoginDays||[];
     shoppingItems=saved.shoppingItems||[];
     shoppingItemNextId=saved.shoppingItemNextId||1;
     // Migration: if old save had darkMode but no activeTheme, pick correct theme
@@ -1131,6 +1475,7 @@ function init(){
       activeTheme=(saved.darkMode)?'theme-dark':'theme-light';
     }
     activeEffect=saved.activeEffect||'';
+    activeAvatarCard=saved.activeAvatarCard||null;
     tempThemeExpiry=saved.tempThemeExpiry||0;
     tempThemePrev=saved.tempThemePrev||'';
     // Restore onboarding flags
@@ -1229,6 +1574,32 @@ function init(){
   updateOnlineIndicator();
   updateMobileBackBtn();
   checkWeeklyReviewPopup();
+  // ── Username onboarding: tampilkan prompt jika belum ada charUsername ──
+  // Hanya tampil jika user sudah pilih mode 'gamer' (fitur karakter/petualang adalah gamer-only)
+  if (!getCharUsername()) {
+    (function _waitGamiForUsername() {
+      // Kalau gami mode belum dipilih, polling sampai selesai
+      if (typeof isGamificationModeSet === 'function' && !isGamificationModeSet()) {
+        setTimeout(_waitGamiForUsername, 300);
+        return;
+      }
+      // Gami mode sudah dipilih — hanya tampilkan kalau mode 'gamer'
+      if (typeof loadGamificationMode === 'function' && loadGamificationMode() === 'gamer') {
+        // Tunggu sampai onboarding flow selesai (nav+gami), baru tampilkan nama petualang
+        // Guard: hanya boleh ada satu instance polling ini
+        if (window._waitOnbForUsernameRunning) return;
+        window._waitOnbForUsernameRunning = true;
+        (function _waitOnbForUsername(){
+          if(!window._onboardingFlowDone){
+            setTimeout(_waitOnbForUsername, 200);
+            return;
+          }
+          window._waitOnbForUsernameRunning = false;
+          if(typeof showUsernameOnboardingPrompt === 'function') showUsernameOnboardingPrompt();
+        })();
+      }
+    })();
+  }
   // FIX #3: annStartListener dipanggil di sini (bukan di onAuthStateChanged)
   // agar fbDb sudah pasti siap dan data sudah dimuat sebelum listener jalan.
   // Berlaku untuk user Google maupun Guest (FIX #5).
@@ -1293,6 +1664,8 @@ function init(){
   });
 } // end inner init()
   init();
+  // Catat login hari ini saat app dibuka (bukan hanya saat buka shop)
+  if(typeof _shopRecordLoginToday === 'function') _shopRecordLoginToday();
   // Reset flag setelah selesai, agar bisa re-init saat reload halaman
   window._initAppRunning = false;
 } // end initApp()
@@ -1629,8 +2002,8 @@ function renderMain(){
   }
   // Show/hide sidebar quick-add bar
   if(typeof updateSidebarQuickAdd==='function') updateSidebarQuickAdd();
-  var isMob=window.innerWidth<=700;document.getElementById('sortBtn').style.display=(isFin||isMaint||isJournal||isMob)?'none':'flex';
-  document.getElementById('habitPanel').style.display=(isFin||isMaint||isJournal)?'none':'';
+  var isMob=window.innerWidth<=700;
+  // habitPanel display managed by renderHabitPanel()
 
   if(isMaint||currentView.startsWith('maint-cat-')){
     el.style.display='none';fw.style.display='flex';fw.style.flexDirection='column';
@@ -4355,22 +4728,87 @@ function renderExtendedHabitCard(h, days28) {
 // ══════════════════════════════════════════════
 // HABIT SIDE PANEL
 // ══════════════════════════════════════════════
+var _habitPanelCollapsed=false;
+var _habitPanelCompact=false;
+function toggleHabitPanel(){
+  _habitPanelCollapsed=!_habitPanelCollapsed;
+  try{localStorage.setItem('habitPanelCollapsed',_habitPanelCollapsed?'1':'0');}catch(e){}
+  renderHabitPanel();
+}
+function toggleHabitPanelWidth(){
+  _habitPanelCompact=!_habitPanelCompact;
+  try{localStorage.setItem('habitPanelCompact',_habitPanelCompact?'1':'0');}catch(e){}
+  _applyHabitPanelCompact();
+}
+function _applyHabitPanelCompact(){
+  var wrap=document.getElementById('habitPanelWrap');
+  var btn=document.getElementById('habitPanelEdgeToggle');
+  if(!wrap) return;
+  if(_habitPanelCompact){
+    wrap.classList.add('compact');
+    if(btn){btn.innerHTML='&#x276F;';btn.title='Tampilan Lengkap';}
+  } else {
+    wrap.classList.remove('compact');
+    if(btn){btn.innerHTML='&#x276E;';btn.title='Tampilan Ringkas';}
+  }
+}
 function renderHabitPanel(){
   var panel=document.getElementById('habitPanel');
-  if(isFinView(currentView)||isMaintView(currentView)||currentView.startsWith('maint-cat-')||currentView==='habits'){panel.style.display='none';return;}
-  var habits=tasks.filter(function(t){return t.type==='Habit'&&t.myday&&isHabitDueToday(t);});
-  if(!habits.length){panel.innerHTML='';panel.style.display='none';return;}
+  var wrap=document.getElementById('habitPanelWrap');
+  var restoreBtn=document.getElementById('habitPanelRestoreBtn');
+  // Di layar <=900px habit panel tidak pernah ditampilkan (CSS display:none)
+  // Jangan set display:flex via JS — biarkan CSS yang mengontrol seutuhnya
+  var _screenNarrow = window.innerWidth <= 900;
+  if(_screenNarrow){
+    panel.innerHTML='';
+    if(wrap){wrap.style.display='none';}
+    if(restoreBtn){restoreBtn.style.display='none';}
+    return;
+  }
+  var _hideViews=['habits','habit-analisa','dashboard','stats','achievements','calendar','unified-calendar','task-groups'];
+  if(isFinView(currentView)||isMaintView(currentView)||currentView.startsWith('maint-cat-')||_hideViews.indexOf(currentView)>=0||(typeof JOURNAL_VIEWS!=='undefined'&&JOURNAL_VIEWS.indexOf(currentView)>=0)){
+    panel.innerHTML='';panel.style.display='none';if(wrap)wrap.style.display='none';if(restoreBtn)restoreBtn.style.display='none';return;
+  }
+  var habits=tasks.filter(function(t){return t.type==='Habit'&&isHabitDueToday(t);});
+  if(!habits.length){panel.innerHTML='';panel.style.display='none';if(wrap)wrap.style.display='none';if(restoreBtn)restoreBtn.style.display='none';return;}
+  try{var s=localStorage.getItem('habitPanelCollapsed');if(s!==null)_habitPanelCollapsed=s==='1';}catch(e){}
+  try{var sc=localStorage.getItem('habitPanelCompact');if(sc!==null)_habitPanelCompact=sc==='1';}catch(e){}
+
+  // Saat collapsed: sembunyikan panel & edge toggle, tampilkan restore tab saja (masih dalam wrap)
+  if(_habitPanelCollapsed){
+    panel.innerHTML='';
+    panel.style.display='none';
+    panel.style.visibility='hidden';
+    var edgeToggle=document.getElementById('habitPanelEdgeToggle');
+    if(edgeToggle)edgeToggle.style.display='none';
+    if(wrap){wrap.style.display='flex';wrap.style.visibility='visible';wrap.style.width='auto';}
+    if(restoreBtn){restoreBtn.style.display='flex';}
+    return;
+  }
+  // Panel terbuka: pastikan visibility kembali normal
+  panel.style.visibility='';
+  if(wrap){wrap.style.visibility='';wrap.style.width='';}
+  var edgeToggle=document.getElementById('habitPanelEdgeToggle');
+  if(edgeToggle)edgeToggle.style.display='';
+
+  // Panel terbuka
   panel.style.display='flex';
+  if(wrap)wrap.style.display='flex';
+  if(restoreBtn)restoreBtn.style.display='none';
+  _applyHabitPanelCompact();
   var days7=[];for(var i=0;i<7;i++)days7.push(offset(i-6));
-  var html='<div class="panel-title">🔥 Habit Hari Ini</div>';
-  habits.slice(0,6).forEach(function(t){
+  var html='<div class="panel-title" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none" onclick="toggleHabitPanel()">'
+    +'<span>🔥 Habit Hari Ini</span>'
+    +'<span style="font-size:10px;color:var(--muted);margin-left:8px">&#9660;</span>'
+    +'</div>';
+  habits.forEach(function(t){
     var streak=calcStreak(t),wDone=days7.filter(function(d){return t.history&&t.history.indexOf(d)>=0;}).length,pct=Math.round(wDone/7*100);
     var dots='';
     days7.forEach(function(d){
       var done=t.history&&t.history.indexOf(d)>=0,isTd=d===todayStr;
       dots+='<div class="dot'+(done?' done':' miss')+(isTd?' today-dot':'')+'" onclick="event.stopPropagation();toggleHabitDay('+t.id+',\''+d+'\')" title="'+fmtShort(d)+'">'+(done?'✓':(isTd?'·':''))+'</div>';
     });
-    var colorBorder=t.color?'border-left:3px solid '+t.color+';':'';
+    var colorBorder=t.color?'border-left:3px solid '+t.color+';':''
     html+='<div class="habit-row" onclick="openDetail('+t.id+')" style="'+colorBorder+'">'
       +'<div class="habit-name" title="'+t.name+'">'+t.name+'</div>'
       +'<div class="streak-label">7 Hari terakhir</div>'
@@ -4382,6 +4820,7 @@ function renderHabitPanel(){
   });
   panel.innerHTML=html;
 }
+
 
 // ══════════════════════════════════════════════
 // ══════════════════════════════════════════════
@@ -6731,6 +7170,24 @@ function toggleDone(id){
   var effectiveDoneDate=(t.due&&t.due<todayStr)?t.due:todayStr;
   t.done=!t.done;
 
+  // Sholat Jumat: saat dicentang, otomatis centang Dzuhur juga (dan sebaliknya)
+  if(t.name === '🕌 Sholat Jumat') {
+    var dzuhurTask = tasks.filter(function(x){ return x.name === '☀️ Sholat Dzuhur'; })[0];
+    if(dzuhurTask && dzuhurTask.done !== t.done) {
+      dzuhurTask.done = t.done;
+      dzuhurTask.doneDate = t.done ? effectiveDoneDate : null;
+      if(t.done) {
+        if(!dzuhurTask.history) dzuhurTask.history = [];
+        if(dzuhurTask.history.indexOf(effectiveDoneDate) < 0) dzuhurTask.history.push(effectiveDoneDate);
+      } else {
+        if(dzuhurTask.history) {
+          var _dhi = dzuhurTask.history.indexOf(effectiveDoneDate);
+          if(_dhi >= 0) dzuhurTask.history.splice(_dhi, 1);
+        }
+      }
+    }
+  }
+
   if(t.done){
     t.doneDate=effectiveDoneDate;totalDone++;
     var _alreadyRewarded=t.history&&(t.history.indexOf(todayStr)>=0||t.history.indexOf(effectiveDoneDate)>=0);
@@ -8118,13 +8575,7 @@ function switchView(v){
   updateBottomNav();
   render();
   updateOnlineIndicator();
-  // Reset boss auto-minimize state & rebind scroll saat view berganti
-  // _bossScrollResetAuto akan handle rebind sendiri jika tab sedang di posisi atas
-  var _bossWasAtTop = (typeof _bossTabAtTop !== 'undefined') && _bossTabAtTop;
-  if(typeof window._bossScrollResetAuto === 'function') window._bossScrollResetAuto();
-  // Hanya panggil rebind langsung kalau tab tidak sedang di atas
-  // (kalau di atas, _bossScrollResetAuto sudah jadwalkan rebind setelah slide-down selesai)
-  if(!_bossWasAtTop && typeof window._bossTabRebindScroll === 'function') window._bossTabRebindScroll();
+
 }
 function sortTasks(){
   sortDir*=-1;
@@ -8185,6 +8636,8 @@ if(window.visualViewport) window.visualViewport.addEventListener('resize',_updat
 document.addEventListener('DOMContentLoaded',function(){
   _updateToastPosition();
   setTimeout(_updateToastPosition,200);
+  // Init sidebar edge toggle position
+  setTimeout(_updateSidebarEdgeToggle,50);
 });
 
 function showToast(msg){
@@ -8207,7 +8660,7 @@ function setupPWA(){
 
   // Register service worker dari file eksternal
   if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('/sw.js').then(function(reg){
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).then(function(reg){
       reg.update();
       // Deteksi update SW baru
       reg.addEventListener('updatefound', function(){
@@ -8364,10 +8817,22 @@ function toggleSidebar(){
     var isOpen=sb.classList.contains('mobile-open');
     sb.classList.toggle('mobile-open',!isOpen);
     if(ov)ov.classList.toggle('show',!isOpen);
+    var btn=document.getElementById('mobileSidebarToggleBtn');
+    if(btn)btn.classList.toggle('sidebar-is-open',!isOpen);
   } else {
     var sb=document.getElementById('sidebar');
     sb.classList.toggle('collapsed');
+    _updateSidebarEdgeToggle();
   }
+}
+function _updateSidebarEdgeToggle(){
+  var sb=document.getElementById('sidebar');
+  var tab=document.getElementById('sidebarEdgeToggle');
+  if(!tab) return;
+  var collapsed=sb&&sb.classList.contains('collapsed');
+  tab.style.left=collapsed?'0':'220px';
+  tab.innerHTML=collapsed?'&#x276F;':'&#x276E;';
+  tab.title=collapsed?'Buka Sidebar':'Tutup Sidebar';
 }
 function closeMobileSidebar(){
   var sb=document.getElementById('sidebar');
@@ -11087,7 +11552,7 @@ function openShop(){
 function closeShop(){document.getElementById('shopOverlay').classList.remove('show');}
 function shopSetTab(t){
   shopCurrentTab=t;
-  ['all','themes','effects','custom','history'].forEach(function(tab){
+  ['all','themes','effects','custom','avatars','history'].forEach(function(tab){
     var el=document.getElementById('stab-'+tab);
     if(el)el.classList.toggle('active',tab===t);
   });
@@ -11226,8 +11691,8 @@ function _shopItemCard(item,type,isCustom){
   return html;
 }
 function _shopStatsBar(){
-  var totalOwned=SHOP_THEMES.filter(function(i){return isOwned(i.id);}).length+SHOP_EFFECTS.filter(function(i){return isOwned(i.id);}).length;
-  var totalItems=SHOP_THEMES.length+SHOP_EFFECTS.length;
+  var totalOwned=SHOP_THEMES.filter(function(i){return isOwned(i.id);}).length+SHOP_EFFECTS.filter(function(i){return isOwned(i.id);}).length+SHOP_AVATARS.filter(function(i){return isOwned(i.id);}).length;
+  var totalItems=SHOP_THEMES.length+SHOP_EFFECTS.length+SHOP_AVATARS.length;
   var pct=Math.round(totalOwned/totalItems*100);
   return '<div class="shop-stats-bar">'
     +'<div class="shop-stats-pct">'+pct+'%</div>'
@@ -11240,14 +11705,37 @@ function _shopStatsBar(){
     +'</div>'
     +'</div>';
 }
+function _shopRecordLoginToday(){
+  // Catat login hari ini ke shopLoginDays, buang entri di luar minggu ini
+  var now=new Date();
+  var todayIso=now.toISOString().slice(0,10);
+  // Hitung awal minggu ini (Minggu)
+  var dayOfWeek=now.getDay(); // 0=Sun
+  var weekStart=new Date(now);weekStart.setDate(now.getDate()-dayOfWeek);
+  var weekStartIso=weekStart.toISOString().slice(0,10);
+  // Buang hari di luar minggu ini
+  shopLoginDays=shopLoginDays.filter(function(d){return d>=weekStartIso;});
+  // Tambah hari ini jika belum ada
+  if(shopLoginDays.indexOf(todayIso)<0){
+    shopLoginDays.push(todayIso);
+    saveData(true);
+  }
+}
 function _shopInitDailyChips(){
   var chips=document.getElementById('shopDailyChips');
   if(!chips)return;
   var days=['S','M','T','W','T','F','S'];
-  var today=new Date().getDay();
+  var now=new Date();
+  var today=now.getDay(); // 0=Sun
+  // Hitung tanggal ISO untuk setiap hari di minggu ini
+  var weekStart=new Date(now);weekStart.setDate(now.getDate()-today);
   var html='';
   days.forEach(function(d,i){
-    var cls=i<today?'done':i===today?'today':'';
+    var dayDate=new Date(weekStart);dayDate.setDate(weekStart.getDate()+i);
+    var dayIso=dayDate.toISOString().slice(0,10);
+    var isToday=i===today;
+    var isDone=shopLoginDays.indexOf(dayIso)>=0;
+    var cls=isToday?'today':(isDone?'done':'');
     html+='<div class="shop-day-chip '+cls+'">'+d+'</div>';
   });
   chips.innerHTML=html;
@@ -11384,6 +11872,114 @@ function renderShop(){
     }
     body.innerHTML=html;return;
   }
+  if(shopCurrentTab==='avatars'){
+    var html=_shopStatsBar();
+    var rarityOrder=['hidden','epic','rare','uncommon','common'];
+    var rarityLabel={common:'Common',uncommon:'Uncommon',rare:'Rare',epic:'Epic',hidden:'Hidden'};
+    var rarityColor={common:'var(--muted)',uncommon:'var(--green,#22c55e)',rare:'var(--blue,#3b82f6)',epic:'var(--purple,#a855f7)',hidden:'#f59e0b'};
+    var grouped={};
+    SHOP_AVATARS.forEach(function(item){var r=item.rarity||'common';if(!grouped[r])grouped[r]=[];grouped[r].push(item);});
+    rarityOrder.forEach(function(rarity){
+      if(!grouped[rarity]||!grouped[rarity].length)return;
+      var rc=rarityColor[rarity]||'var(--muted)';
+      var rl=rarityLabel[rarity]||rarity;
+      var icon={common:'🎭',uncommon:'⭐',rare:'💎',epic:'🔮',hidden:'✨'}[rarity]||'🎭';
+      html+='<div class="shop-section-label">'+icon+' '+rl+'</div><div class="shop-grid">';
+      grouped[rarity].forEach(function(item){
+        var owned=isOwned(item.id);
+        var isActive=activeAvatarCard===item.id;
+        var maleUrl=item.spriteMale||'';
+        var femaleUrl=item.spriteFemale||'';
+        // Bug #7: clean display name — strip " - Char N" suffix
+        var displayName=item.name.replace(/ - Char \d+/,'');
+        var rarityClass=' rarity-'+rarity;
+        var cls='shop-item'+rarityClass+(owned?' owned':'')+(isActive?' active-item':'');
+        html+='<div class="'+cls+'" onclick="event.stopPropagation()">';
+        // Badges
+        if(isActive)html+='<div class="shop-item-badge active-badge">✓ Aktif</div>';
+        else if(owned)html+='<div class="shop-item-badge owned-badge">Dimiliki</div>';
+        else html+=_shopRarityBadgeHTML(item,false);
+        html+='<div class="shop-item-inner">';
+        // ── Avatar preview: two sprites side by side, larger size ──
+        html+='<div class="shop-avatar-preview-wrap">';
+        ['male','female'].forEach(function(g){
+          var url=g==='male'?maleUrl:femaleUrl;
+          var label=g==='male'?'♂':'♀';
+          html+='<div style="text-align:center">';
+          html+='<div class="shop-avatar-gender-label">'+label+'</div>';
+          html+='<div class="job-picker-item-sprite-wrap" style="width:68px;height:68px;overflow:hidden">';
+          if(url){
+            html+='<div class="job-picker-item-sprite-anim shop-avatar-preview" data-jobid="'+item.jobId+'" data-gender="'+g+'" style="background-image:url(\''+url+'\');width:68px;height:68px"></div>';
+          } else {
+            html+='<div style="width:68px;height:68px;display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--muted)">'+item.icon+'</div>';
+          }
+          html+='</div></div>';
+        });
+        html+='</div>';
+        // ── Name & rarity label ──
+        html+='<div class="shop-item-name" style="text-align:center;margin-bottom:2px">'+item.icon+' '+displayName+'</div>';
+        html+='<div style="font-size:9px;color:'+rc+';font-weight:700;text-transform:uppercase;letter-spacing:0.4px;text-align:center;margin-bottom:4px">'+rl+'</div>';
+        if(item.desc)html+='<div class="shop-item-desc" style="text-align:center">'+item.desc+'</div>';
+        // ── Footer ──
+        html+='<div class="shop-item-footer">';
+        if(owned){html+='<div class="shop-item-price owned-label">'+(isActive?'✓ Sedang Aktif':'▶ Aktifkan')+'</div>';}
+        else{html+='<div class="shop-item-price"'+(goldBalance<item.price?' style="opacity:0.6"':'')+'>'+(goldBalance<item.price?'🔒':'🪙')+' '+item.price+'</div>';}
+        html+='</div>';
+        html+='</div>'; // close shop-item-inner
+        // ── Action button ──
+        if(owned){
+          if(isActive){
+            html+='<button class="shop-item-btn" style="background:rgba(245,158,11,0.12);color:var(--accent);cursor:default;border-top:1px solid rgba(245,158,11,0.2)">✅ Aktif di Dashboard</button>';
+          } else {
+            html+='<button class="shop-item-btn" onclick="shopActivateAvatar(\''+item.id+'\')" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff">🎭 Aktifkan</button>';
+          }
+        } else {
+          var cantAfford=goldBalance<item.price;
+          html+='<button class="shop-item-btn" onclick="shopBuyAvatar(\''+item.id+'\')" '
+            +(cantAfford?'disabled style="background:var(--card);color:var(--muted);cursor:not-allowed;opacity:0.55"'
+                        :'style="background:linear-gradient(135deg,var(--accent),#d97706);color:#fff"')
+            +'>🪙 Beli — '+item.price+' Gold</button>';
+        }
+        html+='</div>'; // close shop-item card
+      });
+      html+='</div>'; // close shop-grid
+    });
+    if(!SHOP_AVATARS.length)html+='<div style="text-align:center;color:var(--muted);padding:40px 0;font-size:13px">Belum ada Avatar Card tersedia.</div>';
+    body.innerHTML=html;
+// ── Animate sprite sheets — pakai pixel absolut (konsisten dengan CT_SpriteConfig) ──
+setTimeout(function(){
+  SHOP_AVATARS.forEach(function(item){
+    ['male','female'].forEach(function(g){
+      var els = document.querySelectorAll('.shop-avatar-preview[data-jobid="'+item.jobId+'"][data-gender="'+g+'"]');
+      if(!els.length) return;
+      var cfg = (typeof CT_SpriteConfig !== 'undefined' && CT_SpriteConfig.getConfig(item.jobId, g)) || {};
+      var cols = cfg.cols || 6, rows = cfg.rows || 6, fps = cfg.fps || 12, frameCount = cfg.frameCount || 36;
+      var displayW = 68, displayH = 68; // ukuran kotak preview shop
+      var keyName = 'shopPrev_'+item.jobId+'_'+g;
+      var dur = (frameCount/fps).toFixed(3)+'s';
+      if(!document.getElementById('kf_'+keyName)){
+        var kfSteps = [];
+        for(var f = 0; f < frameCount; f++){
+          var col = f % cols, row = Math.floor(f / cols);
+          var pct = Math.round((f/frameCount)*10000)/100;
+          // PAKAI PIXEL ABSOLUT, bukan persentase
+          kfSteps.push(pct+'%{background-position:-'+(col*displayW)+'px -'+(row*displayH)+'px}');
+        }
+        var st = document.createElement('style');
+        st.id = 'kf_'+keyName;
+        st.textContent = '@keyframes '+keyName+'{'+kfSteps.join('')+'}';
+        document.head.appendChild(st);
+      }
+      for(var i = 0; i < els.length; i++){
+        // backgroundSize = total sprite sheet scaled ke preview 68px
+        els[i].style.backgroundSize = (cols*displayW)+'px '+(rows*displayH)+'px';
+        els[i].style.animation = keyName+' '+dur+' steps(1) infinite';
+      }
+    });
+  });
+},80);
+    return;
+  }
 }
 var _shopConfirmCallback=null;
 function openShopConfirm(icon,title,sub,okLabel,cb){
@@ -11402,6 +11998,69 @@ function doShopConfirm(){
   var cb=_shopConfirmCallback;
   closeShopConfirm();
   if(cb)cb();
+}
+
+function shopBuyAvatar(id){
+  var item=SHOP_AVATARS.find(function(i){return i.id===id;});
+  if(!item)return;
+  if(goldBalance<item.price){showToast('Gold tidak cukup! Butuh 🪙'+item.price);return;}
+  openShopConfirm(
+    item.icon,
+    'Beli '+item.name+'?',
+    'Harga: 🪙 '+item.price+' gold  •  Saldo kamu: 🪙 '+goldBalance,
+    '🪙 Beli Sekarang',
+    function(){
+      goldBalance-=item.price;
+      shopPurchases.push({id:item.id,date:new Date().toISOString().slice(0,10),price:item.price,name:item.name,icon:item.icon});
+      saveData(true);
+      showToast(item.icon+' '+item.name+' berhasil dibeli!');
+      renderShop();
+    }
+  );
+}
+function shopActivateAvatar(id){
+  activeAvatarCard=id;
+  saveData(true);
+  showToast('🎭 Avatar Card diaktifkan!');
+  renderShop();
+  // ── Avatar = COSMETIC ONLY. Only override sprite appearance, not job state. ──
+  var item=SHOP_AVATARS.find(function(i){return i.id===id;});
+  if(!item)return;
+  var _g=(typeof charGender!=='undefined')?charGender.get():'male';
+  var _newSrc=_g==='female'?(item.spriteFemale||''):(item.spriteMale||'');
+  // Patch sprite image
+  var spriteEl=document.getElementById('char-sprite-img');
+  if(spriteEl&&_newSrc){
+    if(spriteEl.tagName==='IMG'){spriteEl.src=_newSrc;}
+    else{spriteEl.style.backgroundImage="url('"+_newSrc+"')";spriteEl.setAttribute('data-sprite-url',_newSrc);}
+  }
+  var rarityStripColors={common:'linear-gradient(90deg,var(--border),var(--border))',uncommon:'linear-gradient(90deg,#22c55e,#16a34a)',rare:'linear-gradient(90deg,#3b82f6,#1d4ed8)',epic:'linear-gradient(90deg,#a855f7,#7c3aed)',hidden:'linear-gradient(90deg,#f59e0b,#b45309)'};
+  var stripEl=document.querySelector('.char-card-rarity-strip');
+  if(stripEl)stripEl.style.background=rarityStripColors[item.rarity]||rarityStripColors.common;
+  // Bug #7: clean display name (strip " - Char N")
+  var displayName=item.name.replace(/ - Char \d+/,'');
+  // Only override the sprite label — DO NOT touch job state or char-job-badge
+  // so that charJobs.getActive() still returns the correct gameplay job.
+  var labelEl=document.getElementById('char-sprite-label');
+  if(labelEl)labelEl.textContent=item.icon+' '+displayName;
+  // Apply sprite animation config immediately (cosmetic only)
+  // Bug #4 guard: safe fallback if CT_SpriteConfig or config missing
+  if(typeof CT_SpriteConfig!=='undefined'){
+    try{ CT_SpriteConfig.apply(item.jobId,_g); } catch(e){}
+  }
+  // Update skills card for paid job (paid avatars have their own jobId)
+  var skillsCardEl=document.getElementById('char-skills-card');
+  if(skillsCardEl&&typeof buildCharSkillsCard==='function'){
+    var tmpDiv=document.createElement('div');
+    tmpDiv.innerHTML=buildCharSkillsCard();
+    var newCard=tmpDiv.firstChild;
+    if(newCard)skillsCardEl.parentNode.replaceChild(newCard,skillsCardEl);
+  }
+}
+
+function shopActivateAvatarFromPicker(id){
+  shopActivateAvatar(id);
+  if(typeof charJobs!=='undefined')charJobs.closePicker();
 }
 
 function shopClickItem(id,type){
@@ -11433,6 +12092,8 @@ function shopClickItem(id,type){
     '🪙 Beli '+item.price+' Gold',
     function(){
       goldBalance-=item.price;
+      // Hapus entry lama dengan id yang sama (misal dari lucky/boss reward) agar jadi permanen
+      shopPurchases=shopPurchases.filter(function(p){return p.id!==id;});
       shopPurchases.push({id:id,name:item.name,icon:item.icon,cost:item.price,date:todayStr,type:type});
       if(type==='theme'){
         activeTheme=id;applyTheme(id);
@@ -11803,7 +12464,8 @@ function buildCharStatsCard(){
     var _emptyLvColor=cfg.textLight?'rgba(255,255,255,0.2)':'rgba(0,0,0,0.18)';
     var _miniBarBg=cfg.textLight?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.1)';
     svg+='<text x="'+lp[0]+'" y="'+(lp[1]-3)+'" text-anchor="middle" dominant-baseline="middle" font-size="11">'+def.icon+'</text>';
-    svg+='<text x="'+lp[0]+'" y="'+(lp[1]+8)+'" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="'+(lv>0?def.color:_emptyLvColor)+'" font-family="DM Mono,monospace">'+(lv>0?'Lv'+lv:'—')+'</text>';
+    var _statRank=getStatRank(def.key);
+    svg+='<text x="'+lp[0]+'" y="'+(lp[1]+8)+'" text-anchor="middle" dominant-baseline="middle" font-size="'+(lv>0&&_statRank.rank.length>1?'7':'8')+'" font-weight="800" fill="'+(lv>0?_statRank.color:_emptyLvColor)+'" font-family="DM Mono,monospace">'+(lv>0?_statRank.rank:'—')+'</text>';
     if(lv>0&&pct>0){
       svg+='<rect x="'+(lp[0]-13)+'" y="'+(lp[1]+16)+'" width="26" height="2" rx="1" fill="'+_miniBarBg+'"/>';
       svg+='<rect x="'+(lp[0]-13)+'" y="'+(lp[1]+16)+'" width="'+(26*pct/100).toFixed(1)+'" height="2" rx="1" fill="'+def.color+'" opacity="0.85"/>';
@@ -11812,13 +12474,14 @@ function buildCharStatsCard(){
 
   // ── CENTER MEDALLION ──
   var totalLv=statLevels.reduce(function(a,b){return a+b;},0);
+  var _overallRank=getOverallRank();
   svg+='<circle cx="'+cx+'" cy="'+cy+'" r="30" fill="'+cfg.centerBg+'" stroke="'+cfg.centerRing+'" stroke-width="1.5"/>';
   svg+='<circle cx="'+cx+'" cy="'+cy+'" r="26" fill="none" stroke="'+cfg.polyStroke+'" stroke-width="0.8" stroke-dasharray="4,8" opacity="0.45">';
   svg+='<animateTransform attributeName="transform" type="rotate" from="0 '+cx+' '+cy+'" to="360 '+cx+' '+cy+'" dur="20s" repeatCount="indefinite"/>';
   svg+='</circle>';
-  svg+='<text x="'+cx+'" y="'+(cy-5)+'" text-anchor="middle" dominant-baseline="middle" font-size="18" font-weight="900" fill="'+cfg.centerTextColor+'" font-family="DM Mono,monospace" filter="url(#gl'+uid+')">';
-  svg+=totalLv+'<animate attributeName="opacity" values="0.85;1;0.85" dur="2s" repeatCount="indefinite"/></text>';
-  svg+='<text x="'+cx+'" y="'+(cy+9)+'" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="'+cfg.centerTextColor+'" opacity="0.45" font-family="DM Sans,sans-serif" letter-spacing="1">TOTAL LV</text>';
+  svg+='<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" dominant-baseline="middle" font-size="'+(_overallRank.rank.length>1?'13':'17')+'" font-weight="900" fill="'+_overallRank.color+'" font-family="DM Mono,monospace" filter="url(#gl'+uid+')">';
+  svg+=_overallRank.rank+'<animate attributeName="opacity" values="0.85;1;0.85" dur="2s" repeatCount="indefinite"/></text>';
+  svg+='<text x="'+cx+'" y="'+(cy+10)+'" text-anchor="middle" dominant-baseline="middle" font-size="6" fill="'+cfg.centerTextColor+'" opacity="0.45" font-family="DM Sans,sans-serif" letter-spacing="1">RANK</text>';
   svg+='</svg>';
 
   // ── HTML WRAPPER ──
@@ -11836,9 +12499,10 @@ function buildCharStatsCard(){
   html+='<span style="font-size:16px">⚔️</span>';
   html+='<span style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:'+cfg.centerTextColor+'">Character Stats</span>';
   html+='</div>';
+  var _radarJob=(typeof charJobs!=='undefined')?charJobs.getActive():{name:'Novice',icon:'⚔️'};
   html+='<div style="display:flex;align-items:center;gap:6px">';
-  html+='<span style="font-size:9px;color:'+textSubColor+';font-family:DM Mono,monospace;letter-spacing:1px">CLASS</span>';
-  html+='<span style="font-size:10px;padding:3px 10px;border-radius:10px;color:#fff;font-weight:800;font-family:DM Mono,monospace;letter-spacing:0.5px;background:'+cfg.classBg+';box-shadow:0 2px 8px rgba(0,0,0,0.3)">'+charClass+'</span>';
+  html+='<span style="font-size:14px">'+_radarJob.icon+'</span>';
+  html+='<span style="font-size:10px;padding:3px 10px;border-radius:10px;color:#fff;font-weight:800;font-family:DM Mono,monospace;letter-spacing:0.5px;background:'+cfg.classBg+';box-shadow:0 2px 8px rgba(0,0,0,0.3)">'+_radarJob.name+'</span>';
   html+='</div></div>';
   html+='<div class="char-stats-inner">';
   html+='<div style="flex-shrink:0;width:180px;height:180px">'+svg+'</div>';
@@ -11853,15 +12517,284 @@ function buildCharStatsCard(){
     html+='<div style="flex:1;height:5px;background:'+statTextColor+';border-radius:3px;overflow:hidden">';
     html+='<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,'+def.color+','+def.color+'aa);border-radius:3px;box-shadow:0 0 5px '+def.color+'66;transition:width 0.6s cubic-bezier(.34,1.56,.64,1)"></div>';
     html+='</div>';
-    html+='<span style="font-size:12px;font-weight:900;font-family:DM Mono,monospace;min-width:24px;text-align:right;color:'+clr+'">'+lv+'</span>';
+    var _rowRank=getStatRank(def.key);
+    html+='<span style="font-size:11px;font-weight:900;font-family:DM Mono,monospace;min-width:28px;text-align:right;color:'+_rowRank.color+'">'+_rowRank.rank+'</span>';
     html+='</div>';
     html+='<div style="padding-left:25px;font-size:8.5px;color:'+textSubColor+';margin-bottom:5px;font-family:DM Mono,monospace">';
-    html+=(prog>0?prog+' total · ':'')+needed+' → Lv'+(lv+1);
+    var _nextRank=getStatRank._nextRankLabel(def.key,lv);
+    html+=(prog>0?prog+' total · ':'')+needed+' → '+_nextRank;
     html+='</div>';
   });
   html+='</div></div></div>';
   html+='</div>'; // close dashRadarWrap
   return html;
+}
+
+// ── CHAR USERNAME STATE ───────────────────────────────────────
+var charUsername = '';
+
+function getCharUsername() {
+  if (charUsername) return charUsername;
+  try { var v = localStorage.getItem('chitask_char_username'); if (v) { charUsername = v; return v; } } catch(e) {}
+  return '';
+}
+function setCharUsername(name) {
+  name = (name || '').trim().slice(0, 24);
+  if (!name) return;
+  charUsername = name;
+  try { localStorage.setItem('chitask_char_username', name); } catch(e) {}
+  // Sync ke sidebar
+  var sidebarNameEl = document.getElementById('sidebar-char-username');
+  if (sidebarNameEl) sidebarNameEl.textContent = name;
+  // Re-render char name di card jika ada
+  var cardNameEl = document.getElementById('char-card-name');
+  if (cardNameEl) cardNameEl.textContent = name;
+  // Update presence dengan nama baru
+  if (typeof fbWritePresence === 'function') setTimeout(fbWritePresence, 200);
+}
+function promptChangeUsername() {
+  var current = getCharUsername() || '';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = '<div style="background:var(--card);border-radius:16px;padding:24px 20px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.4)">'
+    + '<div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px">✏️ Ganti Nama Petualang</div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-bottom:14px">Nama ini akan tampil di karakter & sidebar</div>'
+    + '<input id="char-username-input" type="text" maxlength="24" placeholder="Nama petualangmu..." value="'+current+'" '
+    + 'style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-family:DM Sans,sans-serif;box-sizing:border-box;outline:none">'
+    + '<div style="display:flex;gap:8px;margin-top:14px">'
+    + '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="flex:1;padding:9px;border-radius:9px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">Batal</button>'
+    + '<button onclick="setCharUsername(document.getElementById(\'char-username-input\').value);this.closest(\'div[style*=fixed]\').remove()" style="flex:2;padding:9px;border-radius:9px;border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">Simpan ✓</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+  var inp = document.getElementById('char-username-input');
+  if (inp) { inp.focus(); inp.select(); }
+  inp && inp.addEventListener('keydown', function(e){ if(e.key==='Enter'){ setCharUsername(inp.value); modal.remove(); } });
+}
+function showUsernameOnboardingPrompt() {
+  // Guard: jangan buat modal duplikat
+  if (document.getElementById('char-username-onboarding')) return;
+  var modal = document.createElement('div');
+  modal.id = 'char-username-onboarding';
+  // z-index 99985: di atas annOverlay (99980) tapi di bawah tour (99990)
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99985;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = '<div style="background:var(--card);border-radius:20px;padding:28px 22px;width:100%;max-width:360px;box-shadow:0 24px 80px rgba(0,0,0,0.5);text-align:center">'
+    + '<div style="font-size:36px;margin-bottom:10px">⚔️</div>'
+    + '<div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:6px">Siapa nama petualangmu?</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:18px">Nama ini akan tampil di karakter & sidebar kamu</div>'
+    + '<input id="char-username-onboarding-input" type="text" maxlength="24" placeholder="Masukkan nama..." '
+    + 'style="width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:DM Sans,sans-serif;box-sizing:border-box;outline:none;text-align:center">'
+    + '<button id="char-username-onboarding-btn" style="width:100%;margin-top:14px;padding:12px;border-radius:12px;border:none;background:#8b5cf6;color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:DM Sans,sans-serif">Mulai Petualangan →</button>'
+    + '</div>';
+  document.body.appendChild(modal);
+  // Gunakan querySelector dari modal langsung — hindari getElementById yang bisa ambil elemen salah
+  var inp = modal.querySelector('#char-username-onboarding-input');
+  var btn = modal.querySelector('#char-username-onboarding-btn');
+  if (inp) { setTimeout(function(){ inp.focus(); }, 100); }
+
+  function _submitUsername() {
+    var v = inp ? inp.value.trim() : '';
+    if (!v) { if(inp) inp.focus(); return; }
+    setCharUsername(v);
+    modal.remove();
+    if (typeof renderDashboard === 'function' && document.getElementById('main-content')) {
+      renderDashboard(document.getElementById('main-content'));
+    }
+    // Setelah nama diisi → coba tampilkan pengumuman yang tertahan, lalu tour
+    if (typeof _annDequeueNext === 'function') setTimeout(_annDequeueNext, 300);
+  }
+
+  if (btn) btn.addEventListener('click', _submitUsername);
+  if (inp) inp.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') _submitUsername();
+  });
+}
+
+// ── JOB STORY DATA ────────────────────────────────────────────
+var JOB_STORIES = {
+  Novice: 'Tidak ada yang tahu dari mana {name} berasal. Suatu pagi mereka muncul di gerbang kota dengan hanya sebuah ransel lusuh dan tekad yang membara. Bukan karena warisan, bukan karena takdir — tapi karena pilihan. Setiap hari adalah petualangan baru, setiap tantangan adalah batu loncatan. Dunia ini luas, dan {name} baru saja memulai.',
+  Hunter: '{name} tumbuh di antara rak-rak buku yang menjulang hingga langit-langit. Sejak kecil, pertanyaan selalu lebih menarik daripada jawaban. Perpustakaan kota menjadi rumah kedua, dan setiap halaman adalah pintu menuju dunia baru. Mereka percaya bahwa ilmu adalah satu-satunya pedang yang semakin tajam saat digunakan.',
+  Warrior: 'Di medan latihan yang keras, {name} menemukan dirinya. Bukan melalui kemenangan, tapi melalui bangun kembali setelah jatuh. Ribuan kali gagal, ribuan kali bangkit. Tubuh adalah kanvas, dan disiplin adalah kuasnya. Hari ini lebih kuat dari kemarin — itu satu-satunya prinsip yang dipegang.',
+  knight: 'Bertahun-tahun {name} mencari jawaban di luar diri. Kemudian suatu malam yang sunyi, mereka menyadari: semua yang dicari ada di dalam. Ketenangan bukan tentang absennya badai, tapi tentang tidak terguncang di tengah badai. Setiap nafas adalah meditasi, setiap langkah adalah doa.',
+  paladin: '{name} pernah kehilangan seseorang yang dicintai karena kurangnya perawatan. Sejak hari itu, mereka bersumpah: selama ada daya, tidak akan ada yang dibiarkan menderita sendiri. Tubuh adalah kuil yang harus dijaga, jiwa adalah api yang harus dipelihara. Menyembuhkan orang lain dimulai dari menyembuhkan diri sendiri.',
+  sage: 'Usia hanyalah angka, tapi kebijaksanaan {name} jauh melampaui tahun-tahun yang telah dilalui. Mereka telah melihat kejayaan dan kehancuran, cinta dan kehilangan. Dari semuanya, satu pelajaran yang tersisa: hidup terlalu singkat untuk dilewatkan tanpa makna. Setiap kata {name} ucapkan mengandung bobot seribu pengalaman.',
+  bard: 'Musik pertama yang dimainkan {name} begitu buruk hingga anjing-anjing di seluruh kota melolong. Tapi mereka tidak berhenti. Tahun demi tahun, senar demi senar, nada demi nada. Kini ketika {name} bermain, orang-orang berhenti berjalan hanya untuk mendengar. Seni bukan tentang bakat — ini tentang keberanian untuk terus berlatih.',
+  crusader: 'Sumpah seorang ksatria bukan diucapkan sekali, tapi dibuktikan setiap hari. {name} mengenakan zirah bukan untuk menakut-nakuti musuh, tapi sebagai pengingat akan tanggung jawab yang dipikul. Pelindung bukan orang yang tidak pernah takut — tapi orang yang memilih melangkah maju meski takut.',
+  alchemist: 'Laboratorium {name} penuh dengan kegagalan yang diabadikan dalam jurnal tebal. Tapi bagi mereka, setiap gagal adalah data, setiap ledakan kecil adalah pelajaran. Alkimia sejati bukan mengubah timah menjadi emas — tapi mengubah kebiasaan kecil menjadi perubahan hidup yang besar. Rahasia terbesar {name}: sabar.',
+  archmage: 'Ada momen ketika {name} sadar mereka telah melampaui semua guru yang pernah ada. Bukan dengan kesombongan, tapi dengan rasa syukur yang dalam. Kekuatan sejati bukanlah tentang seberapa besar api yang bisa dilempar, tapi tentang kebijaksanaan untuk tahu kapan tidak menggunakannya. Puncak bukan akhir — dari sana, terlihat betapa luasnya yang belum dijelajahi.',
+  shadow: 'Tidak ada yang tahu siapa {name} sebenarnya. Dalam gelap, mereka berlatih sendirian — bukan untuk disaksikan, tapi karena disiplin itu sendiri adalah hadiah. 7 malam sempurna tanpa istirahat, tanpa pengecualian. Bayangan tidak berbohong: apa yang kamu lakukan saat tidak ada yang melihat, itulah dirimu yang sesungguhnya.',
+  sovereign: 'Level 30 bukan hanya angka — itu adalah 30 tingkat pengorbanan, 30 tingkat konsistensi, 30 tingkat karakter yang dibangun hari demi hari. {name} tidak lahir sebagai pemimpin. Mereka menjadi pemimpin melalui pilihan-pilihan kecil yang tidak ada yang lihat, yang dilakukan berulang kali hingga menjadi siapa mereka sekarang. Mahkota ini pantas.',
+};
+
+function showCharStory() {
+  var job = (typeof charJobs !== 'undefined') ? charJobs.getActive() : { id:'Novice', name:'Novice', icon:'⚔️' };
+  var uname = getCharUsername() || 'Petualang';
+  var storyTemplate = JOB_STORIES[job.id] || JOB_STORIES['Novice'];
+  var story = storyTemplate.replace(/\{name\}/g, uname);
+  var rarityColors = { common:'var(--muted)', uncommon:'var(--green)', rare:'var(--blue)', epic:'var(--purple)', hidden:'#f59e0b' };
+  var rarityColor = rarityColors[job.rarity] || 'var(--muted)';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = '<div style="background:var(--card);border-radius:18px;padding:24px 22px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">'
+    + '<span style="font-size:28px">'+job.icon+'</span>'
+    + '<div><div style="font-size:15px;font-weight:800;color:var(--text)">'+uname+'</div>'
+    + '<div style="font-size:11px;font-weight:700;color:'+rarityColor+';text-transform:uppercase;letter-spacing:0.5px">'+job.name+'</div></div>'
+    + '</div>'
+    + '<div style="font-size:13px;line-height:1.7;color:var(--text);opacity:0.85;border-left:3px solid '+rarityColor+';padding-left:14px;font-style:italic">'+story+'</div>'
+    + '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="width:100%;margin-top:18px;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">Tutup</button>'
+    + '</div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+}
+
+// ── CHARACTER CARD ────────────────────────────────────────────
+function buildCharacterCard(){
+  var lv = getLevel();
+  var curXP = getLevelXP();
+  var needXP = getLevelXpNeeded();
+  var pct = needXP > 0 ? Math.round(curXP / needXP * 100) : 100;
+
+  // Username: charUsername state, fallback ke email prefix
+  var uname = getCharUsername();
+  if (!uname) {
+    try {
+      if(typeof fbUser !== 'undefined' && fbUser){
+        uname = fbUser.displayName || fbUser._userName || fbUser.email || '';
+        if(uname.indexOf('@') > -1) uname = uname.split('@')[0];
+      }
+    } catch(e){}
+    if (!uname) uname = 'Petualang';
+  }
+
+  // Job aktif
+  var job = (typeof charJobs !== 'undefined') ? charJobs.getActive() : { name:'Novice', icon:'⚔️', rarity:'common', sprite:'' };
+  // Gender-aware sprite: pakai male.webp / female.webp, fallback ke idle.webp
+  var _gender = (typeof charGender !== 'undefined') ? charGender.get() : 'male';
+  var _jobFolder = job.sprite ? job.sprite.replace(/\/[^/]+\.webp$/, '/') : '';
+  var spriteUrl = _jobFolder ? (_jobFolder + _gender + '.webp') : job.sprite;
+  var hasSprite = spriteUrl && spriteUrl.length > 0;
+
+  // Rarity warna & strip
+  var rarityColors = { common:'var(--muted)', uncommon:'var(--green)', rare:'var(--blue)', epic:'var(--purple)', hidden:'#f59e0b' };
+  var rarityStripColors = { common:'linear-gradient(90deg,var(--border),var(--border))', uncommon:'linear-gradient(90deg,#22c55e,#16a34a)', rare:'linear-gradient(90deg,#3b82f6,#1d4ed8)', epic:'linear-gradient(90deg,#a855f7,#7c3aed)', hidden:'linear-gradient(90deg,#f59e0b,#b45309)' };
+  var rarityColor = rarityColors[job.rarity] || 'var(--muted)';
+  var rarityStrip = rarityStripColors[job.rarity] || rarityStripColors.common;
+
+  // Char class dari stat
+  var charClass = (typeof getCharClass === 'function') ? getCharClass() : '—';
+
+  var html = '<div class="dash-card char-card" id="char-card">';
+  html += '<div class="char-card-rarity-strip" style="background:'+rarityStrip+'"></div>';
+  // Sprite panel — langsung di dalam char-card (position:absolute relative to char-card)
+  html += '<div class="char-sprite-panel">';
+  // Job label overlaid top-left
+  html += '<div class="char-sprite-label" id="char-sprite-label">'+job.icon+' '+job.name+'</div>';
+  html += '<div class="char-sprite-wrap" id="char-sprite-wrap" style="cursor:default">';
+  html += '<div class="char-sprite-shine"></div>';
+  if (hasSprite) {
+    html += '<div class="char-sprite-anim" id="char-sprite-img" style="background-image:url(\''+spriteUrl+'\')" data-sprite-url="'+spriteUrl+'" data-fallback="'+job.sprite+'"></div>';
+  }
+  html += '<div class="char-sprite-placeholder" id="char-sprite-placeholder" style="display:'+(hasSprite?'none':'flex')+'"><span>'+job.icon+'</span></div>';
+  html += '</div>';
+  html += '</div>'; // end sprite panel
+
+  html += '<div class="char-card-inner">';
+  // Header row — tanpa judul "⚔️ Karakter", langsung action buttons
+  html += '<div class="char-card-header">';
+  html += '<div style="display:flex;gap:8px">'
+    + '<a class="char-card-header-action" onclick="showCharStory()">📜 Cerita</a>'
+    + '<a class="char-card-header-action" onclick="typeof charJobs!==\'undefined\'&&charJobs.openPicker()">🔄 Ganti Job</a>'
+    + '<a class="char-card-header-action char-gender-toggle" onclick="charGender.toggle()" id="char-gender-btn" title="Ganti Jenis Kelamin">'
+    + ((typeof charGender !== 'undefined' && charGender.get() === 'female') ? '♀ Female' : '♂ Male')
+    + '</a>'
+    + '</div>';
+  html += '</div>';
+
+  // Body: info saja (sprite sudah di luar)
+  html += '<div class="char-card-body">';
+  // Info karakter
+  html += '<div class="char-card-info">';
+  // Name row with edit button tepat di kanan username
+  html += '<div class="char-name-row">'
+    + '<span class="char-name" id="char-card-name">'+uname+'</span>'
+    + '<button class="char-edit-name-btn" onclick="promptChangeUsername()" title="Ganti nama">✏️</button>'
+    + '</div>';
+  html += '<div class="char-job-badge rarity-'+job.rarity+'" id="char-job-badge" style="color:'+rarityColor+';border-color:'+rarityColor+'">'
+    + '<span>'+job.icon+'</span> '+job.name+'</div>';
+  // Class row dihapus — info sudah ada di job badge
+  html += '<div class="char-level-row">'
+    + '<span class="char-lv-num">Lv&nbsp;<b>'+lv+'</b></span>'
+    + '<span class="char-xp-label">'+curXP+' / '+needXP+' XP</span>'
+    + '</div>';
+  html += '<div class="char-xp-bar"><div class="char-xp-fill" style="width:'+pct+'%"></div></div>';
+  html += '<div class="char-gold-row">🪙 <b>'+(typeof goldBalance !== 'undefined' ? goldBalance : 0)+'</b> <span style="font-size:10px;color:var(--muted)">gold</span></div>';
+  html += '</div>'; // end char-card-info
+  html += '</div>'; // end char-card-body
+  html += '</div>'; // end char-card-inner
+  html += '</div>'; // end dash-card
+  return html;
+}
+
+function buildCharSkillsCard(){
+  var job = (typeof charJobs !== 'undefined') ? charJobs.getActive() : { id:'Novice', name:'Novice', icon:'⚔️', rarity:'common' };
+  var rarityColors = { common:'var(--muted)', uncommon:'var(--green)', rare:'var(--blue)', epic:'var(--purple)', hidden:'#f59e0b' };
+  var rarityColor = rarityColors[job.rarity] || 'var(--muted)';
+  var skills = (typeof CT_JobSkills !== 'undefined') ? CT_JobSkills.getSkills(job.id) : [];
+  // Preserve open/closed state across re-renders (default: closed)
+  var isOpen = (typeof _charSkillsOpen !== 'undefined') ? _charSkillsOpen : false;
+
+  var html = '<div class="dash-card char-skills-card" id="char-skills-card">';
+  // Clickable header with chevron
+  html += '<div class="dash-card-title" onclick="toggleCharSkillsCard()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">'
+    + '<span>⚡ Skill <span style="font-size:10px;color:'+rarityColor+';font-weight:700;margin-left:4px">'+job.icon+' '+job.name+'</span></span>'
+    + '<span id="char-skills-chevron" style="font-size:11px;color:var(--muted);transition:transform 0.2s;display:inline-block;transform:'+(isOpen?'rotate(180deg)':'rotate(0deg)')+'">▼</span>'
+    + '</div>';
+
+  html += '<div id="char-skills-body" style="overflow:hidden;transition:max-height 0.25s ease;max-height:'+(isOpen?'1000px':'0px')+'">';
+  if (!skills || skills.length === 0) {
+    html += '<div style="font-size:11px;color:var(--muted);padding:8px 0">Skill belum tersedia untuk job ini.</div>';
+  } else {
+    html += '<div class="char-skills-list">';
+    skills.forEach(function(sk){
+      var dmgMin = sk.damage ? sk.damage[0] : '?';
+      var dmgMax = sk.damage ? sk.damage[1] : '?';
+      var weightPct = Math.round((sk.weight || 10));
+      html += '<div class="char-skill-row">';
+      html += '<div class="char-skill-icon">'+sk.icon+'</div>';
+      html += '<div class="char-skill-body">';
+      html += '<div class="char-skill-name-row">'
+        + '<span class="char-skill-name">'+sk.name+'</span>'
+        + '<span class="char-skill-dmg">'+dmgMin+'–'+dmgMax+'</span>'
+        + '</div>';
+      html += '<div class="char-skill-desc">'+sk.description+'</div>';
+      if (sk.effects && sk.effects.length) {
+        html += '<div class="char-skill-effects">';
+        sk.effects.slice(0,2).forEach(function(eff){
+          html += '<span class="char-skill-eff-tag">'+eff.label+'</span>';
+        });
+        html += '</div>';
+      }
+      html += '</div>'; // skill-body
+      // Weight bar
+      html += '<div class="char-skill-weight" title="'+weightPct+'% kemungkinan">'
+        + '<div class="char-skill-weight-fill" style="height:'+Math.min(100,weightPct)+'%"></div>'
+        + '</div>';
+      html += '</div>'; // skill-row
+    });
+    html += '</div>'; // char-skills-list
+  }
+  html += '</div>'; // char-skills-body (collapsible)
+  html += '</div>'; // dash-card
+  return html;
+}
+
+var _charSkillsOpen = false;
+function toggleCharSkillsCard(){
+  _charSkillsOpen = !_charSkillsOpen;
+  var body = document.getElementById('char-skills-body');
+  var chevron = document.getElementById('char-skills-chevron');
+  if(body) body.style.maxHeight = _charSkillsOpen ? '1000px' : '0px';
+  if(chevron) chevron.style.transform = _charSkillsOpen ? 'rotate(180deg)' : 'rotate(0deg)';
 }
 
 function renderDashboard(el){
@@ -11886,13 +12819,23 @@ function renderDashboard(el){
     return{date:d,done:done,total:dayHabits.length};
   });
 
-  var html='<div class="dash-wrap">';
+  var radarOff=typeof isRadarHidden==='function'&&isRadarHidden();
+  var html='<div class="dash-wrap'+(radarOff?' radar-off':'')+'">';
 
-  // ── CHARACTER STATS RADAR CHART (paling atas, full width) ──
-  html+=buildCharStatsCard();
+  // ── ROW 1: Character Card (full width, di paling atas) ──
+  html+=buildCharacterCard();
+  html+=buildCharSkillsCard();
 
-  // Gold & XP card
-  html+='<div class="dash-card">';
+  // ── ROW 2: Horoscope (kiri) + Character Stats (kanan), stretch sama tinggi ──
+  html+='<div class="dash-top-row">';
+  if(typeof horoscope !== 'undefined'){
+    html+='<div class="dash-top-horoscope">'+horoscope.getCard()+'</div>';
+  }
+  html+='<div class="dash-top-radar">'+buildCharStatsCard()+'</div>';
+  html+='</div>';
+
+  // Gold & XP card — only shown in focus mode (gamer mode has this info in char card)
+  html+='<div class="dash-card" id="dash-gold-level-card">';
   html+='<div class="dash-card-title">🪙 Gold & Level <a onclick="openShop()">Toko →</a></div>';
   html+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0">';
   html+='<div style="min-width:0;flex:1"><div class="dash-big-num" style="color:var(--gold);font-size:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+goldBalance+'</div><div class="dash-sub">gold tersisa</div></div>';
@@ -11937,7 +12880,7 @@ function renderDashboard(el){
   html+='</div>';
 
   // Journal streak
-  html+='<div class="dash-card">';
+  html+='<div class="dash-card" id="dash-journal-card">';
   html+='<div class="dash-card-title">📓 Jurnal <a onclick="switchView(\'journal-today\')">Tulis →</a></div>';
   html+='<div class="dash-big-num" style="color:var(--purple)">'+jStreak+'</div>';
   html+='<div class="dash-sub">hari streak jurnal</div>';
@@ -11945,8 +12888,8 @@ function renderDashboard(el){
   html+='<div style="margin-top:8px;font-size:11px;color:'+(todayJournal?'var(--green)':'var(--muted)')+'">'+(todayJournal?'✅ Sudah tulis hari ini':'✏️ Belum tulis hari ini')+'</div>';
   html+='</div>';
 
-  // Weekly habit mini chart
-  html+='<div class="dash-card">';
+  // Weekly habit mini chart — full width so it never sits orphaned in either mode
+  html+='<div class="dash-card full">';
   html+='<div class="dash-card-title">📊 Habit 7 Hari Terakhir</div>';
   html+='<div style="display:flex;align-items:flex-end;gap:6px;height:50px;margin-bottom:6px">';
   var days7=['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
@@ -12057,6 +13000,13 @@ function renderDashboard(el){
 
   html+='</div>'; // end dash-wrap
   el.innerHTML=html;
+  // Terapkan sprite config setelah DOM selesai dirender
+  // Double-fire: 0ms untuk render awal, 120ms untuk pastikan layout stabil (fix ukuran avatar saat pindah view)
+  if (typeof CT_SpriteConfig !== 'undefined' && typeof charGender !== 'undefined') {
+    var _applyGender = charGender.get();
+    setTimeout(function(){ CT_SpriteConfig.applyAll(_applyGender); }, 0);
+    setTimeout(function(){ CT_SpriteConfig.applyAll(_applyGender); }, 120);
+  }
 }
 
 // ══════════════════════════════════════════════

@@ -82,7 +82,7 @@ function annStopListener(){
 
 // ── Proses pengumuman untuk user Google (dengan readIds Firestore) ──
 function _annProcessAndShow(anns){
-  if(!anns || !anns.length) return;
+  if(!anns || !anns.length){ window._annAllDone = true; return; }
   var now = Date.now();
   var valid = anns.filter(function(a){
     if(!a.active) return false;
@@ -90,7 +90,7 @@ function _annProcessAndShow(anns){
     if(a.expiresAt && typeof a.expiresAt === 'number' && a.expiresAt < now) return false;
     return true;
   });
-  if(!valid.length) return;
+  if(!valid.length){ window._annAllDone = true; return; }
   valid.sort(function(a,b){
     return (b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():0)
           -(a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():0);
@@ -108,7 +108,7 @@ function _annProcessAndShow(anns){
 
 // FIX #5: Proses pengumuman untuk guest (localStorage sebagai readIds, tanpa Firestore write)
 function _annProcessAndShowGuest(anns){
-  if(!anns || !anns.length) return;
+  if(!anns || !anns.length){ window._annAllDone = true; return; }
   var now = Date.now();
   var valid = anns.filter(function(a){
     if(!a.active) return false;
@@ -116,7 +116,7 @@ function _annProcessAndShowGuest(anns){
     if(a.expiresAt && typeof a.expiresAt === 'number' && a.expiresAt < now) return false;
     return true;
   });
-  if(!valid.length) return;
+  if(!valid.length){ window._annAllDone = true; return; }
   valid.sort(function(a,b){
     return (b.createdAt&&b.createdAt.toMillis?b.createdAt.toMillis():0)
           -(a.createdAt&&a.createdAt.toMillis?a.createdAt.toMillis():0);
@@ -135,7 +135,7 @@ function _annEnqueue(valid, readIds){
     if(a.displayMode === 'once_per_session') return !_annSessionDismissed[a.id];
     return readIds.indexOf(a.id) < 0;
   });
-  if(!toShow.length) return;
+  if(!toShow.length){ window._annAllDone = true; return; }
   // Tambahkan ke antrian hanya yang belum ada di antrian
   toShow.forEach(function(a){
     var alreadyQueued = _annQueue.some(function(q){ return q.ann.id === a.id; });
@@ -148,6 +148,11 @@ function _annDequeueNext(){
   if(_annShowing || !_annQueue.length) return;
   // Tahan pengumuman selama tutorial/onboarding sedang berjalan
   if(typeof _tourActive !== 'undefined' && _tourActive) return;
+  // Tahan sampai splash selesai DAN nav+gami onboarding sudah dilalui
+  if(!window._splashDismissed) return;
+  if(!window._onboardingFlowDone) return;
+  // Tahan selama username onboarding prompt masih tampil
+  if(document.getElementById('char-username-onboarding')) return;
   var item = _annQueue.shift();
   _annShowing = true;
   _annShowPopup(item.ann);
@@ -442,6 +447,8 @@ function _annDismiss(ann){
     // FIX #4: Lanjut tampilkan pengumuman berikutnya di antrian
     _annShowing = false;
     _annDequeueNext();
+    // Set flag global ketika semua pengumuman sudah habis ditampilkan
+    if(!_annQueue.length && !_annShowing) window._annAllDone = true;
   }, 280);
 
   // FIX #2: Tandai sudah dismiss di sesi ini (untuk mode 'always')
@@ -682,7 +689,7 @@ function devAnnPreview(){
   };
   // Naikkan z-index annOverlay di atas devPage (9900) agar preview tampil
   var overlayEl = document.getElementById('annOverlay');
-  if(overlayEl) overlayEl.style.zIndex = '10000';
+  if(overlayEl) overlayEl.style.zIndex = '99980';
   // Kembalikan z-index setelah dismiss
   var _origDismiss = window._annDismissHook;
   var _devPreviewCleanup = function(){
@@ -882,7 +889,7 @@ function dpAnnPreview(){
     customBtnUrl:     (_dpAnnCustomBtnActive && _dpAnnCustomBtnAction==='link' && cbUrlEl) ? cbUrlEl.value.trim() : null
   };
   var overlayEl = document.getElementById('annOverlay');
-  if(overlayEl) overlayEl.style.zIndex='10000';
+  if(overlayEl) overlayEl.style.zIndex='99980';
   window._devPreviewCleanupOnce = function(){ if(overlayEl) overlayEl.style.zIndex=''; };
   _annShowing = false;
   _annShowPopup(ann);

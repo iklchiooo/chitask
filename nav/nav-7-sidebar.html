@@ -1,0 +1,202 @@
+<!-- ================================================================ -->
+<!--  NAV 7: SIDEBAR (Desktop/Tablet)                                  -->
+<!--  Navigasi samping kiri untuk layar lebar                          -->
+<!--  Berisi section:                                                   -->
+<!--    - Brand / Logo                                                  -->
+<!--    - 📋 Task (Dashboard, My Day, Penting, Terjadwal, Habits, dll) -->
+<!--    - 💰 Keuangan (Overview, Cash Flow, Transaksi, dll)            -->
+<!--    - 🔧 Maintenance (Overview, Semua Item, Riwayat, Kategori)     -->
+<!--    - 📓 Journal (Hari Ini, Semua Entry, Search)                   -->
+<!--    - ⚙️ Settings                                                  -->
+<!--    - Sidebar Bottom (user info, save indicator, versi app)        -->
+<!--  Hapus file ini jika ingin pakai bottom-nav-only (mode mobile)    -->
+<!-- ================================================================ -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="brand-name"><span class="chi">Chi</span><span class="tsk">Task</span></div>
+          <dotlottie-player
+            id="fluffytown-lottie"
+            src="css/themes/icons/hamster.lottie"
+            autoplay
+            loop
+            style="width:32px;height:32px;display:none;flex-shrink:0;"
+          ></dotlottie-player>
+          <dotlottie-player
+            id="slytherin-lottie"
+            src="css/themes/icons/slytherin.lottie"
+            autoplay
+            loop
+            style="width:70px;height:70px;display:none;position:absolute;top:0px;left:100px;pointer-events:none;"
+          ></dotlottie-player>
+        </div>
+        <div class="brand-sub" id="todayLabel"></div>
+      </div>
+    </div>
+    <div class="sidebar-scroll">
+    <!-- Task Section -->
+    <div class="nav-section" onclick="toggleNavSection('task')">
+      <span id="navSecTask">📋 Task</span>
+      <span class="nav-section-chevron open" id="chevron-task">▼</span>
+    </div>
+    <div class="nav-group" id="navgroup-task">
+      <div class="nav-item" onclick="switchView('dashboard')" id="nav-dashboard">
+        <div class="ic">🏠</div><div class="lbl" id="lbl-nav-dashboard">Dashboard</div>
+      </div>
+      <div class="nav-item active" onclick="switchView('myday')" id="nav-myday">
+        <div class="ic">☀️</div><div class="lbl" id="lbl-nav-myday">My Day</div><div class="cnt" id="cnt-myday">0</div>
+      </div>
+      <div class="nav-item" onclick="switchView('important')" id="nav-important">
+        <div class="ic">⭐</div><div class="lbl" id="lbl-nav-important">Penting</div><div class="cnt" id="cnt-important">0</div>
+      </div>
+      <div class="nav-item" onclick="switchView('planned')" id="nav-planned">
+        <div class="ic">📅</div><div class="lbl" id="lbl-nav-planned">Terjadwal</div><div class="cnt" id="cnt-planned">0</div>
+      </div>
+
+      <div class="nav-item" onclick="switchView('habits')" id="nav-habits">
+        <div class="ic">🔥</div><div class="lbl" id="lbl-nav-habits">Habit Tracker</div>
+      </div>
+      <div class="nav-item" onclick="switchView('all')" id="nav-all">
+        <div class="ic">📋</div><div class="lbl" id="lbl-nav-all">Semua Task</div>
+      </div>
+      <div class="nav-item" onclick="switchView('completed')" id="nav-completed">
+        <div class="ic">✅</div><div class="lbl" id="lbl-nav-completed">Selesai</div><div class="cnt" id="cnt-completed">0</div>
+      </div>
+      <div class="nav-item" onclick="switchView('achievements')" id="nav-achievements">
+        <div class="ic">🏆</div><div class="lbl" id="lbl-nav-achievements">Pencapaian</div>
+      </div>
+      <div class="nav-item" onclick="switchView('task-groups')" id="nav-task-groups">
+        <div class="ic">🗂️</div><div class="lbl">Kelola Grup</div>
+      </div>
+      <div class="nav-item" onclick="CT_Collab.showProjectsView()" id="nav-collab">
+        <div class="ic">🤝</div><div class="lbl">Collaboration</div>
+      </div>
+    </div>
+
+    <!-- Finance Section -->
+    <div class="nav-divider"></div>
+    <div id="navsection-fin">
+    <div class="nav-section" onclick="toggleNavSection('fin')">
+      <span id="navSecFin">💰 Keuangan</span>
+      <span class="nav-section-chevron open" id="chevron-fin">▼</span>
+    </div>
+    <div class="nav-group" id="navgroup-fin">
+      <div class="nav-item" onclick="switchView('fin-overview')" id="nav-fin-overview">
+        <div class="ic">📈</div><div class="lbl" id="lbl-nav-fin-overview">Overview</div>
+      </div>
+      <div class="nav-item" onclick="switchView('fin-cashflow')" id="nav-fin-cashflow">
+        <div class="ic">💸</div><div class="lbl" id="lbl-nav-fin-cashflow">Cash Flow</div>
+      </div>
+      <div class="nav-item" onclick="switchView('fin-transactions')" id="nav-fin-transactions">
+        <div class="ic">📒</div><div class="lbl" id="lbl-nav-fin-transactions">Transaksi</div>
+      </div>
+      <div class="nav-item" onclick="switchView('fin-wallets')" id="nav-fin-wallets">
+        <div class="ic">👛</div><div class="lbl" id="lbl-nav-fin-wallets">Dompet</div>
+      </div>
+      <div class="nav-item" onclick="switchView('fin-wishlist')" id="nav-fin-wishlist">
+        <div class="ic">🎯</div><div class="lbl" id="lbl-nav-fin-wishlist">Wishlist</div>
+      </div>
+      <div class="nav-item" onclick="switchView('fin-tagihan')" id="nav-fin-tagihan">
+        <div class="ic">🧾</div><div class="lbl" id="lbl-nav-fin-tagihan">Tagihan</div><div class="cnt" id="cnt-tagihan">0</div>
+      </div>
+      <div class="nav-item" onclick="switchView('fin-hutang')" id="nav-fin-hutang">
+        <div class="ic">🤝</div><div class="lbl" id="lbl-nav-fin-hutang">Hutang</div><div class="cnt" id="cnt-hutang">0</div>
+      </div>
+      <div class="nav-item" onclick="switchView('fin-categories')" id="nav-fin-categories">
+        <div class="ic">🏷️</div><div class="lbl" id="lbl-nav-fin-categories">Kategori</div>
+      </div>
+      <div class="nav-item" onclick="switchView('fin-budget')" id="nav-fin-budget">
+        <div class="ic">🎯</div><div class="lbl" id="lbl-nav-fin-budget">Budget</div><div class="cnt" id="cnt-budget-over" style="display:none">!</div>
+      </div>
+    </div>
+    </div><!-- end navsection-fin -->
+
+    <!-- Maintenance Section -->
+    <div class="nav-divider"></div>
+    <div id="navsection-maint">
+    <div class="nav-section" onclick="toggleNavSection('maint')">
+      <span id="navSecMaint">🔧 Maintenance</span>
+      <span class="nav-section-chevron open" id="chevron-maint">▼</span>
+    </div>
+    <div class="nav-group" id="navgroup-maint">
+      <div class="nav-item" onclick="switchView('maint-overview')" id="nav-maint-overview">
+        <div class="ic">🔧</div><div class="lbl" id="lbl-nav-maint-overview">Overview</div><div class="cnt" id="cnt-maint-due">0</div>
+      </div>
+      <div class="nav-item" onclick="switchView('maint-all')" id="nav-maint-all">
+        <div class="ic">📋</div><div class="lbl" id="lbl-nav-maint-all">Semua Item</div>
+      </div>
+      <div class="nav-item" onclick="switchView('maint-log')" id="nav-maint-log">
+        <div class="ic">📜</div><div class="lbl" id="lbl-nav-maint-log">Riwayat</div>
+      </div>
+      <div id="maint-category-nav"></div>
+      <div class="nav-item" onclick="switchView('maint-categories')" id="nav-maint-categories" style="opacity:0.75">
+        <div class="ic">⚙️</div><div class="lbl" id="lbl-nav-maint-categories">Kelola Kategori</div>
+      </div>
+    </div>
+    </div><!-- end navsection-maint -->
+
+    <!-- Journal Section -->
+    <div class="nav-divider"></div>
+    <div id="navsection-journal">
+    <div class="nav-section" onclick="toggleNavSection('journal')">
+      <span id="navSecJournal">📓 Jurnal</span>
+      <span class="nav-section-chevron open" id="chevron-journal">▼</span>
+    </div>
+    <div class="nav-group" id="navgroup-journal">
+      <div class="nav-item" onclick="switchView('journal-today')" id="nav-journal-today">
+        <div class="ic">✍️</div><div class="lbl" id="lbl-nav-journal-today">Hari Ini</div>
+      </div>
+      <div class="nav-item" onclick="switchView('journal-all')" id="nav-journal-all">
+        <div class="ic">📋</div><div class="lbl" id="lbl-nav-journal-all">Semua Entry</div>
+      </div>
+      <div class="nav-item" onclick="switchView('journal-search')" id="nav-journal-search">
+        <div class="ic">🔍</div><div class="lbl" id="lbl-nav-journal-search">Search</div>
+      </div>
+    </div>
+    </div><!-- end navsection-journal -->
+
+    <!-- Settings Section -->
+    <div class="nav-divider"></div>
+    <div class="nav-item" onclick="openShop()" id="nav-shop">
+      <div class="ic">🏪</div><div class="lbl" id="lbl-nav-shop">Toko</div><div class="cnt" id="cnt-gold-sidebar">0🪙</div>
+    </div>
+    <div class="nav-item" onclick="switchView('unified-calendar')" id="nav-calendar">
+      <div class="ic">🗓</div><div class="lbl" id="lbl-nav-calendar">Kalender</div>
+    </div>
+    <div class="nav-item" onclick="openNavPreferenceModal()" id="nav-settings" style="margin-top:2px">
+      <div class="ic">⚙️</div><div class="lbl" id="lbl-nav-settings">Settings &amp; Gamifikasi</div>
+    </div>
+    <div class="nav-item" onclick="installApp()" id="nav-install" style="opacity:0.75">
+      <div class="ic">📲</div><div class="lbl" id="lbl-nav-install">Install App</div>
+    </div>
+    </div><!-- end sidebar-scroll -->
+    <div id="maintSubSidebar" style="display:none;background:rgba(139,92,246,0.07);border-top:1px solid rgba(139,92,246,0.15)">
+      <div id="maintSubSidebarInner"></div>
+    </div>
+
+    <div class="sidebar-bottom">
+    <div class="xp-bar-wrap">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 0 2px">
+      <div class="gold-display" onclick="openShop()" title="Klik untuk buka toko">🪙 <span id="goldLabel">0</span> gold</div>
+    </div>
+      <div class="xp-level"><span id="xpLevelLabel">Lv 1</span><span id="xpLabel">0 XP</span></div>
+      <div class="xp-bar"><div class="xp-fill" id="xpFill" style="width:0%"></div></div>
+    </div>
+    <!-- User info Firebase -->
+    <div id="fbUserInfo" style="padding:8px 14px 4px;display:flex;align-items:center;gap:8px;border-top:1px solid rgba(255,255,255,0.07)"></div>
+    <div class="sidebar-footer" style="flex-direction:column;gap:6px;align-items:stretch;padding:10px 16px 12px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span id="onlineIndicator" style="font-size:10px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px">
+          <span id="onlineDot" class="dot-pulse-online" style="width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block;flex-shrink:0"></span>
+          <span id="onlineText" style="color:#4ade80">Online</span>
+        </span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:10px;color:rgba(255,255,255,0.25)">v1.0 ☁️ Firebase</span>
+        <span class="save-indicator" id="saveIndicator">✓ Tersimpan</span>
+      </div>
+    </div>
+    </div><!-- end sidebar-bottom -->
+  </div>
+
