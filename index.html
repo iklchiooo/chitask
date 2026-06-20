@@ -12,6 +12,16 @@
 <meta name="theme-color" content="#1c1917">
 <title>ChiTask — Task Manager + Keuangan</title>
 <link rel="manifest" id="pwa-manifest" href="manifest.json">
+<script>
+// Daftarkan SW SEGERA, tidak bergantung Firebase/login — supaya offline tetap jalan
+// walau Firebase gagal/timeout dan belum ada data tersimpan (lihat _enterOfflineMode()).
+// setupPWA() di constants-helpers.js tetap memanggil register() lagi nanti — itu aman,
+// browser cukup mengembalikan registration yang sudah ada (idempotent).
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js', { scope: './' })
+    .catch(function(err){ console.warn('Early SW register failed:', err); });
+}
+</script>
 <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
 <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192x192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
